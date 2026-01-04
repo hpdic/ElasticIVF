@@ -3,21 +3,19 @@ We assume you are using (e.g., Chameleon Cloud `gigaio05`) Ubuntu 24.04, NVIDIA 
 
 ## Recompile C++
 ```bash
-cd ~/faiss
+cd ~/ElasticIVF
 make -C build -j $(nproc) faiss
 ```
 
 ## Reinstall Python package
 ```bash
-cd build/faiss/python
+cd ~/ElasticIVF/build/faiss/python
 python setup.py install
 ```
 
-## If you change header files, do the following, you need to do both C++ and Python steps.
-
 ## Test
 ```bash
-cd ~/faiss/tutorial/cpp
+cd ~/ElasticIVF/tutorial/cpp
 # For Intel MKL
 g++ 4-GPU.cpp -o 4-GPU.bin \
     -fopenmp \
@@ -38,7 +36,7 @@ g++ 4-GPU.cpp -o 4-GPU.bin \
     -Wl,-rpath=$(pwd)/../../build/faiss
 ```
 
-## Installation Steps
+## Installation
 ```bash
 git config --global user.name "Dongfang Zhao"
 git config --global user.email "dzhao@uw.edu"
@@ -48,8 +46,8 @@ source myenv/bin/activate
 pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
 sudo apt install -y cmake swig g++ libopenblas-dev libmkl-dev git
 cd ~
-git clone https://github.com/hpdic/faiss.git
-cd faiss
+git clone https://github.com/hpdic/ElasticIVF.git
+cd ElasticIVF
 source ~/myenv/bin/activate
 which python 
 # 输出应该是 /home/cc/myenv/bin/python
@@ -62,8 +60,6 @@ cmake -B build . \
     -DCMAKE_CUDA_ARCHITECTURES="80" \
     -DPython_EXECUTABLE=$(which python)
 make -C build -j $(nproc)
-cd build/faiss/python
-python setup.py install
 cd build/faiss/python
 python setup.py install
 ```
