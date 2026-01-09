@@ -1,3 +1,4 @@
+myenv/*
 *.swp
 *.swo
 *.o
