@@ -1,6 +1,13 @@
 # HPDIC MOD of FAISS
 We assume you are using (e.g., Chameleon Cloud `nc33` at U. Chicago) Ubuntu 24.04, NVIDIA RTX 6000 GPU (24 GB RAM, Driver 560.35.05, CUDA 12.6), 192 GB RAM, Intel(R) Xeon(R) Gold 6126 CPU @ 2.60GHz (48 Cores).
 
+## Benchmarks
+```bash
+bash ~/ElasticIVF/hpdic/script/download_sift.sh
+source ~/ElasticIVF/hpdic/myenv/bin/activate
+python3 ~/ElasticIVF/hpdic/script/benchmark_baseline.py
+```
+
 ## Installation
 ```bash
 git config --global user.name "Dongfang Zhao"
