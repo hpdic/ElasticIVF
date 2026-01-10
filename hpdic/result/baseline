@@ -1,0 +1,25 @@
+(myenv) cc@rtx6000:~/ElasticIVF/hpdic/script$ # 暴力注入系统 MKL
+LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libmkl_rt.so python3 ~/ElasticIVF/hpdic/script/benchmark_baseline.py
+Loading data from /home/cc/ElasticIVF/hpdic/data/sift...
+Data loaded. Base shape: (1000000, 128)
+Initializing Faiss GPU resources...
+Training IndexIVFFlat on CPU...
+Moving index to GPU...
+[HPDIC MOD] Faiss GPU initialized on device ID: 0
+Pre filling window with 100000 vectors...
+
+>>> Starting Streaming Benchmark <<<
+Window: 100000, Batch: 10000
+Step  | Add(ms)    | Remove(ms)   | Method          | Total(ms) 
+=================================================================
+0     | 9.37       | 235.73       | CPU_Roundtrip   | 245.10    
+1     | 27.65      | 236.63       | CPU_Roundtrip   | 264.29    
+2     | 28.57      | 211.60       | CPU_Roundtrip   | 240.17    
+3     | 27.91      | 212.52       | CPU_Roundtrip   | 240.44    
+4     | 28.29      | 212.11       | CPU_Roundtrip   | 240.40    
+5     | 27.86      | 211.61       | CPU_Roundtrip   | 239.47    
+6     | 27.97      | 207.90       | CPU_Roundtrip   | 235.87    
+7     | 28.13      | 210.23       | CPU_Roundtrip   | 238.36    
+8     | 28.49      | 208.46       | CPU_Roundtrip   | 236.96    
+9     | 28.55      | 209.89       | CPU_Roundtrip   | 238.44    
+(myenv) cc@rtx6000:~/ElasticIVF/hpdic/script$ 

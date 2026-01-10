@@ -5,7 +5,8 @@ We assume you are using (e.g., Chameleon Cloud `nc33` at U. Chicago) Ubuntu 24.0
 ```bash
 bash ~/ElasticIVF/hpdic/script/download_sift.sh
 source ~/ElasticIVF/hpdic/myenv/bin/activate
-python3 ~/ElasticIVF/hpdic/script/benchmark_baseline.py
+# 暴力注入系统 MKL
+LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libmkl_rt.so python3 ~/ElasticIVF/hpdic/script/benchmark_baseline.py
 ```
 
 ## Installation
@@ -20,7 +21,7 @@ python3 -m venv myenv
 source myenv/bin/activate
 which python 
 # 输出应该是 /home/cc/ElasticIVF/myenv/bin/python
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
+pip install matplotlib torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
 python3 ~/ElasticIVF/hpdic/script/test_gpu.py
 rm -rf build
 cmake -B build . \

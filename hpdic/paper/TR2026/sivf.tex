@@ -1,0 +1,104 @@
+\documentclass[sigconf,nonacm]{acmart}
+
+\usepackage{amsmath}
+\usepackage{mathtools}
+% \usepackage{amsthm}
+\usepackage{algorithmic}
+\usepackage{algorithm}
+
+\usepackage{graphicx}      % 用于插入图片
+\usepackage{subcaption}    % 关键！用于 \begin{subfigure}
+\usepackage{booktabs}      % 关键！用于表格里的 \toprule, \midrule
+\usepackage{amsmath}       % 用于数学公式
+\usepackage{xcolor}        % 颜色支持
+
+% if you use cleveref..
+\usepackage[capitalize,noabbrev]{cleveref}
+
+\newcommand{\don}[1]{\textcolor{blue}{[Dongfang: #1]}}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% THEOREMS
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{assumption}[theorem]{Assumption}
+\theoremstyle{remark}
+\newtheorem{remark}[theorem]{Remark}
+
+\usepackage[textsize=tiny]{todonotes}
+
+\usepackage{xspace}
+\newcommand{\ours}{SIVF\xspace}
+
+\AtBeginDocument{%
+  \providecommand\BibTeX{{%
+    Bib\TeX}}}
+
+\setcopyright{none}
+\settopmatter{printacmref=false}
+\renewcommand\footnotetextcopyrightpermission[1]{}
+\pagestyle{plain} % 使用简单页面样式
+\fancypagestyle{firstpagestyle}{
+  \fancyhf{}
+  \renewcommand{\headrulewidth}{0pt}
+  \renewcommand{\footrulewidth}{0pt}
+}
+
+\begin{document}
+
+\title{SIVF: Streaming Inverted File Indexing on GPUs}
+
+\author{Dongfang Zhao}
+\email{dzhao@uw.edu}
+\affiliation{%
+  \institution{HPDIC Lab}
+  \city{University of Washington}
+%   \state{WA}
+  \country{USA}
+}
+
+\begin{abstract}
+
+\end{abstract}%%
+\maketitle
+
+\section{Introduction}
+
+\subsection{Motivation}
+\label{sec:motivation}
+
+
+Real-world vector search applications, such as real-time recommendation and fraud detection, increasingly operate on streaming data where timeliness is critical. These systems require a sliding window model where expired vectors must be evicted as new vectors arrive to maintain bounded memory usage.
+However, existing GPU-accelerated approximate nearest neighbors (ANN) indices are predominantly optimized for write-once-read-many workloads. 
+
+To quantify the gap between insertion and eviction performance, we conducted a benchmark using Faiss~\cite{johnson2019billion} on an NVIDIA RTX 6000 GPU with the SIFT1M dataset~\cite{jegou2011product} on the Chameleon testbed~\cite{keahey2020lessons}.
+As illustrated in Figure~\ref{fig:motivation}, we observe a severe performance asymmetry. While inserting a batch of 10,000 vectors takes only 28.2 ms due to efficient GPU parallelism, evicting the same number of vectors incurs a latency of 212.7 ms. This constitutes a 7.6 times slowdown.
+
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=0.9\linewidth]{figures/motivation_bar_chart.pdf}
+    \caption{The High Cost of Deletion. While GPU parallelism accelerates vector insertion (28.2 ms), the lack of in-place eviction support causes deletion latency to increase to 212.7 ms. This represents a 7.6 times slowdown. This asymmetry makes data eviction the primary bottleneck in streaming scenarios.}
+    \label{fig:motivation}
+\end{figure}
+
+This bottleneck stems from the architectural mismatch in current library designs. Since standard IVF (Inverted File) indices lack support for efficient in-place deletion on the GPU, evicting data necessitates a costly CPU-GPU roundtrip. The entire index structure must be copied back to the host, compacted on the CPU, and re-uploaded to the device. This IO-bound operation prevents the system from fully utilizing the GPU compute throughput and limits the maximum sustainable ingestion rate of the system.
+
+\section*{Acknowledgment}
+Results presented in this paper were obtained using the Chameleon testbed supported by the National Science Foundation.
+
+\bibliography{ref}
+\bibliographystyle{acm}
+
+% \newpage
+\appendix
+
+\end{document}
+\endinput
+%%
+%% End of file `sample-sigconf.tex'.
