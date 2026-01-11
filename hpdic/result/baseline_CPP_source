@@ -1,0 +1,19 @@
+cc@rtx6000:~/ElasticIVF/hpdic/experiment$ ./benchmark_baseline.bin 
+Data loaded. Dim: 128, Base: 1000000
+Training index...
+Moving index to GPU...
+[HPDIC MOD] Faiss GPU initialized on device ID: 0
+Pre-filling window with 100000 vectors...
+
+Step  | Add(ms)    | Remove(ms)   | Method          | Total(ms) 
+-----------------------------------------------------------------
+0     | 9.91       | 234.07       | CPU_Roundtrip   | 243.98    
+1     | 29.86      | 210.88       | CPU_Roundtrip   | 240.74    
+2     | 27.93      | 194.75       | CPU_Roundtrip   | 222.68    
+3     | 27.22      | 197.75       | CPU_Roundtrip   | 224.97    
+4     | 27.74      | 206.64       | CPU_Roundtrip   | 234.37    
+5     | 30.99      | 201.16       | CPU_Roundtrip   | 232.15    
+6     | 31.02      | 214.34       | CPU_Roundtrip   | 245.36    
+7     | 27.87      | 199.68       | CPU_Roundtrip   | 227.55    
+8     | 27.33      | 198.89       | CPU_Roundtrip   | 226.22    
+9     | 27.09      | 196.10       | CPU_Roundtrip   | 223.19  

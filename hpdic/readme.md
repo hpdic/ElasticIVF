@@ -3,11 +3,26 @@ We assume you are using (e.g., Chameleon Cloud `nc33` at U. Chicago) Ubuntu 24.0
 
 ## Benchmarks
 ```bash
+# Download SIFT1M dataset:
 bash ~/ElasticIVF/hpdic/script/download_sift.sh
+
+# Quick Python test with precompiled Faiss library:
 source ~/ElasticIVF/myenv/bin/activate
-# 暴力注入系统 MKL
 LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libmkl_rt.so python3 ~/ElasticIVF/hpdic/script/benchmark_baseline.py
-# TODO: compile ./experiment/benchmark_baseline.cpp
+
+# Serious C++ test with local compilation of Faiss source code:
+cp ~/ElasticIVF/hpdic/config/c_cpp_properties.json ~/.vscode/.
+cd ~/ElasticIVF/hpdic/experiment
+g++ -O3 -std=c++17 -fopenmp benchmark_baseline.cpp -o benchmark_baseline.bin \
+    -I/home/cc/ElasticIVF \
+    -I/usr/local/cuda/include \
+    -L/home/cc/ElasticIVF/build/faiss \
+    -L/usr/local/cuda/lib64 \
+    -lfaiss \
+    -lopenblas \
+    -lcudart \
+    -lcublas
+./benchmark_baseline.bin
 ```
 
 ## Installation

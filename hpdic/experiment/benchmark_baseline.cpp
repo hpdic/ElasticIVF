@@ -1,3 +1,10 @@
+/**
+ * Benchmark for Add and Remove operations on Faiss GPU IndexIVFFlat
+ * 
+ * Author: Dongfang Zhao (dzhao@uw.edu)
+ * Date: January 11, 2026
+ */
+
 #include <cstdio>
 #include <vector>
 #include <chrono>
@@ -13,26 +20,60 @@
 using namespace std;
 using namespace std::chrono;
 
-// 模拟 fvecs 文件读取（仅读取数据部分）
+// Simulate fvecs file reading (read data part only)
 float* fvecs_read(const char* fname, size_t& d, size_t& n) {
     FILE* f = fopen(fname, "rb");
     if (!f) {
         perror("Failed to open file");
         return nullptr;
     }
+
+    // 1. Read the dimension from the header of the first vector
     int d_int;
-    fread(&d_int, sizeof(int), 1, f);
-    d = d_int;
+    if (fread(&d_int, sizeof(int), 1, f) != 1) {
+        fprintf(stderr, "Error reading dimension from %s\n", fname);
+        fclose(f);
+        return nullptr;
+    }
+    d = (size_t)d_int;
+
+    // 2. Calculate the number of vectors (n) based on file size
     fseek(f, 0, SEEK_END);
-    size_t size = ftell(f);
-    n = size / (sizeof(float) * (d + 1));
+    size_t file_size = ftell(f);
     rewind(f);
 
-    float* data = new float[n * d];
-    for (size_t i = 0; i < n; i++) {
-        fseek(f, sizeof(int), SEEK_CUR); // 跳过维数标识
-        fread(data + i * d, sizeof(float), d, f);
+    // Each vector contains: 1 int (4 bytes) + d floats (4 * d bytes)
+    size_t entry_size = sizeof(int) + d * sizeof(float);
+
+    if (entry_size == 0 || file_size % entry_size != 0) {
+        fprintf(stderr, "Error: File size is not a multiple of vector size.\n");
+        fclose(f);
+        return nullptr;
     }
+
+    n = file_size / entry_size;
+
+    // 3. Allocate memory and read data
+    float* data = new float[n * d];
+
+    for (size_t i = 0; i < n; i++) {
+        // Skip the dimension header (int) for the current vector
+        if (fseek(f, sizeof(int), SEEK_CUR) != 0) {
+            perror("fseek failed");
+            delete[] data;
+            fclose(f);
+            return nullptr;
+        }
+
+        // Read the float data
+        if (fread(data + i * d, sizeof(float), d, f) != d) {
+            fprintf(stderr, "Error reading vector %zu\n", i);
+            delete[] data;
+            fclose(f);
+            return nullptr;
+        }
+    }
+
     fclose(f);
     return data;
 }
@@ -133,8 +174,13 @@ int main() {
 }
 
 /**
-g++ -O3 -std=c++11 benchmark_baseline.cpp -o benchmark_baseline \
-    -I/usr/local/include \
-    -L/usr/local/lib \
-    -lfaiss -lcudart
+g++ -O3 -std=c++17 -fopenmp benchmark_baseline.cpp -o benchmark_baseline.bin \
+    -I/home/cc/ElasticIVF \
+    -I/usr/local/cuda/include \
+    -L/home/cc/ElasticIVF/build/faiss \
+    -L/usr/local/cuda/lib64 \
+    -lfaiss \
+    -lopenblas \
+    -lcudart \
+    -lcublas
 */
