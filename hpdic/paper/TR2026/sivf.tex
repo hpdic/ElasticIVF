@@ -79,6 +79,7 @@ However, existing GPU-accelerated approximate nearest neighbors (ANN) indices ar
 
 To quantify the gap between insertion and eviction performance, we conducted a benchmark using Faiss~\cite{johnson2019billion} on an NVIDIA RTX 6000 GPU with the SIFT1M dataset~\cite{jegou2011product} on the Chameleon testbed~\cite{keahey2020lessons}.
 As illustrated in Figure~\ref{fig:motivation}, we observe a severe performance asymmetry. While inserting a batch of 10,000 vectors takes only 28.2 ms due to efficient GPU parallelism, evicting the same number of vectors incurs a latency of 212.7 ms. This constitutes a 7.6 times slowdown.
+\don{TODO: Convert the benchmark into CPP calling local compilation of Faiss}
 
 \begin{figure}[h!]
     \centering
