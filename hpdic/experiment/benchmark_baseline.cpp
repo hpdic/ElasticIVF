@@ -133,7 +133,7 @@ int main() {
 }
 
 /**
-g++ -O3 -std=c++11 benchmark_sivf.cpp -o benchmark_sivf \
+g++ -O3 -std=c++11 benchmark_baseline.cpp -o benchmark_baseline \
     -I/usr/local/include \
     -L/usr/local/lib \
     -lfaiss -lcudart

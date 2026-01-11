@@ -7,7 +7,7 @@ bash ~/ElasticIVF/hpdic/script/download_sift.sh
 source ~/ElasticIVF/myenv/bin/activate
 # 暴力注入系统 MKL
 LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libmkl_rt.so python3 ~/ElasticIVF/hpdic/script/benchmark_baseline.py
-# TODO: compile ./script/benchmark_sivf.cpp
+# TODO: compile ./experiment/benchmark_baseline.cpp
 ```
 
 ## Installation
