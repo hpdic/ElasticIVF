@@ -4,9 +4,10 @@ We assume you are using (e.g., Chameleon Cloud `nc33` at U. Chicago) Ubuntu 24.0
 ## Benchmarks
 ```bash
 bash ~/ElasticIVF/hpdic/script/download_sift.sh
-source ~/ElasticIVF/hpdic/myenv/bin/activate
+source ~/ElasticIVF/myenv/bin/activate
 # 暴力注入系统 MKL
 LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libmkl_rt.so python3 ~/ElasticIVF/hpdic/script/benchmark_baseline.py
+# TODO: compile ./script/benchmark_sivf.cpp
 ```
 
 ## Installation
