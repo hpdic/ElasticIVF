@@ -70,7 +70,7 @@ void GpuIndexSIVF::train(idx_t n, const float* x) {
 size_t GpuIndexSIVF::remove_ids(const faiss::IDSelector& sel) {
     FAISS_THROW_IF_NOT_MSG(is_slab_initialized_, "SIVF not initialized");
 
-    // 暂时留空，稍后我们来填这个核心逻辑
+    // TODO: 暂时留空，稍后我们来填这个核心逻辑
     // 这里的返回值应该是被删除的向量数量
     return 0;
 }
@@ -86,7 +86,7 @@ void GpuIndexSIVF::addImpl_(idx_t n, const float* x, const idx_t* ids) {
             "SIVF not initialized. Call initSlabManager() first.");
     FAISS_THROW_IF_NOT_MSG(this->is_trained, "SIVF not trained");
 
-    // 暂时留空，等待下一步实现 Slab 插入
+    // TODO: 暂时留空，等待下一步实现 Slab 插入
     // printf("SIVF addImpl_ called with n=%ld\n", n);
 }
 
@@ -101,7 +101,7 @@ void GpuIndexSIVF::searchImpl_(
     FAISS_THROW_IF_NOT_MSG(is_slab_initialized_, "SIVF not initialized");
     FAISS_THROW_IF_NOT_MSG(this->is_trained, "SIVF not trained");
 
-    // 暂时留空，等待下一步实现 Slab 搜索
+    // TODO: 暂时留空，等待下一步实现 Slab 搜索
     // printf("SIVF searchImpl_ called\n");
 }
 
