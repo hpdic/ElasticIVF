@@ -149,6 +149,60 @@ In summary, this paper makes the following contributions:
 \subsection{Slab-based Memory Management}
 \label{sec:slab_memory_management}
 
+Standard GPU-based IVF indices rely on contiguous memory arrays to store inverted lists. This monolithic design suffers from severe limitations in streaming scenarios: (1) \textit{high resizing latency}, as expanding a list requires allocating a larger memory block and copying data, causing synchronization stalls; and (2) \textit{memory fragmentation}, caused by frequent allocation and deallocation of variable-sized lists.
+
+To address these challenges, we propose a Slab-based Dynamic Memory Allocator (SDMA). Instead of managing variable-length arrays, SDMA pre-allocates a large, contiguous GPU memory arena and manages it as a pool of fixed-size blocks, termed \textit{Slabs}.
+
+\subsubsection{Slab Layout and Metadata}
+We define a Slab as the fundamental unit of storage. Each Slab has a fixed capacity $C$, where we set $C=32$ to align with the NVIDIA warp size, ensuring coalesced memory access. A Slab $S_i$ consists of two distinct regions:
+
+\begin{itemize}
+    \item \textit{Data Payload}: Stores the quantized vectors. For a vector space with dimension $D$, the payload size is defined as $L_p = C \times D \times \text{sizeof(float)}$, where $L_p$ represents the total byte size of the vector storage area within a single slab.
+    
+    \item \textit{Metadata Header}: Contains control information for traversing and managing the slab, formally defined as a tuple $M_i$:
+    \begin{equation}
+        M_i = \langle n_{next}, b_{valid}, c_{valid} \rangle
+    \end{equation}
+    where $n_{next}$ is the identifier of the subsequent slab in the logical linked list, allowing distinct physical blocks to form a coherent inverted list; $b_{valid}$ is a 32-bit integer serving as a validity bitmap, in which the $k$-th bit indicates the occupancy status of the $k$-th slot; and $c_{valid}$ represents the current count of valid vectors stored in $S_i$.
+\end{itemize}
+
+This design enables logical deletion with $O(1)$ complexity via atomic bit-flipping on $b_{valid}$, eliminating the need for memory compaction during removal operations.
+
+\subsubsection{Kernel-level Lock-free Allocator}
+Traditional memory management requires host-device communication (e.g., \texttt{cudaMalloc}), which incurs microsecond-level latency that is unacceptable for high-throughput streaming. We implement a \textit{device-side allocator} that enables GPU kernels to request and release memory directly.
+
+The allocator manages a global \textit{Free List}, implemented as a pre-allocated stack in global memory. We utilize a strictly atomic approach to ensure thread safety without mutex locks:
+
+\begin{itemize}
+    \item \textit{Allocation}: A thread (or warp) requests a new Slab by atomically decrementing the global stack pointer $P_{top}$. The operation is modeled as:
+    \begin{equation}
+        idx = \texttt{atomicSub}(P_{top}, 1) - 1
+    \end{equation}
+    where $idx$ denotes the index in the free list array, and the allocator returns the Slab ID stored at $\text{FreeList}[idx]$.
+    
+    \item \textit{Deallocation}: To release a Slab, the thread atomically increments $P_{top}$ and pushes the Slab ID back onto the stack structure.
+\end{itemize}
+
+Both operations achieve $O(1)$ time complexity and bypass the OS-level memory manager entirely, resulting in near-zero allocation overhead.
+
+\subsubsection{Virtual Addressing via Address Table}
+To decouple the logical vector ID from its physical storage location, we introduce a global \textit{Address Table}. This table implements a mapping function $\mathcal{T}$ that translates a unique vector identifier $v_{id}$ to a physical coordinate tuple:
+\begin{equation}
+    \mathcal{T}(v_{id}) \rightarrow \langle s_{id}, o_{slot} \rangle
+\end{equation}
+where $s_{id}$ represents the physical Slab ID and $o_{slot}$ denotes the offset index within that slab (where $0 \le o_{slot} < C$). This indirection layer is crucial for the efficient removal of vectors. Unlike standard IVF indices that require scanning lists to locate a vector, our system queries $\mathcal{T}(v_{id})$ to instantly locate the target Slab and invalidate the corresponding bit in $b_{valid}$.
+
+\subsubsection{System Implementation}
+We implemented the proposed architecture using CUDA C++ within the Faiss framework. To bridge the gap between high-level resource management and low-level kernel execution, our implementation adopts a \textit{dual-view architecture}.
+
+\paragraph{Host-Device Separation} On the host side, we utilize the well-accepted RAII-compliant containers (specifically \texttt{DeviceVector}) to manage the lifecycle of GPU memory resources, ensuring automatic deallocation and preventing memory leaks. These containers are encapsulated within a \textit{SlabManager} class. For kernel execution, we project these resources into a lightweight \textit{SlabManagerDevice} structure, which contains only raw pointers and scalar parameters. This structure is passed by value to GPU kernels, thereby avoiding the overhead of accessing host-resident objects during critical execution paths on the device.
+
+\paragraph{Atomic State Transitions} The concurrency control within the allocator relies on hardware-supported atomic instructions rather than software locks. Specifically, the stack pointer $P_{top}$ is manipulated via \texttt{atomicSub} and \texttt{atomicAdd} intrinsics, guaranteeing that simultaneous allocation requests from thousands of CUDA threads result in unique slab assignments. Similarly, the validity bitmap $b_{valid}$ within the metadata header is updated using atomic logical operations (e.g., \texttt{atomicAnd}), enabling concurrent deletions within the same slab without race conditions.
+
+\paragraph{Integration with Faiss} We integrated SDMA by extending the standard \texttt{GpuIndexIVF} class. By overriding the protected virtual methods \texttt{addImpl\_} and \texttt{searchImpl\_}, we redirect the vector storage logic from the default continuous memory arrays to our slab-based system, while retaining the optimized coarse quantizer implementations provided by the base library for cluster assignment.
+
+\subsection{Bitmap-based Lazy Eviction}
+\label{sec:bitmap_lazy_eviction}
 \don{TODO}
 
 \section{Evaluation}
