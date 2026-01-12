@@ -1,5 +1,5 @@
 # HPDIC MOD
-Check out `hpdic/readme.md` for the modified FAISS version.
+Check out [hpdic/readme.md](hpdic/readme.md) for the modified FAISS version.
 
 ## Documentation
 - [Technical Report, 2026](hpdic/paper/TR2026/sivf.pdf)
