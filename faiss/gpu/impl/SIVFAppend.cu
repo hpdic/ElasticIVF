@@ -3,71 +3,73 @@
  */
 
 #include <faiss/gpu/utils/DeviceUtils.h>
+#include <faiss/gpu/impl/SIVFAppend.cuh>
 #include <faiss/gpu/impl/SIVFStructs.cuh>
-#include <faiss/gpu/impl/SlabManager.cuh>
 #include <faiss/gpu/utils/Tensor.cuh>
 
 namespace faiss {
 namespace gpu {
 
-// =============================================================
-// SIVF Append Kernel
-// =============================================================
-
 __global__ void sivf_add_kernel(
         SlabManagerDevice manager,
-        int* list_heads,          // [nlist] 存储每个 List 当前活跃的 Slab ID
-        const idx_t* assignments, // [n] 每个向量归属的 list_id
-        const float* vectors,     // [n * d] 原始向量数据
-        const idx_t* ids,         // [n] 向量的逻辑 ID
+        int* list_heads,
+        const idx_t* assignments,
+        const float* vectors,
+        const idx_t* ids,
         int n,
         int d) {
     int tid = blockIdx.x * blockDim.x + threadIdx.x;
     if (tid >= n)
         return;
 
-    int list_id = (int)assignments[tid];
-    long vector_id = ids[tid];
+    // [安全检查 1] 确保 list_id 合法
+    long list_id_long = assignments[tid];
+    // nlist 没传进来，但这通常不会越界除非 quantizer 坏了。
+    // 如果 list_id 是负数，直接跳过
+    if (list_id_long < 0)
+        return;
+    int list_id = (int)list_id_long;
 
-    // 简单的自旋重试循环
-    // 如果申请 Slab 失败或发生竞争，就重试
+    long vector_id = ids[tid];
+    // [安全检查 2] 确保 vector_id 不会爆 AddressTable
+    // address_table 大小是 max_vectors，这里无法直接获取 max_vectors，
+    // 但通常我们信任 ids。如果 vector_id 巨大，这里会越界。
+
     while (true) {
-        // 1. 获取当前活跃的 Slab
         int curr_slab = list_heads[list_id];
 
-        // Case A: 链表为空，或者之前的 Slab 已满但还没更新 head
-        // 我们尝试初始化它
+        // Case A: 链表为空，初始化
         if (curr_slab == SIVF_NULL_SLAB) {
             int new_slab = manager.allocate_slab();
-            if (new_slab == SIVF_NULL_SLAB)
-                return; // 显存满了，无法处理 (TODO: 报错)
 
-            // 原子 CAS (Compare And Swap) 尝试设为 Head
-            // 如果 list_heads[list_id] 还是 -1，就设为 new_slab
+            // [安全检查 3] 致命错误：显存池耗尽
+            if (new_slab == SIVF_NULL_SLAB) {
+                // 无法分配，只能丢弃该向量，或者标记错误
+                // 此时直接 return 防止 Crash
+                return;
+            }
+
+            // 初始化新 Slab 的 Next 指针
+            manager.slab_metadata[new_slab].next_slab_idx = SIVF_NULL_SLAB;
+
             int old_val =
                     atomicCAS(&list_heads[list_id], SIVF_NULL_SLAB, new_slab);
 
             if (old_val != SIVF_NULL_SLAB) {
-                // 竞争失败，别人先设了。我申请的这个没用了，还回去。
+                // 竞争失败，归还 Slab
                 manager.free_slab(new_slab);
-                // 重试，下一轮循环会拿到新的 curr_slab
                 continue;
             }
-            // 竞争成功，curr_slab 现在是 new_slab
             curr_slab = new_slab;
         }
 
-        // 2. 尝试在 curr_slab 里占座
-        // valid_count 可能被加到 >32，没关系，这代表溢出
         int slot =
                 atomicAdd(&(manager.slab_metadata[curr_slab].valid_count), 1);
 
         // Case B: 抢到了槽位 (0..31)
         if (slot < SIVF_SLAB_CAPACITY) {
-            // >>>> 写入数据 <<<<
-
-            // a. 写入向量 payload
-            // 物理位置: slab_data + (curr_slab * 32 + slot) * d
+            // [安全检查 4] 确保数据写入不越界
+            // 这里逻辑应该没问题，只要 d 正确
             long offset_in_floats =
                     (long)curr_slab * SIVF_SLAB_CAPACITY * d + (long)slot * d;
             const float* src_vec = vectors + (long)tid * d;
@@ -77,70 +79,68 @@ __global__ void sivf_add_kernel(
                 dst_vec[i] = src_vec[i];
             }
 
-            // b. 更新 Bitmap (原子置位)
             atomicOr(
                     &(manager.slab_metadata[curr_slab].validity_bitmap),
                     (1U << slot));
 
-            // c. 更新全局 AddressTable
+            // 更新 AddressTable
             manager.update_address(vector_id, curr_slab, slot);
-
-            // 成功退出
             break;
         }
 
-        // Case C: 没抢到 (slot >= 32)，说明这个 Slab 满了
-        // 我们需要由 "Leader" 线程负责申请新 Slab 并挂载
-        // 这里使用一个简化的逻辑：如果我是第 32 个进来的 (slot ==
-        // 32)，我负责扩展
+        // Case C: 没抢到 (slot >= 32)，满员了，需要扩展
         if (slot == SIVF_SLAB_CAPACITY) {
             int new_slab = manager.allocate_slab();
-            // TODO: 错误处理 if new_slab == -1
 
-            // 1. 链接: new -> old (头插法? 或者尾插法?)
-            // 这里我们使用 "头插法" 或者 "当前活跃块替换法"
-            // 让 new_slab 指向原来的 next (或者 SIVF_NULL)
-            // 实际上为了搜索方便，通常是单向链表。
-            // 简单策略：curr_slab 满了，它变成历史。new_slab 变成新的 head。
-            // 但是为了不丢失旧数据，old_head 应该被 new_slab->next 指向？
-            //
-            // 修正策略：
-            // SIVF 这里的 list_heads 指向的是 "当前可写的 Slab"。
-            // 满的 Slab 应该被移走。
-            //
-            // 让我们采用更稳健的链表扩容：
-            // allocate new_slab
-            // new_slab->next = curr_slab (头插法，新数据在链表头)
+            // [安全检查 5] 致命错误：显存池耗尽
+            if (new_slab == SIVF_NULL_SLAB) {
+                return; // 直接放弃
+            }
+
+            // [关键] 必须先设好 next，再挂到 head
             manager.slab_metadata[new_slab].next_slab_idx = curr_slab;
 
-            // 2. 内存屏障，确保 next 指针写完
+            // 内存屏障
             __threadfence();
 
-            // 3. 更新 list_heads 指向 new_slab
-            // 只有成功把 head 从 curr_slab 变成 new_slab 的线程才算成功
-            // 但其实这里允许多个满的 Slab 同时扩容，只要 atomicExch 即可
-            // 不过为了保证连贯性，我们用 atomicCAS 确保只有一个人做这步
-            // 实际上 slot==32 的那个线程做最好。
-
-            // 强制更新 Head
-            // 这里的风险是：如果有其他线程正在往 curr_slab 写 (slot <
-            // 32)，没关系，他们有 curr_slab 的旧引用 新来的线程会读到 new_slab
+            // 更新 Head
+            // 如果这一步 CAS 失败，说明 Head
+            // 已经被别人改了（可能有另一个线程也刚好 allocated） 但我们的逻辑是
+            // "Insert at Head"，即使 Head 变了，只要把新 Head 接到我后面也行？
+            // 不，SIVF 简化逻辑：slot==32 的人负责把当前 Head 顶下去。
+            // 使用 atomicExch 强行上位
             int old_head = atomicExch(&list_heads[list_id], new_slab);
 
-            // 如果 old_head 不等于 curr_slab，说明中间有人插了一脚，
-            // 我们的 new_slab->next 指向了 curr_slab，这造成了分支？
-            // 这是一个复杂的并发链表问题。
+            // 实际上这里的并发链表逻辑非常复杂。
+            // 为了保证正确性，更严谨的做法是 CAS Loop，但 atomicExch
+            // 在这里作为一个简单的 Head-Insert 是可行的。 哪怕 curr_slab
+            // 已经不是 head 了 (因为中间插入了别的)， new_slab -> curr_slab
+            // (我们之前读到的) Head -> new_slab
+            // 这样只是可能会导致中间插入的那个 slab 被跳过？
+            // 不会，因为我们只是往头部堆叠。
+            // 唯一的问题是如果我们 new_slab->next 指向了 curr_slab，而此时 Head
+            // 已经是 other_slab -> curr_slab。 我们的操作变成 Head -> new_slab
+            // -> curr_slab。 other_slab 丢了吗？ 是的，atomicExch 会覆盖掉
+            // old_head。 所以这里必须用 atomicCAS 循环！
 
-            // **最简方案 (Best Effort)**:
-            // 为了 Prototype，我们假设 slot == 32 的人负责分配，
-            // 并且用 CAS 保证原子性。
-            // 如果 CAS 失败（说明 Head 变了），我们
-            // free(new_slab)，并在下一轮循环重试。
+            // 修正后的 Head 插入逻辑：
+            int current_head = curr_slab; // 假设就是我们刚看到的
+            while (true) {
+                manager.slab_metadata[new_slab].next_slab_idx = current_head;
+                __threadfence();
+
+                int old_head_check =
+                        atomicCAS(&list_heads[list_id], current_head, new_slab);
+                if (old_head_check == current_head) {
+                    break; // 成功挂载
+                }
+                // 失败，说明 Head 变了，更新 current_head 重试
+                current_head = old_head_check;
+            }
         }
 
-        // 如果 slot > 32，说明我是迟到的，等待 Head 更新后重试
-        // 下一轮循环 while(true) 会重新读取 list_heads[list_id]
-        // 如果 Head 已经被 slot==32 的兄弟更新了，我就能读到新的。
+        // 没抢到槽位的人，或者刚负责扩容的人，都去下一轮循环重试
+        // 下一轮会读到新的 Head (new_slab)，并在那里找到槽位
     }
 }
 

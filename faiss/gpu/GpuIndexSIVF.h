@@ -36,6 +36,10 @@ class GpuIndexSIVF : public GpuIndexIVF {
     void train(idx_t n, const float* x) override;
 
     size_t remove_ids(const faiss::IDSelector& sel) override;
+    
+    // [新增] 必须实现的虚函数
+    void reset() override;
+    void updateQuantizer() override;
 
    protected:
     // =======================================================

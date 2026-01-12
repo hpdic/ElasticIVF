@@ -373,3 +373,8 @@ else()
     --expt-extended-lambda --expt-relaxed-constexpr
     $<$<BOOL:${FAISS_ENABLE_CUVS}>:-Xcompiler=${OpenMP_CXX_FLAGS}>>)
 endif()
+
+# --- SIVF Benchmark ---
+add_executable(test_sivf_add ${PROJECT_SOURCE_DIR}/hpdic/experiment/test_sivf_add.cpp)
+target_link_libraries(test_sivf_add PRIVATE faiss CUDA::cudart CUDA::cublas)
+set_target_properties(test_sivf_add PROPERTIES CUDA_ARCHITECTURES "75") # 根据你的显卡调整，RTX6000是75

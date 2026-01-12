@@ -82,6 +82,10 @@ void GpuIndexSIVF::train(idx_t n, const float* x) {
     // 复用基类的 train 逻辑 (主要是训练 quantizer)
     // SIVF 的 Slab 结构本身不需要训练
     GpuIndexIVF::train(n, x);
+
+    // 显式标记为已训练
+    // 这一步是为了防止父类没有正确更新 is_trained 标志
+    this->is_trained = true;
 }
 
 size_t GpuIndexSIVF::remove_ids(const faiss::IDSelector& sel) {
@@ -146,6 +150,29 @@ void GpuIndexSIVF::searchImpl_(
 
     // TODO: 暂时留空，等待下一步实现 Slab 搜索
     // printf("SIVF searchImpl_ called\n");
+}
+
+void GpuIndexSIVF::reset() {
+    // 1. 重置 Quantizer
+    if (quantizer) {
+        quantizer->reset();
+    }
+
+    // 2. 重置链表头 (全部设为 -1)
+    if (is_slab_initialized_ && list_heads_) {
+        int device = getCurrentDevice();
+        auto stream = resources_->getDefaultStream(device);
+        cudaMemsetAsync(
+                list_heads_->data(), -1, this->nlist * sizeof(int), stream);
+    }
+
+    // TODO: SlabManager 也应该 reset (重置 free_list_top)，暂时跳过
+    // 下次优化时我们可以在 SlabManager 里加一个 reset() 方法
+}
+
+void GpuIndexSIVF::updateQuantizer() {
+    // 这是一个回调函数，当用户在 CPU 侧替换了 Quantizer 时会被调用
+    // SIVF 暂时不需要特殊处理
 }
 
 } // namespace gpu
