@@ -33,6 +33,7 @@ set(FAISS_GPU_SRC
   GpuIndexSIVF.cu      # <--- HPDIC
   GpuResources.cpp
   StandardGpuResources.cpp
+  impl/SIVFAppend.cu   # <--- 必须确认这一行有！
   impl/SlabManager.cu  # <--- HPDIC
   impl/BinaryDistance.cu
   impl/BinaryFlatIndex.cu
@@ -105,6 +106,7 @@ set(FAISS_GPU_HEADERS
   StandardGpuResources.h
   impl/SIVFStructs.cuh  # <--- HPDIC
   impl/SlabManager.cuh  # <--- HPDIC  
+  impl/SIVFAppend.cuh   # <--- HPDIC
   impl/BinaryDistance.cuh
   impl/BinaryFlatIndex.cuh
   impl/BroadcastSum.cuh

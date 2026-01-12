@@ -5,6 +5,7 @@
 #pragma once
 
 #include <faiss/gpu/GpuIndexIVF.h>
+#include <faiss/gpu/utils/DeviceVector.cuh> // [修复] 必须加这个，否则 DeviceVector<int> 报错
 #include <vector>
 
 namespace faiss {
@@ -59,6 +60,12 @@ class GpuIndexSIVF : public GpuIndexIVF {
    protected:
     SlabManager* slab_manager_;
     bool is_slab_initialized_;
+
+    // 存储每个倒排链表当前的 "Head" Slab ID
+    // 大小 = nlist。如果 list_heads_[i] == -1，说明第 i 个簇是空的。
+    // 我们总是向 Head 插入数据 (或者你可以维护 Tail，这里简化为 Head/Active
+    // Slab)
+    DeviceVector<int>* list_heads_;
 };
 
 } // namespace gpu
