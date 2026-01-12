@@ -30,8 +30,10 @@ set(FAISS_GPU_SRC
   GpuIndexIVFFlat.cu
   GpuIndexIVFPQ.cu
   GpuIndexIVFScalarQuantizer.cu
+  GpuIndexSIVF.cu      # <--- HPDIC
   GpuResources.cpp
   StandardGpuResources.cpp
+  impl/SlabManager.cu  # <--- HPDIC
   impl/BinaryDistance.cu
   impl/BinaryFlatIndex.cu
   impl/BroadcastSum.cu
@@ -97,9 +99,12 @@ set(FAISS_GPU_HEADERS
   GpuIndexIVFFlat.h
   GpuIndexIVFPQ.h
   GpuIndexIVFScalarQuantizer.h
+  GpuIndexSIVF.h        # <--- HPDIC
   GpuIndicesOptions.h
   GpuResources.h
   StandardGpuResources.h
+  impl/SIVFStructs.cuh  # <--- HPDIC
+  impl/SlabManager.cuh  # <--- HPDIC  
   impl/BinaryDistance.cuh
   impl/BinaryFlatIndex.cuh
   impl/BroadcastSum.cuh
