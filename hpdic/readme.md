@@ -3,6 +3,7 @@ We assume you are using (e.g., Chameleon Cloud `nc33` at U. Chicago) Ubuntu 24.0
 
 ## Recompile C++
 ```bash
+# Recompile Faiss with HPDIC modifications:
 cd ~/ElasticIVF
 cmake -B build . \
     -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
@@ -14,17 +15,12 @@ cmake -B build . \
     -DCMAKE_CUDA_ARCHITECTURES="75" \
     -DPython_EXECUTABLE=$(which python)
 make -C build -j $(nproc) faiss
-cd ~/ElasticIVF/hpdic/experiment
-g++ -O3 -std=c++17 -fopenmp benchmark_baseline.cpp -o benchmark_baseline.bin \
-    -I/home/cc/ElasticIVF \
-    -I/usr/local/cuda/include \
-    -L/home/cc/ElasticIVF/build/faiss \
-    -L/usr/local/cuda/lib64 \
-    -lfaiss \
-    -lopenblas \
-    -lcudart \
-    -lcublas
-./benchmark_baseline.bin
+
+# SIVF add benchmark:
+cd ~/ElasticIVF/build
+make -j test_sivf_add
+./faiss/test_sivf_add
+
 ```
 
 ## Benchmarks
