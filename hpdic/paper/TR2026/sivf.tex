@@ -143,7 +143,7 @@ In summary, this paper makes the following contributions:
 \section{Related Work}
 \label{sec:related_work}
 
-\section{Design and Implementation}
+\section{Design and Implementation of SIVF}
 \label{sec:design_implementation}
 
 \subsection{Slab-based Memory Management}
@@ -201,6 +201,48 @@ We implemented the proposed architecture using CUDA C++ within the Faiss framewo
 
 \paragraph{Integration with Faiss} We integrated SDMA by extending the standard \texttt{GpuIndexIVF} class. By overriding the protected virtual methods \texttt{addImpl\_} and \texttt{searchImpl\_}, we redirect the vector storage logic from the default continuous memory arrays to our slab-based system, while retaining the optimized coarse quantizer implementations provided by the base library for cluster assignment.
 
+\subsection{Lock-free Parallel Ingestion}
+\label{sec:lock_free_ingestion}
+
+Traditional GPU-based ANN indices often rely on sorting and bulk-copying for data ingestion, which incurs high latency for streaming data. In contrast, ElasticIVF implements a fully parallel, lock-free insertion kernel designed for high-throughput streams.
+
+\subsubsection{Atomic Slot Reservation}
+\label{sub:atomic_reservation}
+Data ingestion begins with the coarse quantization step, where incoming vectors are assigned to their nearest centroids (IVF lists). Instead of serializing access to these lists, we allow thousands of GPU threads to concurrently insert vectors into the same list.
+
+For a target list, threads access the current head slab and attempt to reserve a writing slot by atomically incrementing the slab's counter:
+\begin{equation}
+    \text{slot} = \text{atomicAdd}(\&\text{slab} \rightarrow \text{valid\_count}, 1)
+\end{equation}
+If the returned $\text{slot} < C$ (where $C=32$ is the slab capacity), the thread successfully claims a position. It then writes the vector payload directly into global memory and marks the corresponding bit in the \texttt{validity\_bitmap} using \texttt{atomicOr}. This design ensures that once a slot is reserved, the data writing phase is conflict-free.
+
+\subsubsection{Dynamic Slab Expansion}
+\label{sub:dynamic_expansion}
+When a slab becomes full ($\text{slot} \ge C$), the insertion kernel triggers a dynamic expansion. The thread requests a new slab from the \texttt{SlabManager}'s pre-allocated memory pool. This allocation is also lock-free, utilizing an atomic index on a global free-list stack, ensuring $O(1)$ allocation time.
+
+To attach the new slab to the IVF list, we employ a Compare-And-Swap (CAS) loop to update the list head pointer safely:
+\begin{equation}
+    \text{atomicCAS}(\&\text{list\_head}, \text{old\_head}, \text{new\_slab})
+\end{equation}
+This mechanism guarantees data consistency even when multiple threads attempt to expand the same list simultaneously, which is critical for handling skewed data distributions where certain clusters receive heavy traffic.
+
+\subsubsection{Kernel Implementation and Optimization}
+\label{sec:kernel_impl}
+
+We realized the parallel ingestion logic through a persistent CUDA kernel, namely \texttt{sivf\_add\_kernel}, explicitly tuned for the GPU's SIMT (Single Instruction, Multiple Threads) architecture. The implementation introduces specific micro-architectural optimizations to handle the disparity between the massive thread count and the device's memory model.
+
+\paragraph{Register-Efficient Address Translation.}
+Instead of storing full 64-bit pointers for the linked structure, our \texttt{SlabManager} utilizes 32-bit integer indices to reference slabs within the pre-allocated memory arena. This design serves two purposes: it reduces the register pressure per thread (a critical bottleneck for occupancy in complex kernels), and it simplifies the allocation primitive to a single \texttt{atomicSub} instruction on a hardware-resident stack pointer. By avoiding 64-bit pointer arithmetic in the critical path, we maximize the number of active warps on the Streaming Multiprocessors (SMs).
+
+\paragraph{Weak Memory Consistency Compliance.}
+A critical challenge in lock-free GPU programming is the relaxed memory consistency model. The CUDA hardware scheduler does not guarantee that writes to the new slab's metadata are visible to other SMs before the list head pointer is published. To prevent the ``dangling pointer'' hazard, where a concurrent reader observes a valid head pointer but uninitialized slab data, we explicitly inject a \texttt{\_\_threadfence()} instruction. This compiles to a PTX-level memory barrier that flushes the L2 cache lines associated with the new slab to global memory before the CAS operation is attempted, ensuring strict structural integrity.
+
+\paragraph{Mitigating Warp Divergence.}
+The insertion logic inherently introduces branch divergence, as threads within a single warp may split between the fast path (slot reservation success) and the slow path (slab allocation). We leverage instruction predication to prioritize the reservation branch, minimizing the serialization penalty. Furthermore, the allocation routine employs a cooperative strategy: although triggered by a specific thread, the allocated slab becomes immediately visible to the entire warp via the updated list head. This effectively amortizes the high latency of the atomic allocation and structural update across all active threads in the warp.
+
+\paragraph{Intra-Slab Memory Coalescing.}
+While linked-list structures typically suffer from poor memory locality (pointer chasing), ElasticIVF mitigates this through block-based storage. Once a slot is reserved, the vector payload is written to global memory. Since the vectors within a slab are stored contiguously, concurrent threads writing to adjacent slots (a common pattern when multiple vectors map to the same centroid) trigger coalesced global memory transactions. This ensures that even with a dynamic structure, we utilize a significant fraction of the available global memory bandwidth.
+
 \subsection{Bitmap-based Lazy Eviction}
 \label{sec:bitmap_lazy_eviction}
 \don{TODO}
@@ -209,6 +251,34 @@ We implemented the proposed architecture using CUDA C++ within the Faiss framewo
 \label{sec:evaluation}
 
 Our implementation of SIVF is built upon the Faiss library~\cite{douze2024faiss}, extending its GPU index classes to incorporate our proposed mechanisms. We conduct a comprehensive evaluation of SIVF against the native Faiss GPU index implementations, focusing on insertion and eviction performance under streaming workloads. All of our implementation and evaluation code are open-sourced as a side project to \emph{ElasticIVF} hosted on GitHub\footnote{\url{https://github.com/hpdic/ElasticIVF}}.
+
+\subsection{SIVF Performance of Adding Vectors}
+\label{sec:eval_add_performance}
+
+We evaluate the ingestion throughput of ElasticIVF against the baseline method, the standard Faiss GPU IVFFlat implementation. The experiments are conducted on an NVIDIA RTX 6000 Ada Generation GPU. We measure the insertion throughput (vectors per second) while varying two key parameters: the database size ($N_B$) from 1M to 10M vectors, and the number of clusters ($n_{list}$) from 1024 to 16384.
+
+The results are summarized in Figure~\ref{fig:add_perf}. ElasticIVF demonstrates significant performance advantages across all configurations, achieving up to \textbf{14.2$\times$ speedup} over the baseline.
+
+\begin{figure*}[t]
+    \centering
+    \includegraphics[width=\linewidth]{./figures/performance_add.pdf}
+    \caption{Performance evaluation of vector ingestion. (a) \textbf{Scalability}: Throughput remains stable as dataset size increases ($n_{list}=4096$). (b) \textbf{Granularity Impact}: ElasticIVF maintains high throughput even at high $n_{list}$, whereas the baseline degrades due to memory fragmentation. (c) \textbf{Speedup}: A heatmap showing the relative speedup of ElasticIVF over Vanilla Faiss.}
+    \label{fig:add_perf}
+\end{figure*}
+
+\textbf{Scalability and Stability (Fig.~\ref{fig:add_perf}a).} 
+As the database size grows from 1 million to 10 million vectors, ElasticIVF maintains a sustained throughput of approximately 9 million vectors/sec. This verifies the zero-allocation design of our \texttt{SlabManager}: since memory chunks are pre-allocated, the insertion cost is strictly $O(1)$ and does not degrade with index occupancy. In contrast, the baseline shows lower and slightly degrading performance.
+
+\textbf{Impact of Clustering Granularity (Fig.~\ref{fig:add_perf}b).} 
+We observe two distinct behaviors regarding $n_{list}$:
+\begin{itemize}
+    \item \textit{Atomic Contention at Low $n_{list}$:} At $n_{list}=1024$, ElasticIVF throughput drops to $\approx$5.1M vec/s. This is attributed to high contention on the \texttt{atomicAdd} operations for slab headers, as many threads compete for the same cluster. However, even with this contention, ElasticIVF is still \textbf{2.1$\times$} faster than the baseline.
+    \item \textit{Baseline Degradation at High $n_{list}$:} As $n_{list}$ increases to 16384, the baseline performance collapses to $<$0.7M vec/s, likely due to the overhead of managing thousands of fragmented memory vectors. ElasticIVF remains robust ($\approx$7.8M vec/s), demonstrating the superiority of the linked-slab architecture for fine-grained clustering.
+\end{itemize}
+
+\textbf{Overall Speedup (Fig.~\ref{fig:add_perf}c).} 
+The heatmap highlights that ElasticIVF consistently outperforms the baseline. The speedup is most pronounced in scenarios with high cluster counts (up to 14.2$\times$ at $n_{list}=16384$), validating that our approach is particularly well-suited for large-scale, fine-grained dynamic indexing.
+
 
 \section{Conclusion}
 \label{sec:conclusion}
