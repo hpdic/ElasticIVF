@@ -8,7 +8,9 @@
 #include <faiss/gpu/utils/DeviceUtils.h> // [HPDIC]
 #include <faiss/impl/FaissAssert.h>
 #include <faiss/gpu/impl/SIVFAppend.cuh> // [HPDIC]
+#include <faiss/gpu/impl/SIVFSearch.cuh>
 #include <faiss/gpu/impl/SlabManager.cuh>
+#include <faiss/gpu/utils/DeviceTensor.cuh> // 确保包含 DeviceTensor
 
 namespace faiss {
 namespace gpu {
@@ -148,8 +150,52 @@ void GpuIndexSIVF::searchImpl_(
     FAISS_THROW_IF_NOT_MSG(is_slab_initialized_, "SIVF not initialized");
     FAISS_THROW_IF_NOT_MSG(this->is_trained, "SIVF not trained");
 
-    // TODO: 暂时留空，等待下一步实现 Slab 搜索
-    // printf("SIVF searchImpl_ called\n");
+    // 2. 处理 nprobe (支持通过 params 动态传入)
+    int nprobe = this->nprobe;
+    if (params) {
+        const IVFSearchParameters* ivf_params =
+                dynamic_cast<const IVFSearchParameters*>(params);
+        if (ivf_params) {
+            nprobe = ivf_params->nprobe;
+        }
+    }
+
+    // 3. Coarse Quantization (第一级粗搜)
+    // 使用 Faiss 的 DeviceTensor 自动管理显存
+    auto stream = resources_->getDefaultStream(getCurrentDevice());
+
+    // 注意：Faiss GPU 内部很多地方用 int 索引，这里强转一下 n (通常 batch
+    // 不会超过 20亿)
+    DeviceTensor<float, 2, true> coarse_dis(
+            resources_.get(),
+            makeDevAlloc(AllocType::Other, stream),
+            {(int)n, nprobe});
+    DeviceTensor<idx_t, 2, true> coarse_ids(
+            resources_.get(),
+            makeDevAlloc(AllocType::Other, stream),
+            {(int)n, nprobe});
+
+    // 调用 Quantizer
+    quantizer->search(n, x, nprobe, coarse_dis.data(), coarse_ids.data());
+
+    // 4. Fine-grained Search (调用我们的 Kernel)
+    // 去掉 const 限制，因为我们需要获取 DeviceView
+    SlabManager* mutable_mgr = const_cast<SlabManager*>(slab_manager_);
+
+    SlabManagerDevice device_view = mutable_mgr->getDeviceView();
+    runSIVFSearch(
+            device_view,
+            list_heads_->data(),
+            (int)n, // 强转 idx_t -> int
+            this->d,
+            k,
+            nprobe,
+            x,
+            coarse_ids
+                    .data(), // 只要 ID，不需要 coarse_dis (因为我们还没做残差)
+            distances,
+            labels,
+            stream);
 }
 
 void GpuIndexSIVF::reset() {
