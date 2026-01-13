@@ -164,7 +164,7 @@ int main() {
 }
 
 /**
- * Example
+ * Example Output:
 cc@rtx6000:~/ElasticIVF/build$ ./faiss/gpu/test_sivf_add
 Preparing Data (Max NB=10000000, Max NT=262144)...
 
@@ -172,43 +172,104 @@ Preparing Data (Max NB=10000000, Max NT=262144)...
 Speedup    |
 |------------|------------|-----------------|------------|-----------------|------------|
 [HPDIC MOD] Faiss GPU initialized on device ID: 0
-| 1000000    | 1024       | **SIVF**        | 0.1126     | 8884938         | - |
-| "          | "          | Vanilla         | 0.4786     | 2089515 | 4.25      x
+[SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...
+Clustering 65536 points in 128D to 1024 clusters, redo 1 times, 20 iterations
+  Preprocessing in 0.02 s
+  Iteration 11 (0.22 s, search 0.15 s): objective=553137 imbalance=1.923
+nsplit=0 Converged at iteration 11: objective did not change
+
+[SIVF::train] GPU K-Means complete. Quantizer populated with 1024 centroids.
+| 1000000    | 1024       | **SIVF**        | 0.1731     | 5777175         | - |
+| "          | "          | Vanilla         | 0.4799     | 2083846 | 2.77      x
 |
 |------------|------------|-----------------|------------|-----------------|------------|
-| 1000000    | 4096       | **SIVF**        | 0.1120     | 8925076         | - |
-| "          | "          | Vanilla         | 0.5985     | 1670939 | 5.34      x
+[SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...
+Clustering 163840 points in 128D to 4096 clusters, redo 1 times, 20 iterations
+  Preprocessing in 0.06 s
+  Iteration 7 (0.61 s, search 0.31 s): objective=842149 imbalance=1.872 nsplit=2
+  Converged at iteration 7: objective did not change
+
+[SIVF::train] GPU K-Means complete. Quantizer populated with 4096 centroids.
+| 1000000    | 4096       | **SIVF**        | 0.2323     | 4304000         | - |
+| "          | "          | Vanilla         | 0.5991     | 1669100 | 2.58      x
 |
 |------------|------------|-----------------|------------|-----------------|------------|
-| 1000000    | 16384      | **SIVF**        | 0.1115     | 8972541         | - |
+[SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...
 WARNING clustering 262144 points to 16384 centroids: please provide at least
-638976 training points | "          | "          | Vanilla         | 1.5848 |
-631012          | 14.22     x |
+638976 training points Clustering 262144 points in 128D to 16384 clusters, redo
+1 times, 20 iterations Preprocessing in 0.14 s Iteration 19 (66.93 s,
+search 3.34 s): objective=1413.36 imbalance=1.641 nsplit=6390 [SIVF::train] GPU
+K-Means complete. Quantizer populated with 16384 centroids. | 1000000    | 16384
+| **SIVF**        | 0.7663     | 1305052         | -          | WARNING
+clustering 262144 points to 16384 centroids: please provide at least 638976
+training points | "          | "          | Vanilla         | 1.5553     |
+642968          | 2.03      x |
 |------------|------------|-----------------|------------|-----------------|------------|
-| 5000000    | 1024       | **SIVF**        | 1.2218     | 4092307         | - |
-| "          | "          | Vanilla         | 2.1938     | 2279141 | 1.80      x
+[SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...
+Clustering 65536 points in 128D to 1024 clusters, redo 1 times, 20 iterations
+  Preprocessing in 0.02 s
+  Iteration 11 (0.18 s, search 0.12 s): objective=553137 imbalance=1.923
+nsplit=0 Converged at iteration 11: objective did not change
+
+[SIVF::train] GPU K-Means complete. Quantizer populated with 1024 centroids.
+| 5000000    | 1024       | **SIVF**        | 1.4775     | 3384067         | - |
+| "          | "          | Vanilla         | 2.1719     | 2302144 | 1.47      x
 |
 |------------|------------|-----------------|------------|-----------------|------------|
-| 5000000    | 4096       | **SIVF**        | 0.5539     | 9027568         | - |
-| "          | "          | Vanilla         | 2.7217     | 1837076 | 4.91      x
+[SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...
+Clustering 163840 points in 128D to 4096 clusters, redo 1 times, 20 iterations
+  Preprocessing in 0.06 s
+  Iteration 7 (0.59 s, search 0.31 s): objective=842149 imbalance=1.872 nsplit=2
+  Converged at iteration 7: objective did not change
+
+[SIVF::train] GPU K-Means complete. Quantizer populated with 4096 centroids.
+| 5000000    | 4096       | **SIVF**        | 1.1526     | 4338003         | - |
+| "          | "          | Vanilla         | 2.7086     | 1845942 | 2.35      x
 |
 |------------|------------|-----------------|------------|-----------------|------------|
-| 5000000    | 16384      | **SIVF**        | 0.5526     | 9048614         | - |
+[SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...
 WARNING clustering 262144 points to 16384 centroids: please provide at least
-638976 training points | "          | "          | Vanilla         | 6.3589 |
-786301          | 11.51     x |
+638976 training points Clustering 262144 points in 128D to 16384 clusters, redo
+1 times, 20 iterations Preprocessing in 0.12 s Iteration 19 (67.36 s,
+search 3.33 s): objective=1413.36 imbalance=1.641 nsplit=6390 [SIVF::train] GPU
+K-Means complete. Quantizer populated with 16384 centroids. | 5000000    | 16384
+| **SIVF**        | 3.7168     | 1345241         | -          | WARNING
+clustering 262144 points to 16384 centroids: please provide at least 638976
+training points | "          | "          | Vanilla         | 6.3567     |
+786575          | 1.71      x |
 |------------|------------|-----------------|------------|-----------------|------------|
-| 10000000   | 1024       | **SIVF**        | 1.9795     | 5051730         | - |
-| "          | "          | Vanilla         | 4.2533     | 2351118 | 2.15      x
+[SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...
+Clustering 65536 points in 128D to 1024 clusters, redo 1 times, 20 iterations
+  Preprocessing in 0.04 s
+  Iteration 11 (0.25 s, search 0.13 s): objective=553137 imbalance=1.923
+nsplit=0 Converged at iteration 11: objective did not change
+
+[SIVF::train] GPU K-Means complete. Quantizer populated with 1024 centroids.
+| 10000000   | 1024       | **SIVF**        | 2.4288     | 4117185         | - |
+| "          | "          | Vanilla         | 4.3385     | 2304946 | 1.79      x
 |
 |------------|------------|-----------------|------------|-----------------|------------|
-| 10000000   | 4096       | **SIVF**        | 1.1170     | 8952879         | - |
-| "          | "          | Vanilla         | 5.3545     | 1867595 | 4.79      x
+[SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...
+Clustering 163840 points in 128D to 4096 clusters, redo 1 times, 20 iterations
+  Preprocessing in 0.08 s
+  Iteration 7 (0.64 s, search 0.31 s): objective=842149 imbalance=1.872 nsplit=2
+  Converged at iteration 7: objective did not change
+
+[SIVF::train] GPU K-Means complete. Quantizer populated with 4096 centroids.
+| 10000000   | 4096       | **SIVF**        | 2.4919     | 4012971         | - |
+| "          | "          | Vanilla         | 5.4752     | 1826413 | 2.20      x
 |
 |------------|------------|-----------------|------------|-----------------|------------|
-| 10000000   | 16384      | **SIVF**        | 1.2887     | 7759836         | - |
+[SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...
 WARNING clustering 262144 points to 16384 centroids: please provide at least
-638976 training points | "          | "          | Vanilla         | 14.4242 |
-693278          | 11.19     x |
+638976 training points Clustering 262144 points in 128D to 16384 clusters, redo
+1 times, 20 iterations Preprocessing in 0.11 s Iteration 19 (66.99 s,
+search 3.32 s): objective=1413.36 imbalance=1.641 nsplit=6390 [SIVF::train] GPU
+K-Means complete. Quantizer populated with 16384 centroids. | 10000000   | 16384
+| **SIVF**        | 7.0031     | 1427939         | -          | WARNING
+clustering 262144 points to 16384 centroids: please provide at least 638976
+training points | "          | "          | Vanilla         | 14.7557    |
+677705          | 2.11      x |
 |------------|------------|-----------------|------------|-----------------|------------|
+cc@rtx6000:~/ElasticIVF/build$
  */

@@ -4,30 +4,33 @@ import seaborn as sns
 import numpy as np
 
 # ==========================================
-# 1. 录入最新数据 (来自你的 Benchmark)
+# 1. 录入最新数据 (2026-01-12 Benchmark)
 # ==========================================
 data = [
     # NB, nlist, System, QPS
-    (1000000, 1024, 'SIVF', 8884938),
-    (1000000, 1024, 'Vanilla', 2089515),
-    (1000000, 4096, 'SIVF', 8925076),
-    (1000000, 4096, 'Vanilla', 1670939),
-    (1000000, 16384, 'SIVF', 8972541),
-    (1000000, 16384, 'Vanilla', 631012),
+    # 1M Vectors
+    (1000000, 1024, 'SIVF', 5777175),
+    (1000000, 1024, 'Vanilla', 2083846),
+    (1000000, 4096, 'SIVF', 4304000),
+    (1000000, 4096, 'Vanilla', 1669100),
+    (1000000, 16384, 'SIVF', 1305052),
+    (1000000, 16384, 'Vanilla', 642968),
     
-    (5000000, 1024, 'SIVF', 4092307),
-    (5000000, 1024, 'Vanilla', 2279141),
-    (5000000, 4096, 'SIVF', 9027568),
-    (5000000, 4096, 'Vanilla', 1837076),
-    (5000000, 16384, 'SIVF', 9048614),
-    (5000000, 16384, 'Vanilla', 786301),
+    # 5M Vectors
+    (5000000, 1024, 'SIVF', 3384067),
+    (5000000, 1024, 'Vanilla', 2302144),
+    (5000000, 4096, 'SIVF', 4338003),
+    (5000000, 4096, 'Vanilla', 1845942),
+    (5000000, 16384, 'SIVF', 1345241),
+    (5000000, 16384, 'Vanilla', 786575),
 
-    (10000000, 1024, 'SIVF', 5051730),
-    (10000000, 1024, 'Vanilla', 2351118),
-    (10000000, 4096, 'SIVF', 8952879),
-    (10000000, 4096, 'Vanilla', 1867595),
-    (10000000, 16384, 'SIVF', 7759836),
-    (10000000, 16384, 'Vanilla', 693278),
+    # 10M Vectors
+    (10000000, 1024, 'SIVF', 4117185),
+    (10000000, 1024, 'Vanilla', 2304946),
+    (10000000, 4096, 'SIVF', 4012971),
+    (10000000, 4096, 'Vanilla', 1826413),
+    (10000000, 16384, 'SIVF', 1427939),
+    (10000000, 16384, 'Vanilla', 677705),
 ]
 
 df = pd.DataFrame(data, columns=['NB', 'nlist', 'System', 'QPS'])
@@ -72,7 +75,8 @@ axes[0].set_xlabel('Database Size (Vectors)')
 axes[0].set_ylabel('Throughput (Million vec/s)')
 axes[0].set_xticks([1000000, 5000000, 10000000])
 axes[0].set_xticklabels(['1M', '5M', '10M'])
-axes[0].set_ylim(0, 11)
+# 根据新数据调整Y轴范围，最大约4.3M，稍微留点余量
+axes[0].set_ylim(0, 6) 
 axes[0].legend(title=None, loc='center right')
 
 # -------------------------------------------------------
@@ -97,7 +101,8 @@ for container in axes[1].containers:
 axes[1].set_title('(b) Impact of Granularity (10M Vectors)', fontsize=13, pad=10)
 axes[1].set_xlabel('Number of Clusters (nlist)')
 axes[1].set_ylabel('Throughput (Million vec/s)')
-axes[1].set_ylim(0, 12)
+# 根据新数据调整Y轴范围
+axes[1].set_ylim(0, 6)
 axes[1].legend(title=None)
 
 # -------------------------------------------------------
@@ -105,13 +110,13 @@ axes[1].legend(title=None)
 # -------------------------------------------------------
 heatmap_data = speedup_df.pivot(index="nlist", columns="NB", values="Speedup")
 
-# [新] 手动创建一个字符串矩阵，每个格子里写死 "xx.x x"
+# [关键] 手动创建一个字符串矩阵，每个格子里写死 "xx.x x"
 annot_labels = heatmap_data.applymap(lambda v: f"{v:.1f}x")
 
 sns.heatmap(
     heatmap_data, 
-    annot=annot_labels,  # [关键] 传入字符串矩阵，而不是 True
-    fmt="",              # [关键] 因为是字符串了，不需要格式化，设为空
+    annot=annot_labels,  # 传入字符串矩阵
+    fmt="",              # 不需要格式化
     cmap="YlGnBu", 
     linewidths=.5, 
     cbar_kws={'label': 'Speedup Factor'},

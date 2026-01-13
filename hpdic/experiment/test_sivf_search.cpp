@@ -44,7 +44,7 @@ int main() {
     // SIVF 显存池配置
     size_t max_vectors = nb * 2;
     size_t slab_pool_size = nb * 2; // 200,000 Slabs (huge pool)
-    
+
     printf("==================================================\n");
     printf(" BENCHMARK: Search Verify (SIVF vs Vanilla)\n");
     printf(" d=%d, nlist=%d, nb=%ld, nq=%ld, k=%d, nprobe=%d\n",
@@ -90,19 +90,19 @@ int main() {
         index.nprobe = nprobe; // 设置查询参数
 
         // [DEBUG] 打印训练前状态
-        printf("DEBUG: Before train, is_trained = %s\n",
-               index.is_trained ? "TRUE" : "FALSE");
+        // printf("DEBUG: Before train, is_trained = %s\n",
+        //        index.is_trained ? "TRUE" : "FALSE");
 
         printf("[ElasticIVF] Training & Adding...\n");
         // 为了省事，直接用 xb 训练
         index.train(std::min(nb, (size_t)65536), xb.data());
 
         // [DEBUG] 打印训练后状态
-        printf("DEBUG: After train, is_trained = %s\n",
-               index.is_trained ? "TRUE" : "FALSE");
-        printf("DEBUG: Quantizer ntotal = %ld (Should be %d)\n",
-               index.quantizer->ntotal,
-               nlist);
+        // printf("DEBUG: After train, is_trained = %s\n",
+        //        index.is_trained ? "TRUE" : "FALSE");
+        // printf("DEBUG: Quantizer ntotal = %ld (Should be %d)\n",
+        //        index.quantizer->ntotal,
+        //        nlist);
 
         index.add_with_ids(nb, xb.data(), ids.data());
 

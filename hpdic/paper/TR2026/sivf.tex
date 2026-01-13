@@ -257,28 +257,27 @@ Our implementation of SIVF is built upon the Faiss library~\cite{douze2024faiss}
 
 We evaluate the ingestion throughput of ElasticIVF against the baseline method, the standard Faiss GPU IVFFlat implementation. The experiments are conducted on an NVIDIA RTX 6000 Ada Generation GPU. We measure the insertion throughput (vectors per second) while varying two key parameters: the database size ($N_B$) from 1M to 10M vectors, and the number of clusters ($n_{list}$) from 1024 to 16384.
 
-The results are summarized in Figure~\ref{fig:add_perf}. ElasticIVF demonstrates significant performance advantages across all configurations, achieving up to \textbf{14.2$\times$ speedup} over the baseline.
+The results are summarized in Figure~\ref{fig:add_perf}. ElasticIVF demonstrates consistent performance advantages across all configurations, achieving up to \textbf{2.8$\times$ speedup} over the baseline.
 
 \begin{figure*}[t]
     \centering
     \includegraphics[width=\linewidth]{./figures/performance_add.pdf}
-    \caption{Performance evaluation of vector ingestion. (a) \textbf{Scalability}: Throughput remains stable as dataset size increases ($n_{list}=4096$). (b) \textbf{Granularity Impact}: ElasticIVF maintains high throughput even at high $n_{list}$, whereas the baseline degrades due to memory fragmentation. (c) \textbf{Speedup}: A heatmap showing the relative speedup of ElasticIVF over Vanilla Faiss.}
+    \caption{Performance evaluation of vector ingestion. (a) \textbf{Scalability}: Throughput remains stable around 4.0--4.3 million vec/s as dataset size increases ($n_{list}=4096$). (b) \textbf{Granularity Impact}: While both systems slow down at finer granularities ($n_{list}=16384$), ElasticIVF remains significantly faster than the baseline. (c) \textbf{Speedup}: A heatmap showing the relative speedup of ElasticIVF over Vanilla Faiss, consistently ranging between 1.5$\times$ and 2.8$\times$.}
     \label{fig:add_perf}
 \end{figure*}
 
 \textbf{Scalability and Stability (Fig.~\ref{fig:add_perf}a).} 
-As the database size grows from 1 million to 10 million vectors, ElasticIVF maintains a sustained throughput of approximately 9 million vectors/sec. This verifies the zero-allocation design of our \texttt{SlabManager}: since memory chunks are pre-allocated, the insertion cost is strictly $O(1)$ and does not degrade with index occupancy. In contrast, the baseline shows lower and slightly degrading performance.
+As the database size grows from 1 million to 10 million vectors (with $n_{list}=4096$), ElasticIVF maintains a robust throughput of approximately \textbf{4.0 to 4.3 million vectors/sec}. This verifies the zero-allocation design of our \texttt{SlabManager}: since memory chunks are pre-allocated and managed via lock-free lists, the insertion cost remains $O(1)$ and effectively decoupled from the current index occupancy. The baseline, while relatively stable, operates at a lower throughput tier ($\approx$1.7M vec/s).
 
 \textbf{Impact of Clustering Granularity (Fig.~\ref{fig:add_perf}b).} 
-We observe two distinct behaviors regarding $n_{list}$:
+We observe that ingestion throughput is sensitive to the number of clusters $n_{list}$:
 \begin{itemize}
-    \item \textit{Atomic Contention at Low $n_{list}$:} At $n_{list}=1024$, ElasticIVF throughput drops to $\approx$5.1M vec/s. This is attributed to high contention on the \texttt{atomicAdd} operations for slab headers, as many threads compete for the same cluster. However, even with this contention, ElasticIVF is still \textbf{2.1$\times$} faster than the baseline.
-    \item \textit{Baseline Degradation at High $n_{list}$:} As $n_{list}$ increases to 16384, the baseline performance collapses to $<$0.7M vec/s, likely due to the overhead of managing thousands of fragmented memory vectors. ElasticIVF remains robust ($\approx$7.8M vec/s), demonstrating the superiority of the linked-slab architecture for fine-grained clustering.
+    \item \textit{Peak Performance at Low $n_{list}$:} ElasticIVF achieves its highest throughput ($\approx$5.8M vec/s) at $n_{list}=1024$. In this regime, the memory write patterns are more localized, reducing TLB misses and maximizing the efficiency of our append kernels. Here, ElasticIVF is \textbf{2.8$\times$} faster than the baseline ($\approx$2.1M vec/s).
+    \item \textit{Degradation at High $n_{list}$:} As $n_{list}$ increases to 16384, the insertion pattern becomes highly scattered across thousands of memory slabs. Consequently, ElasticIVF throughput decreases to $\approx$1.4M vec/s. However, the baseline suffers more severely from this fragmentation, dropping to $<$0.7M vec/s. ElasticIVF maintains a \textbf{2.1$\times$} speedup even in this challenging high-granularity scenario, demonstrating the resilience of the linked-slab architecture compared to the baseline's array resizing overhead.
 \end{itemize}
 
 \textbf{Overall Speedup (Fig.~\ref{fig:add_perf}c).} 
-The heatmap highlights that ElasticIVF consistently outperforms the baseline. The speedup is most pronounced in scenarios with high cluster counts (up to 14.2$\times$ at $n_{list}=16384$), validating that our approach is particularly well-suited for large-scale, fine-grained dynamic indexing.
-
+The heatmap confirms that ElasticIVF outperforms the baseline in every tested configuration. The speedup is robust, ranging from \textbf{1.5$\times$} to \textbf{2.8$\times$}. This performance gap highlights the efficiency of our non-blocking, slab-based ingestion pipeline, making it particularly well-suited for high-throughput streaming scenarios where the index must remain available for querying during updates.
 
 \section{Conclusion}
 \label{sec:conclusion}

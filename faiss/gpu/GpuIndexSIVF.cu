@@ -86,7 +86,7 @@ void GpuIndexSIVF::initSlabManager(size_t max_vectors, size_t pool_size) {
     is_slab_initialized_ = true;
 
     // [DEBUG] 打印一句，证明初始化跑到了
-    printf("DEBUG: SlabManager initialized. List heads reset to -1.\n");
+    // printf("DEBUG: SlabManager initialized. List heads reset to -1.\n");
 }
 
 size_t GpuIndexSIVF::remove_ids(const faiss::IDSelector& sel) {
@@ -178,31 +178,31 @@ void GpuIndexSIVF::searchImpl_(
     quantizer->search(n, x, nprobe, coarse_dis.data(), coarse_ids.data());
 
     // ================== [DEBUG START] ==================
-    // 1. 检查 Quantizer 是否为空
-    if (quantizer->ntotal == 0) {
-        printf("[ERROR] Quantizer is EMPTY! (ntotal=0). Did training fail?\n");
-    } else {
-        // printf("[DEBUG] Quantizer ntotal = %ld\n", quantizer->ntotal);
-    }
+    // // 1. 检查 Quantizer 是否为空
+    // if (quantizer->ntotal == 0) {
+    //     printf("[ERROR] Quantizer is EMPTY! (ntotal=0). Did training fail?\n");
+    // } else {
+    //     // printf("[DEBUG] Quantizer ntotal = %ld\n", quantizer->ntotal);
+    // }
 
-    // 2. 检查粗搜结果是否全是 -1
-    std::vector<idx_t> host_ids(nprobe);
-    // 从 GPU 拷贝第 0 个 query 的结果到 CPU
-    cudaMemcpyAsync(
-            host_ids.data(),
-            coarse_ids.data(),
-            nprobe * sizeof(idx_t),
-            cudaMemcpyDeviceToHost,
-            stream);
-    cudaStreamSynchronize(stream); // 强制同步，确保读到数据
+    // // 2. 检查粗搜结果是否全是 -1
+    // std::vector<idx_t> host_ids(nprobe);
+    // // 从 GPU 拷贝第 0 个 query 的结果到 CPU
+    // cudaMemcpyAsync(
+    //         host_ids.data(),
+    //         coarse_ids.data(),
+    //         nprobe * sizeof(idx_t),
+    //         cudaMemcpyDeviceToHost,
+    //         stream);
+    // cudaStreamSynchronize(stream); // 强制同步，确保读到数据
 
-    if (host_ids[0] == -1) {
-        printf("[ERROR] Coarse Quantizer returned -1! Printing first %d results:\n",
-               nprobe);
-        for (int i = 0; i < nprobe; ++i)
-            printf("%ld ", host_ids[i]);
-        printf("\n");
-    }
+    // if (host_ids[0] == -1) {
+    //     printf("[ERROR] Coarse Quantizer returned -1! Printing first %d results:\n",
+    //            nprobe);
+    //     for (int i = 0; i < nprobe; ++i)
+    //         printf("%ld ", host_ids[i]);
+    //     printf("\n");
+    // }
     // ================== [DEBUG END] ====================
 
     // 4. Fine-grained Search (调用我们的 Kernel)
