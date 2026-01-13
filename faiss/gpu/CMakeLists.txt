@@ -33,7 +33,8 @@ set(FAISS_GPU_SRC
   GpuIndexSIVF.cu      # <--- HPDIC
   GpuResources.cpp
   StandardGpuResources.cpp
-  impl/SIVFAppend.cu   # <--- 必须确认这一行有！
+  impl/SIVFAppend.cu   # <--- HPDIC
+  impl/SIVFSearch.cu   # <--- HPDIC
   impl/SlabManager.cu  # <--- HPDIC
   impl/BinaryDistance.cu
   impl/BinaryFlatIndex.cu
@@ -107,6 +108,7 @@ set(FAISS_GPU_HEADERS
   impl/SIVFStructs.cuh  # <--- HPDIC
   impl/SlabManager.cuh  # <--- HPDIC  
   impl/SIVFAppend.cuh   # <--- HPDIC
+  impl/SIVFSearch.cuh   # <--- HPDIC
   impl/BinaryDistance.cuh
   impl/BinaryFlatIndex.cuh
   impl/BroadcastSum.cuh
@@ -378,3 +380,8 @@ endif()
 add_executable(test_sivf_add ${PROJECT_SOURCE_DIR}/hpdic/experiment/test_sivf_add.cpp)
 target_link_libraries(test_sivf_add PRIVATE faiss CUDA::cudart CUDA::cublas)
 set_target_properties(test_sivf_add PROPERTIES CUDA_ARCHITECTURES "75") # 根据你的显卡调整，RTX6000是75
+
+# 新增 Search 测试 Target
+add_executable(test_sivf_search ${PROJECT_SOURCE_DIR}/hpdic/experiment/test_sivf_search.cpp)
+target_link_libraries(test_sivf_search PRIVATE faiss CUDA::cudart CUDA::cublas)
+set_target_properties(test_sivf_search PROPERTIES CUDA_ARCHITECTURES "75") # 根据你的显卡调整，RTX6000是75

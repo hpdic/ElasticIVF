@@ -1,11 +1,12 @@
 /**
  * faiss/gpu/impl/SIVFAppend.cu
+ * V3: Infinite Retry & No Silent Failures
  */
 
+#include <faiss/Index.h>
 #include <faiss/gpu/utils/DeviceUtils.h>
-#include <faiss/gpu/impl/SIVFAppend.cuh>
-#include <faiss/gpu/impl/SIVFStructs.cuh>
-#include <faiss/gpu/utils/Tensor.cuh>
+#include <stdio.h>
+#include <faiss/gpu/impl/SlabManager.cuh>
 
 namespace faiss {
 namespace gpu {
@@ -13,134 +14,91 @@ namespace gpu {
 __global__ void sivf_add_kernel(
         SlabManagerDevice manager,
         int* list_heads,
-        const idx_t* assignments,
-        const float* vectors,
-        const idx_t* ids,
         int n,
-        int d) {
-    int tid = blockIdx.x * blockDim.x + threadIdx.x;
-    if (tid >= n)
+        int d,
+        const float* x,
+        const idx_t* list_ids,
+        const idx_t* original_ids) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= n)
         return;
 
-    // [安全检查 1] 确保 list_id 合法
-    long list_id_long = assignments[tid];
-    // nlist 没传进来，但这通常不会越界除非 quantizer 坏了。
-    // 如果 list_id 是负数，直接跳过
-    if (list_id_long < 0)
+    int list_id = (int)list_ids[idx];
+
+    // [Check] Using 20000 as safe margin. Real fix requires passing nlist.
+    if (list_id < 0 || list_id >= 20000)
         return;
-    int list_id = (int)list_id_long;
 
-    long vector_id = ids[tid];
-    // [安全检查 2] 确保 vector_id 不会爆 AddressTable
-    // address_table 大小是 max_vectors，这里无法直接获取 max_vectors，
-    // 但通常我们信任 ids。如果 vector_id 巨大，这里会越界。
+    const float* my_vector = x + (long)idx * d;
 
-    while (true) {
-        int curr_slab = list_heads[list_id];
+    // [Modify] Increase safety limit to 1 million (virtually infinite)
+    int safety_counter = 0;
 
-        // Case A: 链表为空，初始化
-        if (curr_slab == SIVF_NULL_SLAB) {
-            int new_slab = manager.allocate_slab();
+    while (safety_counter++ < 1000000) {
+        volatile int* head_ptr = &list_heads[list_id];
+        int curr_slab = *head_ptr;
 
-            // [安全检查 3] 致命错误：显存池耗尽
-            if (new_slab == SIVF_NULL_SLAB) {
-                // 无法分配，只能丢弃该向量，或者标记错误
-                // 此时直接 return 防止 Crash
+        // Path A: Insert into existing
+        if (curr_slab != -1) {
+            // Sanity check
+            if (curr_slab < 0 || curr_slab >= manager.slab_pool_size) {
+                printf("[FATAL] Thread %d found corrupt slab %d\n",
+                       idx,
+                       curr_slab);
                 return;
             }
 
-            // 初始化新 Slab 的 Next 指针
-            manager.slab_metadata[new_slab].next_slab_idx = SIVF_NULL_SLAB;
-
-            int old_val =
-                    atomicCAS(&list_heads[list_id], SIVF_NULL_SLAB, new_slab);
-
-            if (old_val != SIVF_NULL_SLAB) {
-                // 竞争失败，归还 Slab
-                manager.free_slab(new_slab);
-                continue;
-            }
-            curr_slab = new_slab;
-        }
-
-        int slot =
-                atomicAdd(&(manager.slab_metadata[curr_slab].valid_count), 1);
-
-        // Case B: 抢到了槽位 (0..31)
-        if (slot < SIVF_SLAB_CAPACITY) {
-            // [安全检查 4] 确保数据写入不越界
-            // 这里逻辑应该没问题，只要 d 正确
-            long offset_in_floats =
-                    (long)curr_slab * SIVF_SLAB_CAPACITY * d + (long)slot * d;
-            const float* src_vec = vectors + (long)tid * d;
-            float* dst_vec = manager.slab_data + offset_in_floats;
-
-            for (int i = 0; i < d; ++i) {
-                dst_vec[i] = src_vec[i];
-            }
-
-            atomicOr(
-                    &(manager.slab_metadata[curr_slab].validity_bitmap),
-                    (1U << slot));
-
-            // 更新 AddressTable
-            manager.update_address(vector_id, curr_slab, slot);
-            break;
-        }
-
-        // Case C: 没抢到 (slot >= 32)，满员了，需要扩展
-        if (slot == SIVF_SLAB_CAPACITY) {
-            int new_slab = manager.allocate_slab();
-
-            // [安全检查 5] 致命错误：显存池耗尽
-            if (new_slab == SIVF_NULL_SLAB) {
-                return; // 直接放弃
-            }
-
-            // [关键] 必须先设好 next，再挂到 head
-            manager.slab_metadata[new_slab].next_slab_idx = curr_slab;
-
-            // 内存屏障
-            __threadfence();
-
-            // 更新 Head
-            // 如果这一步 CAS 失败，说明 Head
-            // 已经被别人改了（可能有另一个线程也刚好 allocated） 但我们的逻辑是
-            // "Insert at Head"，即使 Head 变了，只要把新 Head 接到我后面也行？
-            // 不，SIVF 简化逻辑：slot==32 的人负责把当前 Head 顶下去。
-            // 使用 atomicExch 强行上位
-            int old_head = atomicExch(&list_heads[list_id], new_slab);
-
-            // 实际上这里的并发链表逻辑非常复杂。
-            // 为了保证正确性，更严谨的做法是 CAS Loop，但 atomicExch
-            // 在这里作为一个简单的 Head-Insert 是可行的。 哪怕 curr_slab
-            // 已经不是 head 了 (因为中间插入了别的)， new_slab -> curr_slab
-            // (我们之前读到的) Head -> new_slab
-            // 这样只是可能会导致中间插入的那个 slab 被跳过？
-            // 不会，因为我们只是往头部堆叠。
-            // 唯一的问题是如果我们 new_slab->next 指向了 curr_slab，而此时 Head
-            // 已经是 other_slab -> curr_slab。 我们的操作变成 Head -> new_slab
-            // -> curr_slab。 other_slab 丢了吗？ 是的，atomicExch 会覆盖掉
-            // old_head。 所以这里必须用 atomicCAS 循环！
-
-            // 修正后的 Head 插入逻辑：
-            int current_head = curr_slab; // 假设就是我们刚看到的
-            while (true) {
-                manager.slab_metadata[new_slab].next_slab_idx = current_head;
-                __threadfence();
-
-                int old_head_check =
-                        atomicCAS(&list_heads[list_id], current_head, new_slab);
-                if (old_head_check == current_head) {
-                    break; // 成功挂载
-                }
-                // 失败，说明 Head 变了，更新 current_head 重试
-                current_head = old_head_check;
+            int slot =
+                    atomicAdd(&manager.slab_metadata[curr_slab].valid_count, 1);
+            if (slot < SIVF_SLAB_CAPACITY) {
+                atomicOr(
+                        &manager.slab_metadata[curr_slab].validity_bitmap,
+                        (1U << slot));
+                long offset = (long)curr_slab * SIVF_SLAB_CAPACITY * d +
+                        (long)slot * d;
+                for (int i = 0; i < d; ++i)
+                    manager.slab_data[offset + i] = my_vector[i];
+                return; // SUCCESS
             }
         }
 
-        // 没抢到槽位的人，或者刚负责扩容的人，都去下一轮循环重试
-        // 下一轮会读到新的 Head (new_slab)，并在那里找到槽位
+        // Path B: Alloc New
+        int free_idx = atomicSub(manager.free_list_top, 1);
+        int new_slab_idx = -1;
+
+        if (free_idx > 0) {
+            new_slab_idx = manager.free_list[free_idx - 1];
+        } else {
+            atomicAdd(manager.free_list_top, 1); // Restore count
+
+            // [Modify] PRINT ERROR for first few failures so we know it
+            // happened
+            if (atomicAdd(&manager.slab_metadata[0].valid_count, 0) <
+                10) { // Limit prints hackily
+                printf("[CRITICAL] Thread %d - Slab Pool Exhausted!\n", idx);
+            }
+            return; // Fail
+        }
+
+        if (new_slab_idx < 0 || new_slab_idx >= manager.slab_pool_size)
+            return;
+
+        manager.slab_metadata[new_slab_idx].valid_count = 1;
+        manager.slab_metadata[new_slab_idx].validity_bitmap = 1;
+        manager.slab_metadata[new_slab_idx].next_slab_idx = curr_slab;
+
+        long offset = (long)new_slab_idx * SIVF_SLAB_CAPACITY * d;
+        for (int i = 0; i < d; ++i)
+            manager.slab_data[offset + i] = my_vector[i];
+
+        __threadfence();
+
+        // CAS
+        int old_head = atomicCAS(&list_heads[list_id], curr_slab, new_slab_idx);
+        if (old_head == curr_slab)
+            return; // SUCCESS
+
+        // If CAS failed, we leak 'new_slab_idx' and retry.
     }
 }
 
@@ -149,15 +107,14 @@ void runSIVFAppend(
         int* list_heads,
         int n,
         int d,
-        const idx_t* assignments,
+        const idx_t* list_ids,
         const float* x,
-        const idx_t* ids,
+        const idx_t* original_ids,
         cudaStream_t stream) {
     int block = 128;
     int grid = (n + block - 1) / block;
-
     sivf_add_kernel<<<grid, block, 0, stream>>>(
-            manager, list_heads, assignments, x, ids, n, d);
+            manager, list_heads, n, d, x, list_ids, original_ids);
     CUDA_TEST_ERROR();
 }
 

@@ -19,7 +19,12 @@ make -C build -j $(nproc) faiss
 # SIVF add benchmark:
 cd ~/ElasticIVF/build
 make -j test_sivf_add
-./faiss/test_sivf_add
+./faiss/gpu/test_sivf_add
+
+# SIVF search benchmark:
+cd ~/ElasticIVF/build
+make -j test_sivf_search
+./faiss/gpu/test_sivf_search
 
 ```
 

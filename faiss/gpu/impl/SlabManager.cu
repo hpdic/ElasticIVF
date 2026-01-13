@@ -86,6 +86,15 @@ SlabManager::SlabManager(
     int block_size = 256;
     int grid_size = ((int)slab_pool_size + block_size - 1) / block_size;
 
+    // [关键修复] 必须将 Metadata 区域清零！
+    // 否则 valid_count 是随机值，导致 Add Kernel 以为 slab 满了或者越界
+    CUDA_VERIFY(cudaMemsetAsync(
+            slab_metadata_.data(),
+            0,
+            slab_pool_size * sizeof(SlabMetadata),
+            stream));
+
+    // 初始化空闲链表
     init_free_list_kernel<<<grid_size, block_size, 0, stream>>>(
             free_list_.data(), free_list_top_.data(), (int)slab_pool_size);
 

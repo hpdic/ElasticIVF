@@ -58,6 +58,12 @@ __global__ void sivf_search_kernel(
     if (query_idx >= n)
         return;
 
+    // [DEBUG] 只打印第 0 个查询的信息
+    bool debug = (query_idx == 0);
+    if (debug) {
+        printf("[DEBUG] Kernel Start: q=0, nprobe=%d\n", nprobe);
+    }
+
     // 结果存放区 (Global Memory)
     float* my_dists = out_distances + (long)query_idx * k;
     idx_t* my_ids = out_indices + (long)query_idx * k;
@@ -73,16 +79,35 @@ __global__ void sivf_search_kernel(
     // 遍历 nprobe 个簇
     for (int p = 0; p < nprobe; ++p) {
         idx_t list_id = keys[(long)query_idx * nprobe + p];
+        
+        if (debug) {
+            printf("[DEBUG] q=0, probe=%d, list_id=%ld\n", p, list_id);
+        }
+
         if (list_id < 0)
             continue;
 
         int curr_slab = list_heads[list_id];
 
+        if (debug) {
+            printf("[DEBUG] q=0, list_id=%ld, head_slab=%d\n",
+                   list_id,
+                   curr_slab);
+        }
+
         // 遍历链表 (Pointer Chasing)
+        int loop_cnt = 0;
         while (curr_slab != SIVF_NULL_SLAB) {
+            loop_cnt++;
             // 读取元数据
             unsigned int bitmap =
                     manager.slab_metadata[curr_slab].validity_bitmap;
+
+            if (debug) {
+                printf("[DEBUG]   -> Visit Slab %d, bitmap=%x\n",
+                       curr_slab,
+                       bitmap);
+            }
 
             // 遍历 Slab 内的 32 个槽位
             // TODO: 未来可以用 __ffs (find first set) 优化位图遍历
@@ -108,6 +133,9 @@ __global__ void sivf_search_kernel(
             }
             // 下一个 Slab
             curr_slab = manager.slab_metadata[curr_slab].next_slab_idx;
+        }
+        if (debug && loop_cnt == 0) {
+            printf("[DEBUG]   -> List %ld is EMPTY (Slab is NULL)\n", list_id);
         }
     }
 }

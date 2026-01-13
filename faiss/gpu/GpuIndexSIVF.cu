@@ -2,6 +2,8 @@
  * faiss/gpu/GpuIndexSIVF.cu
  */
 
+#include <faiss/Clustering.h> // 用于手动 KMeans
+#include <faiss/IndexFlat.h>  // 用于 CPU 临时 Index
 #include <faiss/gpu/GpuIndexFlat.h>
 #include <faiss/gpu/GpuIndexSIVF.h>
 #include <faiss/gpu/GpuResources.h>
@@ -19,23 +21,26 @@ namespace gpu {
 // 构造与析构
 // ===========================================================
 
+// faiss/gpu/GpuIndexSIVF.cu
+
 GpuIndexSIVF::GpuIndexSIVF(
         GpuResourcesProvider* provider,
         int dims,
         int nlist,
         faiss::MetricType metric,
         GpuIndexIVFConfig config)
-        // [注意] 这里的 0.0f 是 metricArg，对应基类构造函数
         : GpuIndexIVF(provider, dims, metric, 0.0f, nlist, config),
           slab_manager_(nullptr),
           is_slab_initialized_(false),
           list_heads_(nullptr) {
-    // SIVF 依然需要一个 Coarse Quantizer (聚类中心索引)
-    // 我们在这里初始化它，但在 train() 中训练它
+    // [关键修正 1] 强制标记为未训练，确保 index.train() 真正执行！
+    this->is_trained = false;
+
+    // 初始化 Quantizer (如果没有传进来的话)
     if (!this->quantizer) {
         this->quantizer =
                 new GpuIndexFlat(provider, dims, metric, config.flatConfig);
-        this->own_fields = true; // 让父类负责释放 quantizer
+        this->own_fields = true;
     }
 }
 
@@ -50,44 +55,38 @@ GpuIndexSIVF::~GpuIndexSIVF() {
     }
 }
 
-void GpuIndexSIVF::initSlabManager(size_t max_vectors, size_t slab_pool_size) {
-    FAISS_THROW_IF_NOT_MSG(
-            !is_slab_initialized_, "SlabManager already initialized");
+void GpuIndexSIVF::initSlabManager(size_t max_vectors, size_t pool_size) {
+    if (is_slab_initialized_)
+        return;
 
-    auto res = resources_.get();
-    int device = getCurrentDevice();
-    auto stream = res->getDefaultStream(device);
+    auto stream = resources_->getDefaultStream(getCurrentDevice());
 
-    slab_manager_ =
-            new SlabManager(res, device, max_vectors, slab_pool_size, this->d);
+    // 1. 初始化 SlabManager
+    slab_manager_ = new SlabManager(
+            resources_.get(),
+            getCurrentDevice(),
+            max_vectors,
+            pool_size,
+            this->d);
 
-    // [新增] 初始化 list_heads_，大小为 nlist，初始值为 -1
-    list_heads_ = new DeviceVector<int>(
-            res,
-            AllocInfo(AllocType::Other, device, MemorySpace::Device, stream));
+    // 2. 初始化 List Heads
+    if (list_heads_ == nullptr) {
+        list_heads_ = new DeviceVector<int>(
+                resources_.get(), makeDevAlloc(AllocType::Other, stream));
+    }
+
+    // 分配空间
     list_heads_->resize(this->nlist, stream);
 
-    // 将 list_heads_ 填满 -1 (SIVF_NULL_SLAB)
-    // 可以用 thrust::fill 或写个简单 kernel，Faiss 有工具吗？
-    // 我们可以简单地 copy 一个全 -1 的 host vector 过去，或者用 cudaMemset
-    // (按字节设为0xFF = -1)
-    cudaMemsetAsync(list_heads_->data(), -1, this->nlist * sizeof(int), stream);
+    // [检查这一段！]
+    // 必须是 cudaMemsetAsync，且 value 是 -1
+    CUDA_VERIFY(cudaMemsetAsync(
+            list_heads_->data(), -1, this->nlist * sizeof(int), stream));
 
     is_slab_initialized_ = true;
-}
 
-// ===========================================================
-// Public Overrides
-// ===========================================================
-
-void GpuIndexSIVF::train(idx_t n, const float* x) {
-    // 复用基类的 train 逻辑 (主要是训练 quantizer)
-    // SIVF 的 Slab 结构本身不需要训练
-    GpuIndexIVF::train(n, x);
-
-    // 显式标记为已训练
-    // 这一步是为了防止父类没有正确更新 is_trained 标志
-    this->is_trained = true;
+    // [DEBUG] 打印一句，证明初始化跑到了
+    printf("DEBUG: SlabManager initialized. List heads reset to -1.\n");
 }
 
 size_t GpuIndexSIVF::remove_ids(const faiss::IDSelector& sel) {
@@ -178,6 +177,34 @@ void GpuIndexSIVF::searchImpl_(
     // 调用 Quantizer
     quantizer->search(n, x, nprobe, coarse_dis.data(), coarse_ids.data());
 
+    // ================== [DEBUG START] ==================
+    // 1. 检查 Quantizer 是否为空
+    if (quantizer->ntotal == 0) {
+        printf("[ERROR] Quantizer is EMPTY! (ntotal=0). Did training fail?\n");
+    } else {
+        // printf("[DEBUG] Quantizer ntotal = %ld\n", quantizer->ntotal);
+    }
+
+    // 2. 检查粗搜结果是否全是 -1
+    std::vector<idx_t> host_ids(nprobe);
+    // 从 GPU 拷贝第 0 个 query 的结果到 CPU
+    cudaMemcpyAsync(
+            host_ids.data(),
+            coarse_ids.data(),
+            nprobe * sizeof(idx_t),
+            cudaMemcpyDeviceToHost,
+            stream);
+    cudaStreamSynchronize(stream); // 强制同步，确保读到数据
+
+    if (host_ids[0] == -1) {
+        printf("[ERROR] Coarse Quantizer returned -1! Printing first %d results:\n",
+               nprobe);
+        for (int i = 0; i < nprobe; ++i)
+            printf("%ld ", host_ids[i]);
+        printf("\n");
+    }
+    // ================== [DEBUG END] ====================
+
     // 4. Fine-grained Search (调用我们的 Kernel)
     // 去掉 const 限制，因为我们需要获取 DeviceView
     SlabManager* mutable_mgr = const_cast<SlabManager*>(slab_manager_);
@@ -219,6 +246,40 @@ void GpuIndexSIVF::reset() {
 void GpuIndexSIVF::updateQuantizer() {
     // 这是一个回调函数，当用户在 CPU 侧替换了 Quantizer 时会被调用
     // SIVF 暂时不需要特殊处理
+}
+
+void GpuIndexSIVF::train(idx_t n, const float* x) {
+    // 1. 尝试基类训练
+    GpuIndexIVF::train(n, x);
+
+    // 2. 检查是否训练成功
+    if (this->quantizer->ntotal == 0) {
+        printf("[SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...\n");
+
+        // === 优化版保底方案：使用 GPU 加速聚类 ===
+
+        // 1. 设置聚类参数
+        faiss::Clustering clus(this->d, this->nlist);
+        clus.verbose = true;
+        clus.niter = 20; // GPU 很快，可以多跑几轮保证质量
+
+        // 2. [关键] 直接把 GPU Quantizer 传进去！
+        // Faiss 会自动利用这个 GPU Index 加速 K-Means 的“分配”阶段
+        // 这里的 *this->quantizer 是 GpuIndexFlat，天生支持 GPU Search
+        this->quantizer->reset();
+        clus.train(n, x, *this->quantizer);
+
+        // 3. 将最终的 centroids 写入 Quantizer
+        // 注意：clus.train 会把中间结果存在 clus.centroids (CPU)
+        // 我们需要把最终结果再 add 一次进 GPU quantizer
+        this->quantizer->reset();
+        this->quantizer->add(this->nlist, clus.centroids.data());
+
+        this->is_trained = true;
+
+        printf("[SIVF::train] GPU K-Means complete. Quantizer populated with %ld centroids.\n",
+               this->quantizer->ntotal);
+    }
 }
 
 } // namespace gpu
