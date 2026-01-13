@@ -161,7 +161,7 @@ We define a Slab as the fundamental unit of storage. Each Slab has a fixed capac
     
     \item \textit{Metadata Header}: Contains control information for traversing and managing the slab, formally defined as a tuple $M_i$:
     \begin{equation}
-        M_i = \langle n_{next}, b_{valid}, c_{valid} \rangle
+        M_i = \langle n_{next}, b_{valid}, c_{valid} \rangle,
     \end{equation}
     where $n_{next}$ is the identifier of the subsequent slab in the logical linked list, allowing distinct physical blocks to form a coherent inverted list; $b_{valid}$ is a 32-bit integer serving as a validity bitmap, in which the $k$-th bit indicates the occupancy status of the $k$-th slot; and $c_{valid}$ represents the current count of valid vectors stored in $S_i$.
 \end{itemize}
@@ -176,7 +176,7 @@ The allocator manages a global \textit{Free List}, implemented as a pre-allocate
 \begin{itemize}
     \item \textit{Allocation}: A thread (or warp) requests a new Slab by atomically decrementing the global stack pointer $P_{top}$. The operation is modeled as:
     \begin{equation}
-        idx = \texttt{atomicSub}(P_{top}, 1) - 1
+        idx = \texttt{atomicSub}(P_{top}, 1) - 1,
     \end{equation}
     where $idx$ denotes the index in the free list array, and the allocator returns the Slab ID stored at $\text{FreeList}[idx]$.
     
@@ -188,7 +188,7 @@ Both operations achieve $O(1)$ time complexity and bypass the OS-level memory ma
 \subsubsection{Virtual Addressing via Address Table}
 To decouple the logical vector ID from its physical storage location, we introduce a global \textit{Address Table}. This table implements a mapping function $\mathcal{T}$ that translates a unique vector identifier $v_{id}$ to a physical coordinate tuple:
 \begin{equation}
-    \mathcal{T}(v_{id}) \rightarrow \langle s_{id}, o_{slot} \rangle
+    \mathcal{T}(v_{id}) \rightarrow \langle s_{id}, o_{slot} \rangle,
 \end{equation}
 where $s_{id}$ represents the physical Slab ID and $o_{slot}$ denotes the offset index within that slab (where $0 \le o_{slot} < C$). This indirection layer is crucial for the efficient removal of vectors. Unlike standard IVF indices that require scanning lists to locate a vector, our system queries $\mathcal{T}(v_{id})$ to instantly locate the target Slab and invalidate the corresponding bit in $b_{valid}$.
 
@@ -212,7 +212,7 @@ Data ingestion begins with the coarse quantization step, where incoming vectors 
 
 For a target list, threads access the current head slab and attempt to reserve a writing slot by atomically incrementing the slab's counter:
 \begin{equation}
-    \text{slot} = \text{atomicAdd}(\&\text{slab} \rightarrow \text{valid\_count}, 1)
+    \text{slot} = \text{atomicAdd}(\&\text{slab} \rightarrow \text{valid\_count}, 1).
 \end{equation}
 If the returned $\text{slot} < C$ (where $C=32$ is the slab capacity), the thread successfully claims a position. It then writes the vector payload directly into global memory and marks the corresponding bit in the \texttt{validity\_bitmap} using \texttt{atomicOr}. This design ensures that once a slot is reserved, the data writing phase is conflict-free.
 
@@ -222,7 +222,7 @@ When a slab becomes full ($\text{slot} \ge C$), the insertion kernel triggers a 
 
 To attach the new slab to the IVF list, we employ a Compare-And-Swap (CAS) loop to update the list head pointer safely:
 \begin{equation}
-    \text{atomicCAS}(\&\text{list\_head}, \text{old\_head}, \text{new\_slab})
+    \text{atomicCAS}(\&\text{list\_head}, \text{old\_head}, \text{new\_slab}).
 \end{equation}
 This mechanism guarantees data consistency even when multiple threads attempt to expand the same list simultaneously, which is critical for handling skewed data distributions where certain clusters receive heavy traffic.
 
@@ -242,6 +242,47 @@ The insertion logic inherently introduces branch divergence, as threads within a
 
 \paragraph{Intra-Slab Memory Coalescing.}
 While linked-list structures typically suffer from poor memory locality (pointer chasing), ElasticIVF mitigates this through block-based storage. Once a slot is reserved, the vector payload is written to global memory. Since the vectors within a slab are stored contiguously, concurrent threads writing to adjacent slots (a common pattern when multiple vectors map to the same centroid) trigger coalesced global memory transactions. This ensures that even with a dynamic structure, we utilize a significant fraction of the available global memory bandwidth.
+
+\subsection{High-Performance Search Kernel}
+\label{sec:methods_search_kernel}
+
+To bridge the performance gap between linked-slab traversal and contiguous memory access, we design a specialized search kernel optimized for the NVIDIA Ampere and Ada Lovelace architectures. The core challenge lies in the \textit{pointer-chasing} nature of SIVF, which inherently threatens the Single Instruction, Multiple Threads (SIMT) efficiency. We overcome this through a hardware-aware design.
+
+\subsubsection{Warp-Level Collaborative Search (WLCS)}
+Instead of the naive ``one-thread-per-query'' approach, which leads to severe branch divergence and serialized memory stalls, we implement a \textbf{Warp-Level Collaborative Search (WLCS)} strategy. 
+
+Each search query $q$ is assigned to a dedicated \textbf{Warp} $\mathcal{W}$ consisting of 32 threads $\{t_0, t_1, \dots, t_{31}\}$. This alignment matches our defined slab capacity $C_{slab} = 32$, ensuring that one warp can process exactly one slab in a single step. For a query vector $\mathbf{v}_q \in \mathbb{R}^d$ and a slab $S_i$, the distance computation is parallelized such that thread $t_j$ computes the distance for the $j$-th slot:
+\begin{equation}
+D(\mathbf{v}_q, S_i[j]) = \sum_{k=1}^{d} (v_{q,k} - S_{i,j,k})^2, \quad \text{where } (\text{bitmap}_i \gg j) \& 1 = 1.
+\end{equation}
+This strategy transforms the $O(C_{slab})$ serial bottleneck into a parallel operation with $O(1)$ temporal complexity relative to the slab capacity.
+
+\subsubsection{Hierarchical Top-$k$ Aggregation}
+Maintaining Top-$k$ results in a high-throughput GPU environment requires minimizing global memory contention. We utilize a two-tier aggregation scheme:
+
+\textbf{Thread-Local Register Heaps.} Each thread $t_j$ maintains a local priority queue $\mathcal{H}_j$ of size $k$ using register-backed storage. As the warp traverses the linked-slabs of a cluster, $t_j$ updates $\mathcal{H}_j$ only if the newly computed distance $d < \max(\mathcal{H}_j)$. 
+
+\textbf{Warp-Sync Reduction.} Once all slabs in a cluster are exhausted, we perform a parallel reduction using \texttt{\_\_shfl\_sync} instructions. The final Top-$k$ set $\mathcal{R}_q$ is derived by merging 32 local heaps within \textbf{Shared Memory} ($\mathcal{SM}$):
+\begin{equation}
+\mathcal{R}_q = \text{arg-min}_k \left( \bigcup_{j=0}^{31} \mathcal{H}_j \right).
+\end{equation}
+The required shared memory space is $32 \times k \times (\text{sizeof(float)} + \text{sizeof(long)})$, ensuring the entire reduction stays within the L1 cache for near-instantaneous execution.
+
+\subsubsection{Low-Level Hardware-Aware Optimizations}
+To push the performance to its theoretical limit, we employ several low-level CUDA optimizations:
+
+\paragraph{Active-Mask Slab Traversal} 
+We utilize \texttt{\_\_activemask()} intrinsic to track threads corresponding to valid slots. By applying \texttt{\_\_popc} (population count) and \texttt{\_\_ffs} (find first set) on \texttt{validity\_bitmap}, the kernel skips empty slots with zero branching overhead, maintaining 100\% warp occupancy even in sparsely populated slabs.
+    
+\paragraph{Register Tiling \& ILP} 
+The $L_2$ distance computation is manually unrolled and tiled into registers to maximize Instruction-Level Parallelism (ILP). For $d=128$, we leverage 4-way tiling:
+    \begin{equation}
+    \Delta_{ij} = \sum_{m=0}^{31} \text{fma}(v_{q,m} - S_{i,j,m}, v_{q,m} - S_{i,j,m}, \text{acc}).
+    \end{equation}
+    This ensures the query vector $\mathbf{v}_q$ resides in the register file throughout the probe, significantly reducing redundant L2 cache transactions.
+    
+\paragraph{Relaxed Consistency Memory Fences} 
+To support non-blocking insertions, we exploit the weak memory model. The Append kernel issues a \texttt{\_\_threadfence()} to ensure slab data is committed before the \texttt{atomicCAS} updates the \texttt{list\_head}. In the search kernel, a single \texttt{volatile} read of the pointer $P_{next}$ allows the GPU's Memory Copy Engine to prefetch metadata for $S_{i+1}$ while the CUDA Cores are simultaneously computing distances for $S_i$, effectively overlapping computation with memory latency.
 
 \subsection{Bitmap-based Lazy Eviction}
 \label{sec:bitmap_lazy_eviction}
@@ -278,6 +319,33 @@ We observe that ingestion throughput is sensitive to the number of clusters $n_{
 
 \textbf{Overall Speedup (Fig.~\ref{fig:add_perf}c).} 
 The heatmap confirms that ElasticIVF outperforms the baseline in every tested configuration. The speedup is robust, ranging from \textbf{1.5$\times$} to \textbf{2.8$\times$}. This performance gap highlights the efficiency of our non-blocking, slab-based ingestion pipeline, making it particularly well-suited for high-throughput streaming scenarios where the index must remain available for querying during updates.
+
+\subsection{SIVF Performance of Vector Search}
+\label{sec:eval_search_performance}
+
+In this section, we evaluate the query performance of ElasticIVF (SIVF) against the Vanilla Faiss GPU implementation. Theoretically, SIVF is expected to exhibit a slight degradation in search throughput compared to the baseline, as its linked-slab architecture sacrifices memory contiguity (and thus perfect memory coalescing) to enable highly efficient, fine-grained updates. Our objective is to verify that this structural overhead remains within a marginal range that does not compromise overall system utility. As summarized in Figure~\ref{fig:search_perf}, the results confirm that SIVF maintains competitive search efficiency, reaching up to \textbf{95\%} of the baseline performance in optimized configurations, demonstrating that the cost of supporting instant mutability is remarkably low.
+
+\begin{figure*}[t]
+    \centering
+    \includegraphics[width=\linewidth]{./figures/performance_search.pdf}
+    \caption{Performance evaluation of vector search. (a) \textbf{Search Scalability}: Both systems exhibit similar throughput degradation patterns as the database size grows from 100k to 500k. (b) \textbf{Search Granularity}: Finer clustering (higher $n_{list}$) improves QPS by reducing the search space per probe. (c) \textbf{Efficiency Ratio}: Heatmap showing SIVF's query throughput relative to Vanilla Faiss across different configurations.}
+    \label{fig:search_perf}
+\end{figure*}
+
+\textbf{Search Scalability (Fig.~\ref{fig:search_perf}a).} 
+As the database size increases from 100,000 to 500,000 vectors (with $n_{list}=4096$), SIVF throughput transitions from approximately \textbf{417k QPS} to \textbf{111k QPS}. The performance curve closely mirrors the baseline, confirming that our slab traversal logic maintains predictable scaling characteristics. Even at the 500k scale, SIVF provides sufficient throughput for high-concurrency production environments.
+
+\textbf{Impact of Granularity (Fig.~\ref{fig:search_perf}b).} 
+At the 500k scale, increasing $n_{list}$ from 1024 to 4096 significantly enhances SIVF performance from \textbf{71k} to \textbf{111k QPS}. This result is consistent with the principle that higher granularity reduces the average number of vectors per inverted list, thereby decreasing the total distance computations per probe. The absolute throughput remains robust across all common cluster settings.
+
+\textbf{Query Efficiency Analysis (Fig.~\ref{fig:search_perf}c).} 
+The efficiency ratio, i.e., $QPS_{SIVF} / QPS_{Vanilla}$, reveals the effectiveness of our warp-level optimization:
+\begin{itemize}
+    \item \textit{Near-Native Efficiency:} At 100k vectors and $n_{list}=16384$, SIVF achieves an efficiency ratio of \textbf{0.95$\times$}, nearly matching the performance of the contiguous-array-based baseline. This demonstrates that our warp-parallel search kernel effectively hides the latency associated with linked-slab traversal in high-granularity scenarios.
+    \item \textit{Impact of List Length:} As the database size increases and inverted lists grow longer, the ratio stabilizes between \textbf{0.41$\times$} and \textbf{0.67$\times$}. This expected overhead is primarily due to increased pointer chasing between slabs, which is the physical trade-off required to enable the index's dynamic mutability.
+\end{itemize}
+
+The experimental results indicate that SIVF delivers robust search performance that is highly competitive with static index structures. By maintaining up to 95\% of native GPU efficiency while providing lock-free dynamic updates, SIVF proves to be an ideal foundation for high-performance, frequently updated vector databases.
 
 \section{Conclusion}
 \label{sec:conclusion}
