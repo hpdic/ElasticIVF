@@ -1,5 +1,7 @@
 \documentclass[sigconf,nonacm]{acmart}
+\setlength{\marginparwidth}{2cm}
 
+\usepackage{lipsum}
 \usepackage{amsmath}
 \usepackage{mathtools}
 % \usepackage{amsthm}
@@ -64,9 +66,11 @@
 }
 
 \begin{abstract}
-
+Real world vector search applications increasingly operate on streaming data where timeliness is critical for tasks such as fraud detection and real time recommendation. Current GPU accelerated approximate nearest neighbor indices are primarily optimized for static workloads and exhibit a severe performance asymmetry between data insertion and eviction. Our benchmarks reveal that evicting vectors from a GPU resident index can be over seven times slower than insertion because existing libraries lack native support for in place GPU deletion. This gap necessitates expensive data roundtrips between the host and device memory. We propose SIVF, a new GPU indexing architecture designed specifically for high throughput streaming scenarios. SIVF introduces a slab-based memory management system to eliminate costly memory reallocation and uses a bitmap based lazy eviction strategy to enable lock free deletions. Furthermore, a GPU resident address translation table allows for constant time vector localization. Our implementation within the Faiss framework demonstrates that SIVF maintains competitive search efficiency while providing significantly faster ingestion and eviction. Experimental results on an NVIDIA RTX 6000 GPU show that SIVF achieves up to a 2.8x speedup in vector ingestion over standard baselines and maintains search throughput within ninety five percent of native efficiency in optimized configurations.
 \end{abstract}%%
 \maketitle
+
+% \lipsum
 
 \section{Introduction}
 
@@ -78,11 +82,12 @@ However, existing GPU-accelerated approximate nearest neighbors (ANN) indices ar
 To quantify the gap between insertion and eviction performance, we conducted benchmarks using both the Python (precompiled package through PyPI) and C++ (local compilation from source) interfaces of Faiss~\cite{johnson2019billion} on an NVIDIA RTX 6000 GPU with the SIFT1M dataset~\cite{jegou2011product} on the Chameleon testbed~\cite{keahey2020lessons}.
 As illustrated in Figure~\ref{fig:motivation}, we observe a severe performance asymmetry across both implementations. In the native C++ benchmark, while inserting a batch of 10,000 vectors takes only 28.6 ms due to efficient GPU parallelism, evicting the same number of vectors incurs a latency of 202.2 ms. This constitutes a $\sim$7.1 times slowdown, confirming that the bottleneck is fundamental to the index design rather than language binding overhead.
 
-\begin{figure}[h!]
+\begin{figure}[!h]
     \centering
-    \includegraphics[width=0.9\linewidth]{figures/motivation_bar_chart_comparison.pdf}
+    \includegraphics[width=0.8\linewidth]{figures/motivation_bar_chart_comparison.pdf}
     \caption{The High Cost of Deletion compared across Python and C++ interfaces. Even using the native C++ implementation, while GPU parallelism accelerates vector insertion ($\sim$28.6 ms), the lack of in-place GPU eviction support causes deletion latency to surge to $\sim$202.2 ms. This represents a $\sim$7.1x slowdown, confirming this asymmetry as the primary bottleneck in streaming scenarios regardless of the language binding.}
     \label{fig:motivation}
+    \Description{Bar chart comparing insertion and deletion latencies using Python and C++ interfaces of Faiss. Insertion is significantly faster than deletion in both cases, with C++ showing a 7.1x slowdown for deletion compared to insertion.}
 \end{figure}
 
 % This bottleneck stems from a fundamental architectural limitation in current library designs. Since standard IVF (Inverted File) indices lack support for efficient in-place deletion directly on the GPU, evicting data necessitates a costly CPU-GPU roundtrip, even when using C++. The relevant index structure must be copied back to the host, compacted on the CPU, and re-uploaded to the device. This heavy I/O and CPU burden prevents the system from fully utilizing GPU compute throughput and limits the maximum sustainable ingestion rate.
@@ -305,6 +310,7 @@ The results are summarized in Figure~\ref{fig:add_perf}. ElasticIVF demonstrates
     \includegraphics[width=\linewidth]{./figures/performance_add.pdf}
     \caption{Performance evaluation of vector ingestion. (a) \textbf{Scalability}: Throughput remains stable around 4.0--4.3 million vec/s as dataset size increases ($n_{list}=4096$). (b) \textbf{Granularity Impact}: While both systems slow down at finer granularities ($n_{list}=16384$), ElasticIVF remains significantly faster than the baseline. (c) \textbf{Speedup}: A heatmap showing the relative speedup of ElasticIVF over Vanilla Faiss, consistently ranging between 1.5$\times$ and 2.8$\times$.}
     \label{fig:add_perf}
+    \Description{Three performance graphs comparing ElasticIVF and Vanilla Faiss: scalability with dataset size, impact of clustering granularity on ingestion throughput, and speedup heatmap.}
 \end{figure*}
 
 \textbf{Scalability and Stability (Fig.~\ref{fig:add_perf}a).} 
@@ -329,6 +335,7 @@ In this section, we evaluate the query performance of ElasticIVF (SIVF) against 
     \centering
     \includegraphics[width=\linewidth]{./figures/performance_search.pdf}
     \caption{Performance evaluation of vector search. (a) \textbf{Search Scalability}: Both systems exhibit similar throughput degradation patterns as the database size grows from 100k to 500k. (b) \textbf{Search Granularity}: Finer clustering (higher $n_{list}$) improves QPS by reducing the search space per probe. (c) \textbf{Efficiency Ratio}: Heatmap showing SIVF's query throughput relative to Vanilla Faiss across different configurations.}
+    \Description{Three performance graphs comparing SIVF and Vanilla Faiss: search scalability with database size, impact of clustering granularity on QPS, and efficiency ratio heatmap.}
     \label{fig:search_perf}
 \end{figure*}
 
