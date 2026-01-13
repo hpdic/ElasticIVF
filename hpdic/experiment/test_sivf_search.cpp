@@ -1,15 +1,14 @@
-/**
- * faiss/hpdic/experiment/test_sivf_search.cpp
- * Benchmark: ElasticIVF Search vs Vanilla Faiss IVFFlat
- */
-
+#include <omp.h>
 #include <sys/time.h>
 #include <algorithm>
-#include <iomanip>
+#include <cstdio>
+#include <cstdlib>
 #include <iostream>
-#include <random>
 #include <vector>
 
+// Faiss headers
+#include <faiss/IndexFlat.h>
+#include <faiss/IndexIVFFlat.h>
 #include <faiss/gpu/GpuIndexIVFFlat.h>
 #include <faiss/gpu/GpuIndexSIVF.h>
 #include <faiss/gpu/StandardGpuResources.h>
@@ -18,169 +17,169 @@
 using namespace faiss;
 using namespace faiss::gpu;
 
-double elapsed() {
-    struct timeval tv;
-    gettimeofday(&tv, nullptr);
-    return tv.tv_sec + tv.tv_usec * 1e-6;
-}
-
-void generate_data(size_t n, int d, std::vector<float>& data) {
-    for (size_t i = 0; i < n * d; ++i) {
-        data[i] = (float)drand48();
-    }
+// 简单的随机数生成
+float rand_float() {
+    return (float)drand48();
 }
 
 int main() {
     // ==========================================
-    // 配置
+    // 1. 参数配置区
     // ==========================================
+    std::vector<int> nb_list = {100000, 200000, 500000};
+    std::vector<int> nlist_list = {1024, 4096, 16384};
+    std::vector<int> nprobe_list = {10};
+
     int d = 128;
-    int nlist = 1024;
-    size_t nb = 100000; // 数据库大小 (10万)
-    size_t nq = 1000;   // 查询数量
-    int k = 10;         // Top-K
-    int nprobe = 10;    // 探测桶数 (通常 nlist 的 1%~5%)
+    int nq = 1000;
+    int k = 10;
 
-    // SIVF 显存池配置
-    size_t max_vectors = nb * 2;
-    size_t slab_pool_size = nb * 2; // 200,000 Slabs (huge pool)
-
-    printf("==================================================\n");
-    printf(" BENCHMARK: Search Verify (SIVF vs Vanilla)\n");
-    printf(" d=%d, nlist=%d, nb=%ld, nq=%ld, k=%d, nprobe=%d\n",
-           d,
-           nlist,
-           nb,
-           nq,
-           k,
-           nprobe);
-    printf("==================================================\n\n");
+    printf("| %-10s | %-8s | %-6s | %-10s | %-10s | %-10s | %-8s |\n",
+           "NB",
+           "nlist",
+           "nprobe",
+           "System",
+           "Add(s)",
+           "SearchQPS",
+           "Recall");
+    printf("|------------|----------|--------|------------|------------|------------|----------|\n");
 
     StandardGpuResources res;
-    res.setTempMemory(512 * 1024 * 1024);
+    res.noTempMemory();
 
-    GpuIndexIVFConfig config;
-    config.device = 0;
+    // [修正] SIVF 使用基础 Config
+    GpuIndexIVFConfig sivf_config;
+    sivf_config.device = 0;
 
-    // 准备数据
-    // 我们用数据库的前 nq 个向量作为 query，这样 Top-1 距离应该是 0
-    // (self-search)
-    std::vector<float> xb(nb * d);
-    generate_data(nb, d, xb);
+    for (int nb : nb_list) {
+        std::vector<float> xb(nb * d);
+        std::vector<float> xq(nq * d);
+        std::vector<long> ids(nb);
 
-    // Query 就是 Database 的前部分
-    std::vector<float> xq(nq * d);
-    memcpy(xq.data(), xb.data(), nq * d * sizeof(float));
+        srand48(42);
+        for (long i = 0; i < nb; ++i) {
+            ids[i] = i;
+            for (int j = 0; j < d; ++j)
+                xb[i * d + j] = rand_float();
+        }
 
-    std::vector<idx_t> ids(nb);
-    for (size_t i = 0; i < nb; ++i)
-        ids[i] = i;
-
-    // 结果容器
-    std::vector<float> dists(nq * k);
-    std::vector<idx_t> labels(nq * k);
-
-    // ==========================================
-    // Round 1: ElasticIVF (SIVF)
-    // ==========================================
-    {
-        printf("[ElasticIVF] Setting up...\n");
-        GpuIndexSIVF index(&res, d, nlist, METRIC_L2, config);
-        index.initSlabManager(max_vectors, slab_pool_size);
-        index.nprobe = nprobe; // 设置查询参数
-
-        // [DEBUG] 打印训练前状态
-        // printf("DEBUG: Before train, is_trained = %s\n",
-        //        index.is_trained ? "TRUE" : "FALSE");
-
-        printf("[ElasticIVF] Training & Adding...\n");
-        // 为了省事，直接用 xb 训练
-        index.train(std::min(nb, (size_t)65536), xb.data());
-
-        // [DEBUG] 打印训练后状态
-        // printf("DEBUG: After train, is_trained = %s\n",
-        //        index.is_trained ? "TRUE" : "FALSE");
-        // printf("DEBUG: Quantizer ntotal = %ld (Should be %d)\n",
-        //        index.quantizer->ntotal,
-        //        nlist);
-
-        index.add_with_ids(nb, xb.data(), ids.data());
-
-        printf("[ElasticIVF] Searching...\n");
-        cudaDeviceSynchronize();
-        double t0 = elapsed();
-
-        index.search(nq, xq.data(), k, dists.data(), labels.data());
-
-        cudaDeviceSynchronize();
-        double t1 = elapsed();
-
-        printf("-> Search Time: %.4fs | QPS: %.2f\n",
-               (t1 - t0),
-               nq / (t1 - t0));
-
-        // 验证正确性
-        int match_count = 0;
         for (int i = 0; i < nq; ++i) {
-            // Self-search, distance should be very close to 0
-            if (dists[i * k] < 1e-4) {
-                match_count++;
+            int target = lrand48() % nb;
+            for (int j = 0; j < d; ++j)
+                xq[i * d + j] = xb[target * d + j];
+        }
+
+        for (int nlist : nlist_list) {
+            for (int nprobe : nprobe_list) {
+                // -------------------------------------------------
+                // Round A: ElasticIVF (SIVF)
+                // -------------------------------------------------
+                {
+                    size_t max_vectors = nb * 2L;
+                    size_t slab_pool_size = nb * 2L;
+
+                    // SIVF 构造函数接受 GpuIndexIVFConfig
+                    GpuIndexSIVF sivf_index(
+                            &res, d, nlist, METRIC_L2, sivf_config);
+                    sivf_index.initSlabManager(max_vectors, slab_pool_size);
+                    sivf_index.nprobe = nprobe;
+
+                    sivf_index.train(std::min((long)nb, 65536L), xb.data());
+
+                    double t0 = omp_get_wtime();
+                    sivf_index.add_with_ids(nb, xb.data(), ids.data());
+                    double t_add = omp_get_wtime() - t0;
+
+                    // Warmup
+                    {
+                        std::vector<float> D(nq * k);
+                        std::vector<long> I(nq * k);
+                        sivf_index.search(nq, xq.data(), k, D.data(), I.data());
+                    }
+
+                    std::vector<float> D(nq * k);
+                    std::vector<long> I(nq * k);
+
+                    t0 = omp_get_wtime();
+                    sivf_index.search(nq, xq.data(), k, D.data(), I.data());
+                    double t_search = omp_get_wtime() - t0;
+                    double qps = nq / t_search;
+
+                    int correct = 0;
+                    for (int i = 0; i < nq; ++i)
+                        if (D[i * k] < 1e-4)
+                            correct++;
+                    float recall = 100.0f * correct / nq;
+
+                    printf("| %-10d | %-8d | %-6d | %-10s | %-10.4f | %-10.0f | %-6.1f%% |\n",
+                           nb,
+                           nlist,
+                           nprobe,
+                           "**SIVF**",
+                           t_add,
+                           qps,
+                           recall);
+                }
+
+                // -------------------------------------------------
+                // Round B: Vanilla Faiss (Baseline)
+                // -------------------------------------------------
+                {
+                    // 1. CPU Train
+                    IndexFlatL2 cpu_quantizer(d);
+                    IndexIVFFlat cpu_index(&cpu_quantizer, d, nlist, METRIC_L2);
+                    cpu_index.train(std::min((long)nb, 65536L), xb.data());
+
+                    // [修正] 这里必须使用 GpuIndexIVFFlatConfig
+                    GpuIndexIVFFlatConfig flat_config;
+                    flat_config.device = 0;
+
+                    // 2. GPU Index Construction
+                    GpuIndexIVFFlat gpu_index(
+                            &res, d, nlist, METRIC_L2, flat_config);
+                    gpu_index.copyFrom(&cpu_index);
+
+                    // 3. Set Params
+                    gpu_index.nprobe = nprobe;
+
+                    double t0 = omp_get_wtime();
+                    gpu_index.add_with_ids(nb, xb.data(), ids.data());
+                    double t_add = omp_get_wtime() - t0;
+
+                    {
+                        std::vector<float> D(nq * k);
+                        std::vector<long> I(nq * k);
+                        gpu_index.search(nq, xq.data(), k, D.data(), I.data());
+                    }
+
+                    std::vector<float> D(nq * k);
+                    std::vector<long> I(nq * k);
+
+                    t0 = omp_get_wtime();
+                    gpu_index.search(nq, xq.data(), k, D.data(), I.data());
+                    double t_search = omp_get_wtime() - t0;
+                    double qps = nq / t_search;
+
+                    int correct = 0;
+                    for (int i = 0; i < nq; ++i)
+                        if (D[i * k] < 1e-4)
+                            correct++;
+                    float recall = 100.0f * correct / nq;
+
+                    printf("| %-10s | %-8s | %-6s | %-10s | %-10.4f | %-10.0f | %-6.1f%% |\n",
+                           "\"",
+                           "\"",
+                           "\"",
+                           "Vanilla",
+                           t_add,
+                           qps,
+                           recall);
+
+                } // gpu_index 自动析构
+
+                fflush(stdout);
             }
         }
-        printf("-> Accuracy Check (Recall@1 with Dist~0): %d / %ld (%.2f%%)\n\n",
-               match_count,
-               nq,
-               100.0 * match_count / nq);
-
-        // 打印前几个结果看看
-        printf("   Top-3 results for Query 0:\n");
-        for (int j = 0; j < 3; ++j) {
-            printf("   Rank %d: ID=%ld, Dist=%.5f\n", j, labels[j], dists[j]);
-        }
-        printf("\n");
     }
-
-    // ==========================================
-    // Round 2: Vanilla Faiss
-    // ==========================================
-    {
-        printf("[Vanilla Faiss] Setting up...\n");
-        GpuIndexIVFFlatConfig flatConfig;
-        flatConfig.device = 0;
-        faiss::gpu::GpuIndexIVFFlat index(
-                &res, d, nlist, METRIC_L2, flatConfig);
-        index.nprobe = nprobe;
-
-        printf("[Vanilla Faiss] Training & Adding...\n");
-        index.train(std::min(nb, (size_t)65536), xb.data());
-
-        index.add_with_ids(nb, xb.data(), ids.data());
-
-        printf("[Vanilla Faiss] Searching...\n");
-        cudaDeviceSynchronize();
-        double t0 = elapsed();
-
-        index.search(nq, xq.data(), k, dists.data(), labels.data());
-
-        cudaDeviceSynchronize();
-        double t1 = elapsed();
-
-        printf("-> Search Time: %.4fs | QPS: %.2f\n",
-               (t1 - t0),
-               nq / (t1 - t0));
-
-        // 验证
-        int match_count = 0;
-        for (int i = 0; i < nq; ++i) {
-            if (dists[i * k] < 1e-4)
-                match_count++;
-        }
-        printf("-> Accuracy Check: %d / %ld (%.2f%%)\n",
-               match_count,
-               nq,
-               100.0 * match_count / nq);
-        printf("\n");
-    }
-
     return 0;
 }
