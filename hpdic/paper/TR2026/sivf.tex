@@ -331,72 +331,75 @@ Our implementation of SIVF is built upon the Faiss library~\cite{douze2024faiss}
 \subsection{SIVF Performance of Adding Vectors}
 \label{sec:eval_add_performance}
 
-We evaluate the ingestion throughput of ElasticIVF against the baseline method, the standard Faiss GPU IVFFlat implementation. The experiments are conducted on an NVIDIA RTX 6000 Ada Generation GPU. We measure the insertion throughput (vectors per second) while varying two key parameters: the database size ($N_B$) from 1M to 10M vectors, and the number of clusters ($n_{list}$) from 1024 to 16384.
+We evaluate the ingestion throughput of ElasticIVF against the baseline method, the standard Faiss GPU IVFFlat implementation. The experiments are conducted on an NVIDIA RTX 6000 Ada Generation GPU. We measure the insertion throughput (vectors per second) while varying two key parameters: the database size ($N_B$) from 1M to 4M vectors, and the number of clusters ($n_{list}$) from 1024 to 16384.
 
-The results are summarized in Figure~\ref{fig:add_perf}. ElasticIVF demonstrates consistent performance advantages across all configurations, achieving up to \textbf{2.8$\times$ speedup} over the baseline.
+The results are summarized in Figure~\ref{fig:add_perf}. ElasticIVF demonstrates consistent performance advantages across all configurations, achieving up to a \textbf{2.88$\times$ speedup} over the baseline.
 
 \begin{figure*}[t]
     \centering
+    % Ensure the path matches your saved figure location
     \includegraphics[width=\linewidth]{./figures/performance_add.pdf}
-    \caption{Performance evaluation of vector ingestion. (a) \textbf{Scalability}: Throughput remains stable around 4.0--4.3 million vec/s as dataset size increases ($n_{list}=4096$). (b) \textbf{Granularity Impact}: While both systems slow down at finer granularities ($n_{list}=16384$), ElasticIVF remains significantly faster than the baseline. (c) \textbf{Speedup}: A heatmap showing the relative speedup of ElasticIVF over Vanilla Faiss, consistently ranging between 1.5$\times$ and 2.8$\times$.}
+    \caption{Performance evaluation of vector ingestion. (a) \textbf{Scalability}: Throughput remains remarkably stable around 4.2 million vec/s as dataset size increases from 1M to 4M ($n_{list}=4096$), indicating effective handling of memory fragmentation. (b) \textbf{Granularity Impact}: While finer clustering granularities ($n_{list}=16384$) introduce scattered write patterns, ElasticIVF maintains a 2.1$\times$--2.5$\times$ speedup over the baseline. (c) \textbf{Speedup}: A heatmap showing the relative speedup of ElasticIVF over Vanilla Faiss, consistently ranging between 1.8$\times$ and 2.9$\times$.}
     \label{fig:add_perf}
     \Description{Three performance graphs comparing ElasticIVF and Vanilla Faiss: scalability with dataset size, impact of clustering granularity on ingestion throughput, and speedup heatmap.}
 \end{figure*}
 
 \textbf{Scalability and Stability (Fig.~\ref{fig:add_perf}a).} 
-As the database size grows from 1 million to 10 million vectors (with $n_{list}=4096$), ElasticIVF maintains a robust throughput of approximately \textbf{4.0 to 4.3 million vectors/sec}. This verifies the zero-allocation design of our \texttt{SlabManager}: since memory chunks are pre-allocated and managed via lock-free lists, the insertion cost remains $O(1)$ and effectively decoupled from the current index occupancy. The baseline, while relatively stable, operates at a lower throughput tier ($\approx$1.7M vec/s).
+As the database size grows from 1 million to 4 million vectors (with $n_{list}=4096$), ElasticIVF maintains a robust throughput of approximately \textbf{4.2 million vectors/sec}. This stability verifies the efficiency of our adaptive \texttt{SlabManager}: despite the increasing memory footprint, the lock-free append mechanism ensures that insertion cost remains $O(1)$ and effectively decoupled from the current index occupancy. In contrast, the baseline operates at a significantly lower tier ($\approx$1.7M vec/s) due to contiguous memory maintenance overheads.
 
 \textbf{Impact of Clustering Granularity (Fig.~\ref{fig:add_perf}b).} 
 We observe that ingestion throughput is sensitive to the number of clusters $n_{list}$:
 \begin{itemize}
-    \item \textit{Peak Performance at Low $n_{list}$:} ElasticIVF achieves its highest throughput ($\approx$5.8M vec/s) at $n_{list}=1024$. In this regime, the memory write patterns are more localized, reducing TLB misses and maximizing the efficiency of our append kernels. Here, ElasticIVF is \textbf{2.8$\times$} faster than the baseline ($\approx$2.1M vec/s).
-    \item \textit{Degradation at High $n_{list}$:} As $n_{list}$ increases to 16384, the insertion pattern becomes highly scattered across thousands of memory slabs. Consequently, ElasticIVF throughput decreases to $\approx$1.4M vec/s. However, the baseline suffers more severely from this fragmentation, dropping to $<$0.7M vec/s. ElasticIVF maintains a \textbf{2.1$\times$} speedup even in this challenging high-granularity scenario, demonstrating the resilience of the linked-slab architecture compared to the baseline's array resizing overhead.
+    \item \textit{Peak Performance at Low $n_{list}$:} ElasticIVF achieves its highest throughput ($\approx$ \textbf{6.1M vec/s}) at $n_{list}=1024$ with 2M vectors. In this regime, the memory write patterns are more localized, reducing cache misses and maximizing the efficiency of our append kernels. Here, ElasticIVF is \textbf{2.88$\times$} faster than the baseline ($\approx$2.1M vec/s).
+    \item \textit{Degradation at High $n_{list}$:} As $n_{list}$ increases to 16384, the insertion pattern becomes highly scattered across thousands of memory slabs. Consequently, throughput for both systems decreases. However, the baseline suffers more severely from this fragmentation. ElasticIVF maintains a throughput of $\approx$1.3M--1.6M vec/s, achieving a \textbf{2.0$\times$ to 2.4$\times$} speedup even in this challenging high-granularity scenario. This demonstrates the resilience of the linked-slab architecture compared to the baseline's array resizing overhead.
 \end{itemize}
 
 \textbf{Overall Speedup (Fig.~\ref{fig:add_perf}c).} 
-The heatmap confirms that ElasticIVF outperforms the baseline in every tested configuration. The speedup is robust, ranging from \textbf{1.5$\times$} to \textbf{2.8$\times$}. This performance gap highlights the efficiency of our non-blocking, slab-based ingestion pipeline, making it particularly well-suited for high-throughput streaming scenarios where the index must remain available for querying during updates.
+The heatmap confirms that ElasticIVF outperforms the baseline in every tested configuration. The speedup is robust, typically ranging from \textbf{2.4$\times$} to \textbf{2.9$\times$} for most configurations. Even under the highest load (4M vectors with $n_{list}=1024$), where contention for slab heads is maximized, ElasticIVF maintains a 1.79$\times$ advantage. This performance gap highlights the efficiency of our non-blocking, slab-based ingestion pipeline, making it particularly well-suited for high-throughput streaming scenarios.
 
 \subsection{SIVF Performance of Vector Search}
 \label{sec:eval_search_performance}
 
-In this section, we evaluate the query performance of ElasticIVF (SIVF) against the Vanilla Faiss GPU implementation. Theoretically, SIVF is expected to exhibit a slight degradation in search throughput compared to the baseline, as its linked-slab architecture sacrifices memory contiguity (and thus perfect memory coalescing) to enable highly efficient, fine-grained updates. Our objective is to verify that this structural overhead remains within a marginal range that does not compromise overall system utility. As summarized in Figure~\ref{fig:search_perf}, the results confirm that SIVF maintains competitive search efficiency, reaching up to \textbf{95\%} of the baseline performance in optimized configurations, demonstrating that the cost of supporting instant mutability is remarkably low.
+In this section, we evaluate the query performance of ElasticIVF (SIVF) against the Vanilla Faiss GPU implementation. Theoretically, SIVF is expected to exhibit a slight degradation in search throughput compared to the baseline, as its linked-slab architecture sacrifices memory contiguity (and thus perfect memory coalescing) to enable highly efficient, fine-grained updates. Our objective is to verify that this structural overhead remains within a marginal range that does not compromise overall system utility. As summarized in Figure~\ref{fig:search_perf}, the results confirm that SIVF maintains competitive search efficiency, reaching up to \textbf{91\%} of the baseline performance in optimized configurations, demonstrating that the cost of supporting instant mutability is remarkably low.
 
 \begin{figure*}[t]
     \centering
+    % Ensure this matches your saved python plot filename
     \includegraphics[width=\linewidth]{./figures/performance_search.pdf}
-    \caption{Performance evaluation of vector search. (a) \textbf{Search Scalability}: Both systems exhibit similar throughput degradation patterns as the database size grows from 100k to 500k. (b) \textbf{Search Granularity}: Finer clustering (higher $n_{list}$) improves QPS by reducing the search space per probe. (c) \textbf{Efficiency Ratio}: Heatmap showing SIVF's query throughput relative to Vanilla Faiss across different configurations.}
+    \caption{Performance evaluation of vector search. (a) \textbf{Search Scalability}: Both systems exhibit similar throughput degradation patterns as the database size grows from 100k to 500k ($n_{list}=4096$). (b) \textbf{Search Granularity}: Finer clustering improves QPS by reducing the search space per probe; SIVF peaks at $\approx$118k QPS with $n_{list}=4096$ (500k vectors). (c) \textbf{Efficiency Ratio}: Heatmap showing SIVF's query throughput relative to Vanilla Faiss, with peak efficiency reaching 0.91$\times$.}
     \Description{Three performance graphs comparing SIVF and Vanilla Faiss: search scalability with database size, impact of clustering granularity on QPS, and efficiency ratio heatmap.}
     \label{fig:search_perf}
 \end{figure*}
 
 \textbf{Search Scalability (Fig.~\ref{fig:search_perf}a).} 
-As the database size increases from 100,000 to 500,000 vectors (with $n_{list}=4096$), SIVF throughput transitions from approximately \textbf{417k QPS} to \textbf{111k QPS}. The performance curve closely mirrors the baseline, confirming that our slab traversal logic maintains predictable scaling characteristics. Even at the 500k scale, SIVF provides sufficient throughput for high-concurrency production environments.
+As the database size increases from 100,000 to 500,000 vectors (with $n_{list}=4096$), SIVF throughput transitions from approximately \textbf{383k QPS} to \textbf{118k QPS}. The performance curve closely mirrors the baseline, confirming that our slab traversal logic maintains predictable scaling characteristics. Even at the 500k scale, SIVF provides sufficient throughput for high-concurrency production environments.
 
 \textbf{Impact of Granularity (Fig.~\ref{fig:search_perf}b).} 
-At the 500k scale, increasing $n_{list}$ from 1024 to 4096 significantly enhances SIVF performance from \textbf{71k} to \textbf{111k QPS}. This result is consistent with the principle that higher granularity reduces the average number of vectors per inverted list, thereby decreasing the total distance computations per probe. The absolute throughput remains robust across all common cluster settings.
+At the 500k scale, increasing $n_{list}$ from 1024 to 4096 significantly enhances SIVF performance from \textbf{70k} to \textbf{118k QPS}. This result is consistent with the principle that higher granularity reduces the average number of vectors per inverted list, thereby decreasing the total distance computations per probe. The absolute throughput remains robust across all common cluster settings.
 
 \textbf{Query Efficiency Analysis (Fig.~\ref{fig:search_perf}c).} 
 The efficiency ratio, i.e., $QPS_{SIVF} / QPS_{Vanilla}$, reveals the effectiveness of our warp-level optimization:
 \begin{itemize}
-    \item \textit{Near-Native Efficiency:} At 100k vectors and $n_{list}=16384$, SIVF achieves an efficiency ratio of \textbf{0.95$\times$}, nearly matching the performance of the contiguous-array-based baseline. This demonstrates that our warp-parallel search kernel effectively hides the latency associated with linked-slab traversal in high-granularity scenarios.
-    \item \textit{Impact of List Length:} As the database size increases and inverted lists grow longer, the ratio stabilizes between \textbf{0.41$\times$} and \textbf{0.67$\times$}. This expected overhead is primarily due to increased pointer chasing between slabs, which is the physical trade-off required to enable the index's dynamic mutability.
+    \item \textit{Near-Native Efficiency:} At 100k vectors and $n_{list}=16384$, SIVF achieves an efficiency ratio of \textbf{0.91$\times$} (295k vs. 322k QPS), nearly matching the performance of the contiguous-array-based baseline. This demonstrates that our warp-parallel search kernel effectively hides the latency associated with linked-slab traversal in sparse, high-granularity scenarios where lists are short.
+    \item \textit{Impact of List Length:} As the database size increases and inverted lists grow longer (e.g., at 500k vectors), the ratio stabilizes between \textbf{0.40$\times$} and \textbf{0.68$\times$}. This expected overhead is primarily due to increased pointer chasing between slabs, which is the physical trade-off required to enable the index's dynamic mutability.
 \end{itemize}
 
-The experimental results indicate that SIVF delivers robust search performance that is highly competitive with static index structures. By maintaining up to 95\% of native GPU efficiency while providing lock-free dynamic updates, SIVF proves to be an ideal foundation for high-performance, frequently updated vector databases.
+The experimental results indicate that SIVF delivers robust search performance that is highly competitive with static index structures. By maintaining up to 91\% of native GPU efficiency while providing lock-free dynamic updates, SIVF proves to be an ideal foundation for high-performance, frequently updated vector databases.
 
 \subsection{SIVF Performance of Vector Deletion}
 \label{sec:eval_deletion_performance}
 
-We evaluate the efficiency of the vector deletion mechanism in SIVF by comparing it against the standard Faiss IVF baseline. The experiment measures the latency and throughput when removing a batch of 10,000 vectors from a populated index of 1 million 128-dimensional vectors.
+We evaluate the efficiency of the vector deletion mechanism in ElasticIVF (SIVF) by comparing it against the standard Faiss GPU IVF baseline. The experiment measures latency and throughput when removing a batch of 10,000 vectors from a populated index of 1 million 128-dimensional vectors.
 
-Figure~\ref{fig:deletion_perf} illustrates the performance comparison between the two methods. The results indicate that the baseline Faiss implementation incurs a deletion latency of approximately 202.20 ms. In contrast, SIVF completes the same batch deletion operation in just 0.69 ms. This represents a speedup of 295.1x. Correspondingly, the deletion throughput increases from $4.9 \times 10^4$ vectors per second in the baseline to $1.5 \times 10^7$ vectors per second in SIVF.
+Figure~\ref{fig:deletion_perf} illustrates the performance comparison between the two methods. The results indicate that the baseline Faiss implementation incurs a substantial deletion latency of approximately \textbf{202.20 ms}. In stark contrast, SIVF completes the same batch deletion operation in an average of \textbf{0.68 ms}. This represents a massive speedup of \textbf{298.5$\times$}. Correspondingly, deletion throughput surges from $4.9 \times 10^4$ vectors per second in the baseline to nearly \textbf{$1.47 \times 10^7$ vectors per second} in SIVF.
 
-The substantial performance gain is attributed to the architectural differences in handling deletions. The baseline approach typically requires scanning inverted lists or performing memory compaction to maintain data contiguity, which involves expensive memory movement and synchronization overhead on the GPU. SIVF leverages its GPU-resident Address Translation Table to perform logical deletions. By mapping user IDs directly to physical slots and toggling the corresponding bit in the validity bitmap, SIVF achieves $O(1)$ complexity for deletion operations. This approach effectively eliminates the overhead of physical memory reorganization and enables real-time updates for high-throughput data streams.
+This transformative performance gain is attributed to the architectural shift in handling deletions. The baseline approach enforces contiguous memory layouts, necessitating expensive $O(N)$ memory compaction (e.g., \texttt{memmove}) to fill gaps left by deleted vectors. SIVF, however, leverages its GPU-resident Address Translation Table (ATT) to perform \textit{logical deletions}. By mapping user IDs directly to physical slots and atomically toggling the corresponding bit in the validity bitmap, SIVF achieves \textbf{$O(1)$} complexity. This mechanism effectively eliminates the overhead of physical memory reorganization, enabling ultra-low-latency updates essential for real-time streaming applications.
 
 \begin{figure}[t]
     \centering
+    % Ensure this matches the filename from the python script
     \includegraphics[width=0.95\linewidth]{figures/performance_delete.pdf}
-    \caption{Performance comparison of vector deletion between Faiss IVF (Baseline) and SIVF. (a) shows the deletion latency in milliseconds on a log scale, where SIVF achieves a 295.1x speedup. (b) shows the deletion throughput in vectors per second on a log scale.}
+    \caption{Performance comparison of vector deletion between Faiss IVF (Baseline) and SIVF. (a) Deletion latency (log scale), where SIVF achieves a 298.5$\times$ reduction compared to the baseline. (b) Deletion throughput (log scale), demonstrating SIVF's capacity to sustain over 14 million deletions per second.}
     \label{fig:deletion_perf}
     \Description{Two bar graphs comparing deletion latency and throughput between Faiss IVF and SIVF, highlighting the significant speedup achieved by SIVF.}
 \end{figure}
