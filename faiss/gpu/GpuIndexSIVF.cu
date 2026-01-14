@@ -89,12 +89,48 @@ void GpuIndexSIVF::initSlabManager(size_t max_vectors, size_t pool_size) {
     // printf("DEBUG: SlabManager initialized. List heads reset to -1.\n");
 }
 
+// 声明外部定义的启动函数
+void run_sivf_deletion(
+        SlabManager* slab_manager,
+        GpuResources* res,
+        cudaStream_t stream,
+        const std::vector<idx_t>& ids,
+        int* h_count_out);
+
 size_t GpuIndexSIVF::remove_ids(const faiss::IDSelector& sel) {
     FAISS_THROW_IF_NOT_MSG(is_slab_initialized_, "SIVF not initialized");
 
-    // TODO: 暂时留空，稍后我们来填这个核心逻辑
-    // 这里的返回值应该是被删除的向量数量
-    return 0;
+    const faiss::IDSelectorBatch* sel_batch =
+            dynamic_cast<const faiss::IDSelectorBatch*>(&sel);
+
+    std::vector<idx_t> ids_to_remove;
+
+    if (sel_batch) {
+        size_t n = sel_batch->set.size();
+        ids_to_remove.reserve(n);
+        for (auto id : sel_batch->set) {
+            ids_to_remove.push_back(id);
+        }
+    } else {
+        // 简单处理：对于非 Batch Selector，暂不支持或抛出异常
+        FAISS_THROW_MSG(
+                "SIVF remove_ids currently ONLY supports IDSelectorBatch");
+    }
+
+    int num_removed = 0;
+    auto stream = resources_->getDefaultStream(config_.device);
+
+    // 调用我们在 SIVFDeletion.cu 里写好的逻辑
+    run_sivf_deletion(
+            slab_manager_,
+            resources_.get(),
+            stream,
+            ids_to_remove,
+            &num_removed);
+
+    cudaStreamSynchronize(stream);
+
+    return (size_t)num_removed;
 }
 
 // ===========================================================
