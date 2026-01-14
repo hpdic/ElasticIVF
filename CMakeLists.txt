@@ -128,3 +128,14 @@ if(BUILD_TESTING)
     endif()
   endif()
 endif()
+
+# --- SIFT Benchmark ---
+find_package(CUDAToolkit REQUIRED)
+find_package(OpenMP REQUIRED)
+add_executable(test_sivf_sift_add hpdic/experiment/sift/test_sivf_sift_add.cpp)
+target_link_libraries(test_sivf_sift_add 
+    faiss 
+    OpenMP::OpenMP_CXX
+    CUDA::cudart
+    CUDA::cublas
+)

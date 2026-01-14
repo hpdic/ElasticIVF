@@ -30,6 +30,11 @@ make -j test_sivf_search
 cd ~/ElasticIVF/build
 make -j test_sivf_delete
 ./faiss/gpu/test_sivf_delete
+
+# Dataset SIFT:
+cd ~/ElasticIVF/build
+make -j test_sivf_sift_add
+./test_sivf_sift_add
 ```
 
 ## Benchmarks
