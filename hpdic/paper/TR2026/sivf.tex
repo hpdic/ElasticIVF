@@ -55,10 +55,10 @@
 
 \begin{document}
 
-\title{SIVF: Streaming Inverted File Indexing on GPUs}
+\title{SIVF: A Lock-Free, Slab-Based GPU Index for High-Throughput Streaming Vector Search}
 
 \author{Dongfang Zhao}
-\email{dzhao@uw.edu}
+\email{dzhao@cs.washington.edu}
 \affiliation{%
   \institution{HPDIC Lab: \url{https://hpdic.github.io/}}
   \city{University of Washington}
@@ -67,87 +67,68 @@
 }
 
 \begin{abstract}
+GPU-accelerated Approximate Nearest Neighbor (ANN) search has become the standard for large-scale vector similarity retrieval. However, existing GPU indices are predominantly designed for static, write-once-read-many workloads. In streaming scenarios such as real-time recommendation and security monitoring, where data must be frequently inserted and evicted to maintain a sliding window, current architectures suffer from a critical bottleneck: the lack of native support for in-place mutation. Consequently, evicting data necessitates an expensive CPU-GPU roundtrip to reorganize the index layout, causing system latency to spike from milliseconds to seconds.
+
+In this paper, we propose SIVF (Streaming Inverted File), a GPU-native indexing architecture designed specifically for high-velocity streaming data. SIVF abandons the traditional contiguous memory layout in favor of a dynamic slab-based allocation system combined with a validity bitmap, enabling efficient, lock-free in-place insertion and deletion directly in VRAM. To resolve the overhead of locating vectors for deletion, we introduce a GPU-resident address translation table that provides $O(1)$ access to physical storage slots. 
+
+We evaluate SIVF against state-of-the-art baselines on the SIFT1M and GIST1M datasets. Experimental results demonstrate that SIVF reduces deletion latency by up to $13,300\times$ (from 11.8 seconds to 0.89 ms on GIST1M) and improves ingestion throughput by $36\times$ to $105\times$ compared to standard Faiss implementations. While sustaining competitive search recall, SIVF effectively eliminates the mutation bottleneck, paving the way for fully GPU-resident, real-time streaming vector analytics.
 \end{abstract}%%
 \maketitle
 
 % \lipsum
 
 \section{Introduction}
-\don{TODO}
 
-\subsection{Observation: Deletion is Expensive}
+\subsection{Observation: The Deletion Bottleneck}
 
-Real-world vector search applications, such as real-time recommendation and fraud detection, increasingly operate on streaming data where timeliness is critical. These systems require a sliding window model where expired vectors must be evicted as new vectors arrive to maintain bounded memory usage.
-However, existing GPU-accelerated approximate nearest neighbors (ANN) indices are predominantly optimized for write-once-read-many workloads. 
+Real-world vector search applications, ranging from real-time recommendation engines to fraud detection systems, increasingly operate on streaming data where timeliness is critical. These systems necessitate a sliding window model where expired vectors must be evicted promptly as new vectors arrive to maintain bounded memory usage. However, existing GPU-accelerated approximate nearest neighbor (ANN) indices are predominantly optimized for static, write-once-read-many workloads.
 
-To quantify the gap between insertion and eviction performance, we conducted benchmarks using both the Python (precompiled package through PyPI) and C++ (local compilation from source) interfaces of Faiss~\cite{johnson2019billion} on an NVIDIA RTX 6000 GPU with the SIFT1M dataset~\cite{jegou2011product} on the Chameleon testbed~\cite{keahey2020lessons}.
-As illustrated in Figure~\ref{fig:motivation}, we observe a severe performance asymmetry across both implementations. In the native C++ benchmark, while inserting a batch of 10,000 vectors takes only 28.6 ms due to efficient GPU parallelism, evicting the same number of vectors incurs a latency of 202.2 ms. This constitutes a $\sim$7.1 times slowdown, confirming that the bottleneck is fundamental to the index design rather than language binding overhead.
+To quantify the gap between insertion and eviction performance, we conducted benchmarks using Faiss~\cite{johnson2019billion} on an NVIDIA RTX 6000 GPU with the SIFT1M dataset~\cite{jegou2011product}. As illustrated in Figure~\ref{fig:motivation}, we observe a catastrophic performance asymmetry. While the GPU parallelism accelerates vector insertion, enabling reasonable throughput, the eviction process collapses under load. Specifically, deleting a batch of 10,000 vectors incurs a latency of over 1.6 seconds. In stark contrast, our proposed architecture performs the same operation in less than 0.9 milliseconds. This represents a slowdown of over three orders of magnitude for the baseline, confirming that the bottleneck is not merely an implementation detail but a fundamental structural deficiency in current index designs.
 
 \begin{figure}[!h]
     \centering
     \includegraphics[width=0.8\linewidth]{figures/motivation_bar_chart_comparison.pdf}
-    \caption{The High Cost of Deletion compared across Python and C++ interfaces. Even using the native C++ implementation, while GPU parallelism accelerates vector insertion ($\sim$28.6 ms), the lack of in-place GPU eviction support causes deletion latency to surge to $\sim$202.2 ms. This represents a $\sim$7.1x slowdown, confirming this asymmetry as the primary bottleneck in streaming scenarios regardless of the language binding.}
+    \caption{The asymmetry between insertion and deletion latency on GPU indices. While insertion benefits from GPU parallelism, standard deletion triggers a costly CPU-GPU roundtrip, resulting in multi-second latencies for batch evictions (e.g., $\sim$1.6s for 10k vectors). This creates a prohibitive bottleneck for streaming applications.}
     \label{fig:motivation}
-    \Description{Bar chart comparing insertion and deletion latencies using Python and C++ interfaces of Faiss. Insertion is significantly faster than deletion in both cases, with C++ showing a 7.1x slowdown for deletion compared to insertion.}
 \end{figure}
-
-% This bottleneck stems from a fundamental architectural limitation in current library designs. Since standard IVF (Inverted File) indices lack support for efficient in-place deletion directly on the GPU, evicting data necessitates a costly CPU-GPU roundtrip, even when using C++. The relevant index structure must be copied back to the host, compacted on the CPU, and re-uploaded to the device. This heavy I/O and CPU burden prevents the system from fully utilizing GPU compute throughput and limits the maximum sustainable ingestion rate.
 
 \subsection{Root Cause: The Missing Operator}
 \label{sec:root_cause}
 
-Our analysis of the Faiss source code~\cite{douze2024faiss} reveals that the performance asymmetry shown in Figure~\ref{fig:motivation} is not merely an optimization issue, but a fundamental feature gap enforced by the library's class hierarchy. 
+Our analysis of the Faiss source code~\cite{douze2024faiss} reveals that this performance asymmetry stems from a rigid class hierarchy that enforces a fallback to host-side processing. In the library's architecture, the data eviction interface is defined in the abstract base class \texttt{faiss::Index} via the \texttt{remove\_ids} virtual method. While CPU-based implementations override this method to provide efficient in-memory deletion logic (e.g., \texttt{memmove}), the GPU counterparts inherit the base implementation which lacks native support.
 
-In the Faiss codebase, the data eviction interface is defined in the abstract base class \texttt{faiss::Index} via the \texttt{remove\_ids} virtual method. By default, this base implementation throws an exception, indicating a lack of support. 
-While CPU-based implementations such as \texttt{IndexIVF} and \texttt{IndexFlat} explicitly override this method to provide efficient, in-memory deletion logic (e.g., via \texttt{std::vector} manipulation or \texttt{memmove}), their GPU counterparts fail to do so. 
-Specifically, the GPU base class \texttt{faiss::gpu::GpuIndex} and its derivatives (e.g., \texttt{GpuIndexIVF}) inherit the exception-throwing base implementation without providing a GPU-native override. 
-
-This implementation gap necessitates a fallback to a distinct \emph{CPU-GPU Roundtrip} pattern for eviction, as observed in our benchmarks. Consequently, to delete even a single vector from a GPU-resident index, the system must transfer the entire index state to host memory, perform the deletion using CPU primitives, and re-upload the modified index to the device.
+Consequently, current GPU indices rely on a \emph{CPU-GPU Roundtrip} pattern for eviction. To delete even a single vector, the system must transfer the entire index state from VRAM to host memory, perform the compaction on the CPU, and re-upload the modified index to the device. This heavy I/O burden saturates the PCIe bus and prevents the system from utilizing GPU compute throughput, effectively capping the maximum sustainable ingestion rate in streaming scenarios.
 
 \subsection{Technical Challenges}
 \label{sec:technical_challenges}
 
-The absence of a GPU-native \texttt{remove\_ids} stems from the complexity of managing dynamic data structures in VRAM. 
-Unlike the CPU's \texttt{IndexIVFFlat}, which utilizes dynamic arrays (STL vectors) to manage inverted lists, GPU indices rely on pre-allocated, contiguous memory blocks to maximize memory bandwidth and parallelism. 
-Implementing in-place deletion on the GPU would require:
-\begin{itemize}
-    \item \textbf{Dynamic Memory Management:} Frequent reallocation and compaction of inverted lists within VRAM to prevent fragmentation.
-    \item \textbf{Complex Synchronization:} Fine-grained locking mechanisms to prevent race conditions when thousands of concurrent GPU threads attempt to modify shared list structures.
-    \item \textbf{Reverse Mapping Overhead:} Standard IVF indices do not maintain an ID-to-Location mapping. Locating a specific ID for deletion requires scanning all inverted lists, an operation with $O(N)$ complexity that negates the benefits of GPU acceleration.
-\end{itemize}
-These architectural constraints render in-place GPU eviction prohibitively complex to implement efficiently, forcing the current IO-bound workaround.
+The absence of a GPU-native eviction operator is not an oversight but a consequence of the complexity involved in managing dynamic data structures within VRAM. Unlike CPU indices that utilize flexible dynamic arrays, GPU indices rely on pre-allocated, contiguous memory blocks to maximize memory coalescing and bandwidth utilization. Implementing in-place deletion on the GPU presents three orthogonal challenges.
+
+First, maintaining contiguous arrays requires dynamic memory management. Frequent reallocation and compaction of inverted lists within VRAM lead to severe memory fragmentation and costly data movement. Second, concurrent modification requires complex synchronization. Managing fine-grained locks to prevent race conditions when thousands of concurrent GPU threads attempt to modify shared list structures introduces significant latency. Third, standard inverted file (IVF) indices lack an ID-to-Location mapping. Without a reverse index, locating a specific ID for deletion requires scanning all inverted lists, an operation with $O(N)$ complexity that negates the benefits of GPU acceleration. These constraints render naive in-place GPU eviction prohibitively inefficient.
 
 \subsection{Proposed Solution: The SIVF Architecture}
 \label{sec:proposed_work}
 
-To overcome the architectural hurdles identified in Section~\ref{sec:technical_challenges}, we propose SIVF (Streaming Inverted File), a new GPU indexing architecture designed specifically for high-throughput insertion and deletion, and eventually for efficient streaming data analytics on GPUs. SIVF introduces three key mechanisms to resolve the identified bottlenecks:
+To resolve these architectural limitations, we propose SIVF (Streaming Inverted File), a GPU indexing architecture designed to support high-throughput insertion and deletion without relying on host interaction. SIVF introduces a triad of mechanisms to enable efficient in-place mutability.
 
-\paragraph{Slab-based Memory Management}
-To mitigate the overhead of \textbf{Dynamic Memory Management}, SIVF abandons the contiguous memory layout of standard IVF. Instead, we propose a \textit{Slab Allocation System}. The GPU memory is pre-allocated as a pool of fixed-size blocks (e.g., 4KB pages). Inverted lists are implemented as chains of these blocks. 
-This design obviates the need for costly memory reallocation and data compaction. When a list grows, a new block is simply linked from the free pool using atomic operations. This ensures that memory fragmentation is virtually eliminated and ingestion latency remains constant regardless of list size.
-  
-\paragraph{Bitmap-based Lazy Eviction}
-To address \textbf{Complex Synchronization}, we decouple logical deletion from physical data removal. We introduce a \textit{Validity Bitmap} associated with each memory block. 
-Eviction is implemented as a \emph{Lazy Deletion} strategy: removing a vector involves only a single atomic bit-flip in the bitmap to mark the slot as invalid. This lock-free approach allows thousands of concurrent threads to perform deletions without contention. Physical reclamation of memory blocks is deferred and performed asynchronously by a background kernel only when the utilization of a block drops below a threshold, effectively hiding the cleanup cost.
-
-\paragraph{GPU-Resident Address Table}
-To eliminate the \textbf{Reverse Mapping Overhead}, SIVF maintains a compact, GPU-resident \textit{Address Translation Table} (ATT). This table maps each active Vector ID to its precise physical location (composed of \texttt{BlockID} and \texttt{SlotOffset}). 
-By compressing this location metadata into a single 64-bit integer, we minimize the memory footprint. This structure allows the eviction kernel to locate any target vector in $O(1)$ time, avoiding the prohibitive $O(N)$ scan required by current libraries~\cite{douze2024faiss}.
-
-By synthesizing these three techniques, SIVF enables true in-place modification of the index directly on the GPU, breaking the dependency on the host CPU and eliminating the roundtrip bottleneck. As a result, this paves the road for high-throughput, low-latency streaming vector search applications on GPU platforms.
+We first address the memory management overhead by abandoning the contiguous memory layout in favor of a slab allocation system. GPU memory is pre-allocated as a pool of fixed-size blocks, and inverted lists are implemented as chained blocks. When a list grows, a new block is atomically linked from the free pool, virtually eliminating memory fragmentation and avoiding the cost of data compaction. To solve the synchronization challenge, we decouple logical deletion from physical removal using a bitmap-based lazy eviction strategy. Each memory block is associated with a validity bitmap; eviction is reduced to a single atomic bit-flip, allowing thousands of concurrent threads to operate without contention. Finally, to eliminate the $O(N)$ scan overhead, SIVF maintains a compact, GPU-resident address translation table. This table maps active vector IDs to their physical memory coordinates, enabling $O(1)$ location resolution during deletion.
 
 \subsection{Contributions}
 \label{sec:contributions}
 
-In summary, this paper makes the following contributions:
+This paper makes three primary contributions to the field of high-performance vector search:
+
 \begin{itemize}
-    \item We identify a critical performance bottleneck in existing GPU-accelerated ANN indices stemming from the lack of native support for in-place data eviction. We analyze the root causes of this limitation and quantify its impact through empirical benchmarks.
-    \item We propose SIVF, a novel indexing architecture that enables efficient streaming insertion and deletion directly on the GPU. SIVF introduces slab-based memory management, bitmap-based lazy eviction, and a GPU-resident address translation table to overcome the challenges of dynamic data structures in VRAM.
-    \item We implement a prototype of SIVF and evaluate its performance against state-of-the-art GPU ANN libraries. Our results demonstrate that SIVF significantly reduces eviction latency, paving the way for real-time streaming vector search applications on GPUs.
+    \item \textbf{Quantifying the Deletion Bottleneck:} We identify the ``roundtrip bottleneck'' in existing GPU ANN indices, demonstrating that the lack of native deletion support renders them unsuitable for high-velocity streaming data. Our benchmarks and analysis reveal that this architectural limitation causes latency spikes of orders of magnitude during index maintenance.
+    
+    \item \textbf{The SIVF Architecture:} We propose SIVF, a new GPU-native indexing architecture that synthesizes slab-based memory management, validity bitmaps, and on-device address translation. This design enables $O(1)$ time complexity for deletion and constant-time insertion overhead without host synchronization.
+    
+    \item \textbf{Orders-of-Magnitude Performance Gains:} We evaluate SIVF against state-of-the-art libraries on the SIFT1M and GIST1M datasets. Our results show that SIVF reduces deletion latency by up to $13,000\times$ (from 11.8s to 0.89ms) and improves ingestion throughput by over $36\times$, effectively closing the gap between static and streaming vector search performance on GPUs.
 \end{itemize}
 
 \section{Related Work}
 \label{sec:related_work}
+\don{TODO}
 
 \section{Design and Implementation of SIVF}
 \label{sec:design_implementation}
@@ -339,6 +320,9 @@ All experiments were conducted on a bare-metal node from the Chameleon Cloud tes
 
 For acceleration, the node features an NVIDIA Quadro RTX 6000 GPU with 24 GB of GDDR6 memory. The system runs on a Linux environment with the CUDA toolkit installed. Network connectivity is provided by an Intel X710 10-Gigabit Ethernet (10GbE) controller.
 
+To ensure statistical reliability, each reported data point represents the average of at least three independent executions. Error bars are omitted in figures where the standard deviation is negligible to maintain visual clarity. 
+Unless explicitly stated (as in Section~\ref{sec:eval_real_world}), our experiments utilize synthetic datasets consisting of random vectors generated from a uniform distribution. We employ this configuration as a neutral baseline to isolate system-level overheads (e.g., memory allocation, PCIe transfer) from data distribution effects. Note that because uniform data lacks the clustering structure inherent in real-world applications, the performance advantages of SIVF in early micro-benchmarks are primarily architectural and appear more conservative than those observed on skewed, real-world datasets.
+
 \subsection{SIVF Performance of Adding Vectors}
 \label{sec:eval_add_performance}
 
@@ -416,8 +400,72 @@ Figure~\ref{fig:deletion_perf} illustrates the performance comparison between th
 
 This transformative performance gain is attributed to the architectural shift in handling deletions. The baseline approach enforces contiguous memory layouts, necessitating expensive $O(N)$ memory compaction (e.g., memmove) to fill gaps left by deleted vectors. SIVF, however, leverages its GPU-resident Address Translation Table (ATT) to perform logical deletions. By mapping user IDs directly to physical slots and atomically toggling the corresponding bit in the validity bitmap, SIVF achieves $O(1)$ complexity. This mechanism effectively eliminates the overhead of physical memory reorganization, enabling ultra-low-latency updates essential for real-time streaming applications.
 
+\subsection{Real-world Datasets}
+\label{sec:eval_real_world}
+
+To evaluate SIVF under realistic conditions, we utilized two standard large-scale benchmarks: SIFT1M ($d=128$) and GIST1M ($d=960$). These datasets allow us to assess system performance across varying dimensionalities, directly testing the scalability of our slab-based memory management against the contiguous memory model of the baseline (Faiss).
+
+\begin{figure*}[t]
+    \centering
+    % --- Figure 1: Ingestion ---
+    \begin{minipage}{0.32\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{figures/eval_ingestion.pdf}
+        \caption{Ingestion throughput comparison (log scale). SIVF achieves up to $105\times$ speedup by eliminating memory reallocation.}
+        \Description{Bar graph comparing ingestion throughput between SIVF and Vanilla Faiss on SIFT1M and GIST1M datasets, highlighting the significant speedup achieved by SIVF.}
+        \label{fig:eval_ingestion}
+    \end{minipage}
+    \hfill % 弹性间距
+    % --- Figure 2: Deletion ---
+    \begin{minipage}{0.32\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{figures/eval_deletion.pdf}
+        \caption{Deletion latency comparison (log scale). SIVF reduces latency by over $13,000\times$ on GIST1M via in-place bitmap updates.}
+        \Description{Bar graph comparing deletion latency between SIVF and Vanilla Faiss on SIFT1M and GIST1M datasets, highlighting the significant speedup achieved by SIVF.}
+        \label{fig:eval_deletion}
+    \end{minipage}
+    \hfill % 弹性间距
+    % --- Figure 3: Search ---
+    \begin{minipage}{0.32\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{figures/eval_search.pdf}
+        \caption{Search performance (QPS). While faster on SIFT1M, SIVF shows a trade-off on GIST1M due to non-contiguous memory access.}
+        \Description{Bar graph comparing search performance (QPS) between SIVF and Vanilla Faiss on SIFT1M and GIST1M datasets, highlighting the trade-offs in performance.}
+        \label{fig:eval_search}
+    \end{minipage}
+\end{figure*}
+
+\subsubsection{High-Throughput Ingestion}
+As illustrated in Figure~\ref{fig:eval_ingestion}, SIVF demonstrates superior ingestion scalability. On the SIFT1M dataset, SIVF achieves an ingestion rate of approximately 3.78 million vectors per second, representing a $105\times$ speedup over the baseline (35.9k vectors/s).
+
+This advantage persists even with the high-dimensional GIST1M dataset. While the baseline performance drops to 23k vectors/s due to the increased cost of memory reallocation and fragmentation management for large vectors, SIVF sustains a throughput of over 850k vectors/s. This $36\times$ speedup on GIST1M confirms that our pre-allocated slab architecture effectively mitigates the overhead of dynamic resizing, allowing the system to near-saturate the GPU memory bandwidth even under heavy write loads.
+
+\subsubsection{Low-Latency Deletion}
+The most significant performance divergence is observed in deletion latency, shown in Figure~\ref{fig:eval_deletion}. Since the baseline requires a full CPU-GPU roundtrip to reorganize the index, its latency is bound by PCIe bandwidth and index size. Consequently, deleting a batch of 10k vectors takes 1.6 seconds for SIFT1M and a prohibitive 11.8 seconds for GIST1M.
+
+In contrast, SIVF performs deletion in-place via a GPU-native validity bitmap. This decouples deletion latency from both the index size and vector dimensionality. SIVF maintains a sub-millisecond latency ($\approx 0.89$ ms) across both datasets, achieving a $1,900\times$ improvement on SIFT1M and a staggering $13,300\times$ improvement on GIST1M. This result validates SIVF as a viable solution for real-time streaming scenarios where data freshness is critical.
+
+\subsubsection{Search Performance and Trade-offs}
+Figure~\ref{fig:eval_search} presents the query performance (QPS) at comparable recall levels (Recall@10 $\approx 90\%$). On SIFT1M, SIVF achieves a $1.5\times$ higher throughput than the baseline (40.9k vs. 26.7k QPS), benefiting from efficient warp-level parallelism and balanced cluster assignment.
+
+However, on the high-dimensional GIST1M dataset, we observe a performance trade-off. SIVF achieves approximately 37\% of the baseline's query throughput (1.3k vs. 3.6k QPS). This reduction is attributed to the non-contiguous memory access pattern inherent in the linked-slab design, which reduces memory coalescing efficiency when fetching large 960-dimensional vectors. We argue that this is an acceptable compromise for streaming systems, where the orders-of-magnitude improvements in mutability (ingestion and deletion) outweigh the moderate cost in raw search throughput.
+
 \section{Conclusion}
 \label{sec:conclusion}
+
+In this work, we addressed the fundamental mismatch between the static design of existing GPU-accelerated ANN indices and the dynamic requirements of real-time streaming applications. Through rigorous benchmarking, we identified the ``roundtrip bottleneck'', i.e., the necessity of transferring index data across the PCIe bus for modification, as the primary inhibitor of low-latency eviction. To overcome this limitation, we proposed a new index architecture, namely SIVF, that relocates memory management responsibilities entirely onto the GPU. SIVF enables high-throughput and in-place mutability directly in VRAM. By implementing a slab-based memory allocator, a lock-free validity bitmap, and a GPU-resident address translation table, SIVF decouples index maintenance from the host CPU. Our evaluation on the SIFT1M and GIST1M datasets demonstrates that SIVF transforms the landscape of streaming vector search: it accelerates data deletion by up to $13,300\times$ (sub-millisecond latency) and improves ingestion throughput by over $36\times$ compared to the industry-standard Faiss library. These results confirm that moving memory management responsibilities from the CPU to the GPU is not only feasible but essential for the next generation of real-time neural search systems.
+
+
+While SIVF successfully resolves the mutability bottleneck, several avenues remain for further optimization and expansion:
+
+\paragraph{Optimizing Memory Coalescing for High Dimensions}
+As observed in our GIST1M experiments, the linked-slab structure introduces a trade-off in search performance due to non-contiguous memory access. Future iterations of SIVF will explore \textit{adaptive slab sizing} and \textit{page-aligned super-slabs} to restore memory coalescing efficiency for high-dimensional vectors ($d > 512$), aiming to bridge the gap between dynamic flexibility and raw read throughput.
+
+\paragraph{Multi-GPU and Out-of-Core Scaling}
+Currently, SIVF operates within the memory limits of a single GPU. To support billion-scale datasets, we plan to extend the architecture to support Multi-GPU sharding via NVLink and explore unified memory techniques to leverage host RAM seamlessly. This would allow the system to handle datasets larger than aggregate VRAM capacity while maintaining the benefits of GPU-resident index management.
+
+\paragraph{Metadata-Filtered Search}
+Real-world applications often require filtering search results based on metadata (e.g., timestamps, tags) alongside vector similarity. We intend to integrate metadata storage directly into the slab structure, allowing the search kernel to perform pre-filtering at the thread level without additional memory lookups.
 
 \section*{Acknowledgment}
 Results presented in this paper were obtained using the Chameleon testbed supported by the National Science Foundation.
