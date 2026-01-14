@@ -1,6 +1,7 @@
 \documentclass[sigconf,nonacm]{acmart}
 \setlength{\marginparwidth}{2cm}
 
+\usepackage{placeins}
 \usepackage{lipsum}
 \usepackage{amsmath}
 \usepackage{mathtools}
@@ -9,9 +10,9 @@
 \usepackage{algorithm}
 
 \usepackage{graphicx}      % 用于插入图片
-\usepackage{subcaption}    % 关键！用于 \begin{subfigure}
+% \usepackage{subcaption}    % 关键！用于 \begin{subfigure}
 \usepackage{booktabs}      % 关键！用于表格里的 \toprule, \midrule
-\usepackage{amsmath}       % 用于数学公式
+% \usepackage{amsmath}       % 用于数学公式
 \usepackage{xcolor}        % 颜色支持
 
 % if you use cleveref..
@@ -66,13 +67,13 @@
 }
 
 \begin{abstract}
-Real world vector search applications increasingly operate on streaming data where timeliness is critical for tasks such as fraud detection and real time recommendation. Current GPU accelerated approximate nearest neighbor indices are primarily optimized for static workloads and exhibit a severe performance asymmetry between data insertion and eviction. Our benchmarks reveal that evicting vectors from a GPU resident index can be over seven times slower than insertion because existing libraries lack native support for in place GPU deletion. This gap necessitates expensive data roundtrips between the host and device memory. We propose SIVF, a new GPU indexing architecture designed specifically for high throughput streaming scenarios. SIVF introduces a slab-based memory management system to eliminate costly memory reallocation and uses a bitmap based lazy eviction strategy to enable lock free deletions. Furthermore, a GPU resident address translation table allows for constant time vector localization. Our implementation within the Faiss framework demonstrates that SIVF maintains competitive search efficiency while providing significantly faster ingestion and eviction. Experimental results on an NVIDIA RTX 6000 GPU show that SIVF achieves up to a 2.8x speedup in vector ingestion over standard baselines and maintains search throughput within ninety five percent of native efficiency in optimized configurations.
 \end{abstract}%%
 \maketitle
 
 % \lipsum
 
 \section{Introduction}
+\don{TODO}
 
 \subsection{Observation: Deletion is Expensive}
 
@@ -173,22 +174,19 @@ We define a Slab as the fundamental unit of storage. Each Slab has a fixed capac
 
 This design enables logical deletion with $O(1)$ complexity via atomic bit-flipping on $b_{valid}$, eliminating the need for memory compaction during removal operations.
 
-\subsubsection{Kernel-level Lock-free Allocator}
-Traditional memory management requires host-device communication (e.g., \texttt{cudaMalloc}), which incurs microsecond-level latency that is unacceptable for high-throughput streaming. We implement a \textit{device-side allocator} that enables GPU kernels to request and release memory directly.
+\subsubsection{Conflict-Free Monotonic Allocator}
+Traditional device-side memory management (e.g., \texttt{malloc/free} inside kernels) incurs significant fragmentation and locking overhead. We implement a simplified \textit{Monotonic Linear Allocator} tailored for high-throughput stability.
 
-The allocator manages a global \textit{Free List}, implemented as a pre-allocated stack in global memory. We utilize a strictly atomic approach to ensure thread safety without mutex locks:
+The allocator manages a global \textit{Slab Pool} as a pre-allocated array. To maximize concurrency and eliminate the ABA problem (a common hazard in lock-free linked lists), we adopt an \textbf{allocation-only} strategy during the ingestion phase:
 
 \begin{itemize}
-    \item \textit{Allocation}: A thread (or warp) requests a new Slab by atomically decrementing the global stack pointer $P_{top}$. The operation is modeled as:
+    \item \textit{Atomic Allocation}: A thread requests a new Slab by atomically decrementing a global cursor $P_{top}$. This ensures that every requested Slab ID is unique throughout the kernel's lifecycle:
     \begin{equation}
-        idx = \texttt{atomicSub}(P_{top}, 1) - 1,
+        idx = \texttt{atomicSub}(P_{top}, 1) - 1.
     \end{equation}
-    where $idx$ denotes the index in the free list array, and the allocator returns the Slab ID stored at $\text{FreeList}[idx]$.
     
-    \item \textit{Deallocation}: To release a Slab, the thread atomically increments $P_{top}$ and pushes the Slab ID back onto the stack structure.
+    \item \textit{No Physical Deallocation}: Unlike general-purpose allocators, SDMA does not recycle Slab IDs back to the pool immediately upon vector deletion. Instead, evicted space is reclaimed logically via the validity bitmap (see Section~\ref{sec:bitmap_lazy_eviction}). This design choice trades GPU memory capacity for absolute thread safety, ensuring that no active search kernel ever accesses a recycled slab address that has been repurposed by a concurrent writer.
 \end{itemize}
-
-Both operations achieve $O(1)$ time complexity and bypass the OS-level memory manager entirely, resulting in near-zero allocation overhead.
 
 \subsubsection{Virtual Addressing via Address Table}
 To decouple the logical vector ID from its physical storage location, we introduce a global \textit{Address Table}. This table implements a mapping function $\mathcal{T}$ that translates a unique vector identifier $v_{id}$ to a physical coordinate tuple:
@@ -221,15 +219,16 @@ For a target list, threads access the current head slab and attempt to reserve a
 \end{equation}
 If the returned $\text{slot} < C$ (where $C=32$ is the slab capacity), the thread successfully claims a position. It then writes the vector payload directly into global memory and marks the corresponding bit in the \texttt{validity\_bitmap} using \texttt{atomicOr}. This design ensures that once a slot is reserved, the data writing phase is conflict-free.
 
-\subsubsection{Dynamic Slab Expansion}
+\subsubsection{Speculative Slab Expansion}
 \label{sub:dynamic_expansion}
-When a slab becomes full ($\text{slot} \ge C$), the insertion kernel triggers a dynamic expansion. The thread requests a new slab from the \texttt{SlabManager}'s pre-allocated memory pool. This allocation is also lock-free, utilizing an atomic index on a global free-list stack, ensuring $O(1)$ allocation time.
+When a slab becomes full ($\text{slot} \ge C$), the insertion kernel triggers a dynamic expansion. The thread speculatively requests a new slab from the \texttt{SlabManager}. 
 
-To attach the new slab to the IVF list, we employ a Compare-And-Swap (CAS) loop to update the list head pointer safely:
+To attach the new slab to the inverted list, we employ a Compare-And-Swap (CAS) operation on the list head. A critical design decision in ElasticIVF is the handling of CAS failures (contention). If multiple threads attempt to expand the same list simultaneously, only one succeeds. For the failing threads, instead of attempting to return the allocated slab to the pool (which would require complex synchronization), we adopt a ``Leak-on-Failure'' strategy: the conflicting slab is discarded, and the thread retries the allocation-insertion loop:
 \begin{equation}
-    \text{atomicCAS}(\&\text{list\_head}, \text{old\_head}, \text{new\_slab}).
+    \text{success} = \text{atomicCAS}(\&\text{list\_head}, \text{old}, \text{new}) == \text{old}
 \end{equation}
-This mechanism guarantees data consistency even when multiple threads attempt to expand the same list simultaneously, which is critical for handling skewed data distributions where certain clusters receive heavy traffic.
+
+While this theoretically wastes a negligible amount of memory (bound by the number of concurrent warps), it eliminates the possibility of logical cycles in the linked list and removes the need for fine-grained locks, serving as the cornerstone of our high-throughput ingestion.
 
 \subsubsection{Kernel Implementation and Optimization}
 \label{sec:kernel_impl}
@@ -240,7 +239,8 @@ We realized the parallel ingestion logic through a persistent CUDA kernel, namel
 Instead of storing full 64-bit pointers for the linked structure, our \texttt{SlabManager} utilizes 32-bit integer indices to reference slabs within the pre-allocated memory arena. This design serves two purposes: it reduces the register pressure per thread (a critical bottleneck for occupancy in complex kernels), and it simplifies the allocation primitive to a single \texttt{atomicSub} instruction on a hardware-resident stack pointer. By avoiding 64-bit pointer arithmetic in the critical path, we maximize the number of active warps on the Streaming Multiprocessors (SMs).
 
 \paragraph{Weak Memory Consistency Compliance.}
-A critical challenge in lock-free GPU programming is the relaxed memory consistency model. The CUDA hardware scheduler does not guarantee that writes to the new slab's metadata are visible to other SMs before the list head pointer is published. To prevent the ``dangling pointer'' hazard, where a concurrent reader observes a valid head pointer but uninitialized slab data, we explicitly inject a \texttt{\_\_threadfence()} instruction. This compiles to a PTX-level memory barrier that flushes the L2 cache lines associated with the new slab to global memory before the CAS operation is attempted, ensuring strict structural integrity.
+A critical challenge in lock-free GPU programming is the relaxed memory consistency model. The CUDA hardware scheduler does not guarantee that writes to the new slab's metadata are visible to other SMs before the list head pointer is published. To prevent the ``dangling pointer'' hazard, where a concurrent reader observes a valid head pointer but uninitialized slab data, we explicitly inject a \verb|__threadfence()|
+ instruction. This compiles to a PTX-level memory barrier that flushes the L2 cache lines associated with the new slab to global memory before the CAS operation is attempted, ensuring strict structural integrity.
 
 \paragraph{Mitigating Warp Divergence.}
 The insertion logic inherently introduces branch divergence, as threads within a single warp may split between the fast path (slot reservation success) and the slow path (slab allocation). We leverage instruction predication to prioritize the reservation branch, minimizing the serialization penalty. Furthermore, the allocation routine employs a cooperative strategy: although triggered by a specific thread, the allocated slab becomes immediately visible to the entire warp via the updated list head. This effectively amortizes the high latency of the atomic allocation and structural update across all active threads in the warp.
@@ -251,12 +251,12 @@ While linked-list structures typically suffer from poor memory locality (pointer
 \subsection{High-Performance Search Kernel}
 \label{sec:methods_search_kernel}
 
-To bridge the performance gap between linked-slab traversal and contiguous memory access, we design a specialized search kernel optimized for the NVIDIA Ampere and Ada Lovelace architectures. The core challenge lies in the \textit{pointer-chasing} nature of SIVF, which inherently threatens the Single Instruction, Multiple Threads (SIMT) efficiency. We overcome this through a hardware-aware design.
+To bridge the performance gap between linked-slab traversal and contiguous memory access, we design a specialized search kernel optimized for the NVIDIA Ampere and Ada Lovelace architectures. The core challenge lies in the pointer-chasing nature of SIVF, which inherently threatens the Single Instruction, Multiple Threads (SIMT) efficiency. We overcome this through a hardware-aware design.
 
 \subsubsection{Warp-Level Collaborative Search (WLCS)}
-Instead of the naive ``one-thread-per-query'' approach, which leads to severe branch divergence and serialized memory stalls, we implement a \textbf{Warp-Level Collaborative Search (WLCS)} strategy. 
+Instead of the naive ``one-thread-per-query'' approach, which leads to severe branch divergence and serialized memory stalls, we implement a Warp-Level Collaborative Search (WLCS) strategy. 
 
-Each search query $q$ is assigned to a dedicated \textbf{Warp} $\mathcal{W}$ consisting of 32 threads $\{t_0, t_1, \dots, t_{31}\}$. This alignment matches our defined slab capacity $C_{slab} = 32$, ensuring that one warp can process exactly one slab in a single step. For a query vector $\mathbf{v}_q \in \mathbb{R}^d$ and a slab $S_i$, the distance computation is parallelized such that thread $t_j$ computes the distance for the $j$-th slot:
+Each search query $q$ is assigned to a dedicated Warp $\mathcal{W}$ consisting of 32 threads $\{t_0, t_1, \dots, t_{31}\}$. This alignment matches our defined slab capacity $C_{slab} = 32$, ensuring that one warp can process exactly one slab in a single step. For a query vector $\mathbf{v}_q \in \mathbb{R}^d$ and a slab $S_i$, the distance computation is parallelized such that thread $t_j$ computes the distance for the $j$-th slot:
 \begin{equation}
 D(\mathbf{v}_q, S_i[j]) = \sum_{k=1}^{d} (v_{q,k} - S_{i,j,k})^2, \quad \text{where } (\text{bitmap}_i \gg j) \& 1 = 1.
 \end{equation}
@@ -265,9 +265,10 @@ This strategy transforms the $O(C_{slab})$ serial bottleneck into a parallel ope
 \subsubsection{Hierarchical Top-$k$ Aggregation}
 Maintaining Top-$k$ results in a high-throughput GPU environment requires minimizing global memory contention. We utilize a two-tier aggregation scheme:
 
-\textbf{Thread-Local Register Heaps.} Each thread $t_j$ maintains a local priority queue $\mathcal{H}_j$ of size $k$ using register-backed storage. As the warp traverses the linked-slabs of a cluster, $t_j$ updates $\mathcal{H}_j$ only if the newly computed distance $d < \max(\mathcal{H}_j)$. 
+Thread-Local Register Heaps. Each thread $t_j$ maintains a local priority queue $\mathcal{H}_j$ of size $k$ using register-backed storage. As the warp traverses the linked-slabs of a cluster, $t_j$ updates $\mathcal{H}_j$ only if the newly computed distance $d < \max(\mathcal{H}_j)$. 
 
-\textbf{Warp-Sync Reduction.} Once all slabs in a cluster are exhausted, we perform a parallel reduction using \texttt{\_\_shfl\_sync} instructions. The final Top-$k$ set $\mathcal{R}_q$ is derived by merging 32 local heaps within \textbf{Shared Memory} ($\mathcal{SM}$):
+Warp-Sync Reduction. Once all slabs in a cluster are exhausted, we perform a parallel reduction using \verb|__shfl_sync|
+ instructions. The final Top-$k$ set $\mathcal{R}_q$ is derived by merging 32 local heaps within Shared Memory ($\mathcal{SM}$):
 \begin{equation}
 \mathcal{R}_q = \text{arg-min}_k \left( \bigcup_{j=0}^{31} \mathcal{H}_j \right).
 \end{equation}
@@ -276,18 +277,21 @@ The required shared memory space is $32 \times k \times (\text{sizeof(float)} + 
 \subsubsection{Low-Level Hardware-Aware Optimizations}
 To push the performance to its theoretical limit, we employ several low-level CUDA optimizations:
 
-\paragraph{Active-Mask Slab Traversal} 
-We utilize \texttt{\_\_activemask()} intrinsic to track threads corresponding to valid slots. By applying \texttt{\_\_popc} (population count) and \texttt{\_\_ffs} (find first set) on \texttt{validity\_bitmap}, the kernel skips empty slots with zero branching overhead, maintaining 100\% warp occupancy even in sparsely populated slabs.
+Active-Mask Slab Traversal. 
+We utilize \verb|__activemask|
+ intrinsic to track threads corresponding to valid slots. By applying \verb|__popc|
+ (population count) and \verb|__ffs|
+ (find first set) on validity\_bitmap, the kernel skips empty slots with zero branching overhead, maintaining 100\% warp occupancy even in sparsely populated slabs.
     
-\paragraph{Register Tiling \& ILP} 
+Register Tiling \& ILP. 
 The $L_2$ distance computation is manually unrolled and tiled into registers to maximize Instruction-Level Parallelism (ILP). For $d=128$, we leverage 4-way tiling:
     \begin{equation}
     \Delta_{ij} = \sum_{m=0}^{31} \text{fma}(v_{q,m} - S_{i,j,m}, v_{q,m} - S_{i,j,m}, \text{acc}).
     \end{equation}
     This ensures the query vector $\mathbf{v}_q$ resides in the register file throughout the probe, significantly reducing redundant L2 cache transactions.
     
-\paragraph{Relaxed Consistency Memory Fences} 
-To support non-blocking insertions, we exploit the weak memory model. The Append kernel issues a \texttt{\_\_threadfence()} to ensure slab data is committed before the \texttt{atomicCAS} updates the \texttt{list\_head}. In the search kernel, a single \texttt{volatile} read of the pointer $P_{next}$ allows the GPU's Memory Copy Engine to prefetch metadata for $S_{i+1}$ while the CUDA Cores are simultaneously computing distances for $S_i$, effectively overlapping computation with memory latency.
+Relaxed Consistency Memory Fences. 
+To support non-blocking insertions, we exploit the weak memory model. The Append kernel issues a \verb|__threadfence()| to ensure slab data is committed before the atomicCAS updates the list\_head. In the search kernel, a single volatile read of the pointer $P_{next}$ allows the GPU's Memory Copy Engine to prefetch metadata for $S_{i+1}$ while the CUDA Cores are simultaneously computing distances for $S_i$, effectively overlapping computation with memory latency.
 
 \subsection{Bitmap-based Lazy Eviction}
 \label{sec:bitmap_lazy_eviction}
@@ -321,67 +325,75 @@ To maintain index consistency without locking the entire data structure, we enfo
 \end{equation}
 Second, the entry in the ATT is marked as invalid by writing a sentinel value $\mathcal{T}[u] \leftarrow \text{UINT64\_MAX}$. This prevents future deletion requests for the same ID from accessing stale physical addresses.
 
-From a complexity perspective, let $W$ be the memory write volume. In the baseline approach, deleting a vector requires moving subsequent elements, yielding $W_{base} \propto (N_{list} \times D \times \text{sizeof(float)})$. In SIVF, the write volume is constant: $W_{sivf} = \text{sizeof(Bitmap)} + \text{sizeof(ATT\_Entry)}$, which equals 12 bytes. This reduction from linear to constant complexity explains the 295.1x speedup observed in our evaluation.
+From a complexity perspective, let $W$ be the memory write volume. In the baseline approach, deleting a vector requires moving subsequent elements, yielding $W_{base} \propto (N_{list} \times D \times \text{sizeof(float)})$. In SIVF, the write volume is constant: $W_{sivf} = \text{sizeof(Bitmap)} + \text{sizeof(ATT\_Entry)}$, which equals 12 bytes. This reduction from linear to constant complexity explains the 298x speedup observed in our evaluation.
 
 \section{Evaluation}
 \label{sec:evaluation}
 
-Our implementation of SIVF is built upon the Faiss library~\cite{douze2024faiss}, extending its GPU index classes to incorporate our proposed mechanisms. We conduct a comprehensive evaluation of SIVF against the native Faiss GPU index implementations, focusing on insertion and eviction performance under streaming workloads. All of our implementation and evaluation code are open-sourced as a side project to \emph{ElasticIVF} hosted on GitHub\footnote{\url{https://github.com/hpdic/ElasticIVF}}.
+We implement SIVF by extending the GPU components of the widely-adopted Faiss library~\cite{douze2024faiss}, integrating our proposed slab-based memory management and lock-free update mechanisms into its core indexing architecture. Our evaluation benchmarks SIVF directly against the native Faiss GPU implementations, specifically targeting ingestion throughput and deletion latency under high-concurrency streaming workloads. To foster reproducibility and future research, we have open-sourced our complete implementation and evaluation scripts in the \emph{ElasticIVF} repository hosted on GitHub\footnote{\url{https://github.com/hpdic/ElasticIVF}}.
+
+\subsection{Experimental Setup}
+\label{sec:exp_setup}
+
+All experiments were conducted on a bare-metal node from the Chameleon Cloud testbed~\cite{keahey2020lessons} (CHI@UC site). The platform is equipped with dual-socket Intel Xeon Gold 6126 CPUs (Skylake microarchitecture), providing a total of 24 physical cores (48 threads with Hyper-Threading) clocked at 2.60 GHz. The host memory consists of 192 GiB of RAM. 
+
+For acceleration, the node features an NVIDIA Quadro RTX 6000 GPU with 24 GB of GDDR6 memory. The system runs on a Linux environment with the CUDA toolkit installed. Network connectivity is provided by an Intel X710 10-Gigabit Ethernet (10GbE) controller.
 
 \subsection{SIVF Performance of Adding Vectors}
 \label{sec:eval_add_performance}
 
 We evaluate the ingestion throughput of ElasticIVF against the baseline method, the standard Faiss GPU IVFFlat implementation. The experiments are conducted on an NVIDIA RTX 6000 Ada Generation GPU. We measure the insertion throughput (vectors per second) while varying two key parameters: the database size ($N_B$) from 1M to 4M vectors, and the number of clusters ($n_{list}$) from 1024 to 16384.
 
-The results are summarized in Figure~\ref{fig:add_perf}. ElasticIVF demonstrates consistent performance advantages across all configurations, achieving up to a \textbf{2.88$\times$ speedup} over the baseline.
+The results are summarized in Figure~\ref{fig:add_perf}. ElasticIVF demonstrates consistent performance advantages across all configurations, achieving up to a 2.88$\times$ speedup over the baseline.
 
 \begin{figure*}[t]
     \centering
     % Ensure the path matches your saved figure location
     \includegraphics[width=\linewidth]{./figures/performance_add.pdf}
-    \caption{Performance evaluation of vector ingestion. (a) \textbf{Scalability}: Throughput remains remarkably stable around 4.2 million vec/s as dataset size increases from 1M to 4M ($n_{list}=4096$), indicating effective handling of memory fragmentation. (b) \textbf{Granularity Impact}: While finer clustering granularities ($n_{list}=16384$) introduce scattered write patterns, ElasticIVF maintains a 2.1$\times$--2.5$\times$ speedup over the baseline. (c) \textbf{Speedup}: A heatmap showing the relative speedup of ElasticIVF over Vanilla Faiss, consistently ranging between 1.8$\times$ and 2.9$\times$.}
+    \caption{Performance evaluation of vector ingestion. (a) Scalability: Throughput remains remarkably stable around 4.2 million vec/s as dataset size increases from 1M to 4M ($n_{list}=4096$), indicating effective handling of memory fragmentation. (b) Granularity Impact: While finer clustering granularities ($n_{list}=16384$) introduce scattered write patterns, ElasticIVF maintains a 2.1$\times$--2.5$\times$ speedup over the baseline. (c) Speedup: A heatmap showing the relative speedup of ElasticIVF over Vanilla Faiss, consistently ranging between 1.8$\times$ and 2.9$\times$.}
     \label{fig:add_perf}
     \Description{Three performance graphs comparing ElasticIVF and Vanilla Faiss: scalability with dataset size, impact of clustering granularity on ingestion throughput, and speedup heatmap.}
 \end{figure*}
 
-\textbf{Scalability and Stability (Fig.~\ref{fig:add_perf}a).} 
-As the database size grows from 1 million to 4 million vectors (with $n_{list}=4096$), ElasticIVF maintains a robust throughput of approximately \textbf{4.2 million vectors/sec}. This stability verifies the efficiency of our adaptive \texttt{SlabManager}: despite the increasing memory footprint, the lock-free append mechanism ensures that insertion cost remains $O(1)$ and effectively decoupled from the current index occupancy. In contrast, the baseline operates at a significantly lower tier ($\approx$1.7M vec/s) due to contiguous memory maintenance overheads.
+Scalability and Stability (Fig.~\ref{fig:add_perf}a).
+As the database size grows from 1 million to 4 million vectors (with $n_{list}=4096$), ElasticIVF maintains a robust throughput of approximately 4.2 million vectors/sec. This stability verifies the efficiency of our adaptive SlabManager: despite the increasing memory footprint, the lock-free append mechanism ensures that insertion cost remains $O(1)$ and effectively decoupled from the current index occupancy. In contrast, the baseline operates at a significantly lower tier ($\approx$1.7M vec/s) due to contiguous memory maintenance overheads.
 
-\textbf{Impact of Clustering Granularity (Fig.~\ref{fig:add_perf}b).} 
+Impact of Clustering Granularity (Fig.~\ref{fig:add_perf}b).
 We observe that ingestion throughput is sensitive to the number of clusters $n_{list}$:
 \begin{itemize}
-    \item \textit{Peak Performance at Low $n_{list}$:} ElasticIVF achieves its highest throughput ($\approx$ \textbf{6.1M vec/s}) at $n_{list}=1024$ with 2M vectors. In this regime, the memory write patterns are more localized, reducing cache misses and maximizing the efficiency of our append kernels. Here, ElasticIVF is \textbf{2.88$\times$} faster than the baseline ($\approx$2.1M vec/s).
-    \item \textit{Degradation at High $n_{list}$:} As $n_{list}$ increases to 16384, the insertion pattern becomes highly scattered across thousands of memory slabs. Consequently, throughput for both systems decreases. However, the baseline suffers more severely from this fragmentation. ElasticIVF maintains a throughput of $\approx$1.3M--1.6M vec/s, achieving a \textbf{2.0$\times$ to 2.4$\times$} speedup even in this challenging high-granularity scenario. This demonstrates the resilience of the linked-slab architecture compared to the baseline's array resizing overhead.
+    \item Peak Performance at Low $n_{list}$: ElasticIVF achieves its highest throughput ($\approx$ 6.1M vec/s) at $n_{list}=1024$ with 2M vectors. In this regime, the memory write patterns are more localized, reducing cache misses and maximizing the efficiency of our append kernels. Here, ElasticIVF is 2.88$\times$ faster than the baseline ($\approx$2.1M vec/s).
+    \item Degradation at High $n_{list}$: As $n_{list}$ increases to 16384, the insertion pattern becomes highly scattered across thousands of memory slabs. Consequently, throughput for both systems decreases. However, the baseline suffers more severely from this fragmentation. ElasticIVF maintains a throughput of $\approx$1.3M--1.6M vec/s, achieving a 2.0$\times$ to 2.4$\times$ speedup even in this challenging high-granularity scenario. This demonstrates the resilience of the linked-slab architecture compared to the baseline's array resizing overhead.
 \end{itemize}
 
-\textbf{Overall Speedup (Fig.~\ref{fig:add_perf}c).} 
-The heatmap confirms that ElasticIVF outperforms the baseline in every tested configuration. The speedup is robust, typically ranging from \textbf{2.4$\times$} to \textbf{2.9$\times$} for most configurations. Even under the highest load (4M vectors with $n_{list}=1024$), where contention for slab heads is maximized, ElasticIVF maintains a 1.79$\times$ advantage. This performance gap highlights the efficiency of our non-blocking, slab-based ingestion pipeline, making it particularly well-suited for high-throughput streaming scenarios.
+Overall Speedup (Fig.~\ref{fig:add_perf}c).
+The heatmap confirms that ElasticIVF outperforms the baseline in every tested configuration. The speedup is robust, typically ranging from 2.4$\times$ to 2.9$\times$ for most configurations. Even under the highest load (4M vectors with $n_{list}=1024$), where contention for slab heads is maximized, ElasticIVF maintains a 1.79$\times$ advantage. This performance gap highlights the efficiency of our non-blocking, slab-based ingestion pipeline, making it particularly well-suited for high-throughput streaming scenarios.
 
 \subsection{SIVF Performance of Vector Search}
 \label{sec:eval_search_performance}
 
-In this section, we evaluate the query performance of ElasticIVF (SIVF) against the Vanilla Faiss GPU implementation. Theoretically, SIVF is expected to exhibit a slight degradation in search throughput compared to the baseline, as its linked-slab architecture sacrifices memory contiguity (and thus perfect memory coalescing) to enable highly efficient, fine-grained updates. Our objective is to verify that this structural overhead remains within a marginal range that does not compromise overall system utility. As summarized in Figure~\ref{fig:search_perf}, the results confirm that SIVF maintains competitive search efficiency, reaching up to \textbf{91\%} of the baseline performance in optimized configurations, demonstrating that the cost of supporting instant mutability is remarkably low.
+In this section, we evaluate the query performance of ElasticIVF (SIVF) against the Vanilla Faiss GPU implementation. Theoretically, SIVF is expected to exhibit a slight degradation in search throughput compared to the baseline, as its linked-slab architecture sacrifices memory contiguity (and thus perfect memory coalescing) to enable highly efficient, fine-grained updates. Our objective is to verify that this structural overhead remains within a marginal range that does compromise overall system utility. As summarized in Figure~\ref{fig:search_perf}, the results confirm that SIVF maintains competitive search efficiency, reaching up to 91\% of the baseline performance in optimized configurations, demonstrating that the cost of supporting instant mutability is remarkably low.
 
 \begin{figure*}[t]
     \centering
     % Ensure this matches your saved python plot filename
     \includegraphics[width=\linewidth]{./figures/performance_search.pdf}
-    \caption{Performance evaluation of vector search. (a) \textbf{Search Scalability}: Both systems exhibit similar throughput degradation patterns as the database size grows from 100k to 500k ($n_{list}=4096$). (b) \textbf{Search Granularity}: Finer clustering improves QPS by reducing the search space per probe; SIVF peaks at $\approx$118k QPS with $n_{list}=4096$ (500k vectors). (c) \textbf{Efficiency Ratio}: Heatmap showing SIVF's query throughput relative to Vanilla Faiss, with peak efficiency reaching 0.91$\times$.}
+    \caption{Performance evaluation of vector search. (a) Search Scalability: Both systems exhibit similar throughput degradation patterns as the database size grows from 100k to 500k ($n_{list}=4096$). (b) Search Granularity: Finer clustering improves QPS by reducing the search space per probe; SIVF peaks at $\approx$118k QPS with $n_{list}=4096$ (500k vectors). (c) Efficiency Ratio: Heatmap showing SIVF's query throughput relative to Vanilla Faiss, with peak efficiency reaching 0.91$\times$.}
     \Description{Three performance graphs comparing SIVF and Vanilla Faiss: search scalability with database size, impact of clustering granularity on QPS, and efficiency ratio heatmap.}
     \label{fig:search_perf}
 \end{figure*}
+% \FloatBarrier
 
-\textbf{Search Scalability (Fig.~\ref{fig:search_perf}a).} 
-As the database size increases from 100,000 to 500,000 vectors (with $n_{list}=4096$), SIVF throughput transitions from approximately \textbf{383k QPS} to \textbf{118k QPS}. The performance curve closely mirrors the baseline, confirming that our slab traversal logic maintains predictable scaling characteristics. Even at the 500k scale, SIVF provides sufficient throughput for high-concurrency production environments.
+Search Scalability (Fig.~\ref{fig:search_perf}a).
+As the database size increases from 100,000 to 500,000 vectors (with $n_{list}=4096$), SIVF throughput transitions from approximately 383k QPS to 118k QPS. The performance curve closely mirrors the baseline, confirming that our slab traversal logic maintains predictable scaling characteristics. Even at the 500k scale, SIVF provides sufficient throughput for high-concurrency production environments.
 
-\textbf{Impact of Granularity (Fig.~\ref{fig:search_perf}b).} 
-At the 500k scale, increasing $n_{list}$ from 1024 to 4096 significantly enhances SIVF performance from \textbf{70k} to \textbf{118k QPS}. This result is consistent with the principle that higher granularity reduces the average number of vectors per inverted list, thereby decreasing the total distance computations per probe. The absolute throughput remains robust across all common cluster settings.
+Impact of Granularity (Fig.~\ref{fig:search_perf}b).
+At the 500k scale, increasing $n_{list}$ from 1024 to 4096 significantly enhances SIVF performance from 70k to 118k QPS. This result is consistent with the principle that higher granularity reduces the average number of vectors per inverted list, thereby decreasing the total distance computations per probe. The absolute throughput remains robust across all common cluster settings.
 
-\textbf{Query Efficiency Analysis (Fig.~\ref{fig:search_perf}c).} 
+Query Efficiency Analysis (Fig.~\ref{fig:search_perf}c).
 The efficiency ratio, i.e., $QPS_{SIVF} / QPS_{Vanilla}$, reveals the effectiveness of our warp-level optimization:
 \begin{itemize}
-    \item \textit{Near-Native Efficiency:} At 100k vectors and $n_{list}=16384$, SIVF achieves an efficiency ratio of \textbf{0.91$\times$} (295k vs. 322k QPS), nearly matching the performance of the contiguous-array-based baseline. This demonstrates that our warp-parallel search kernel effectively hides the latency associated with linked-slab traversal in sparse, high-granularity scenarios where lists are short.
-    \item \textit{Impact of List Length:} As the database size increases and inverted lists grow longer (e.g., at 500k vectors), the ratio stabilizes between \textbf{0.40$\times$} and \textbf{0.68$\times$}. This expected overhead is primarily due to increased pointer chasing between slabs, which is the physical trade-off required to enable the index's dynamic mutability.
+    \item Near-Native Efficiency: At 100k vectors and $n_{list}=16384$, SIVF achieves an efficiency ratio of 0.91$\times$ (295k vs. 322k QPS), nearly matching the performance of the contiguous-array-based baseline. This demonstrates that our warp-parallel search kernel effectively hides the latency associated with linked-slab traversal in sparse, high-granularity scenarios where lists are short.
+    \item Impact of List Length: As the database size increases and inverted lists grow longer (e.g., at 500k vectors), the ratio stabilizes between 0.40$\times$ and 0.68$\times$. This expected overhead is primarily due to increased pointer chasing between slabs, which is the physical trade-off required to enable the index's dynamic mutability.
 \end{itemize}
 
 The experimental results indicate that SIVF delivers robust search performance that is highly competitive with static index structures. By maintaining up to 91\% of native GPU efficiency while providing lock-free dynamic updates, SIVF proves to be an ideal foundation for high-performance, frequently updated vector databases.
@@ -391,22 +403,21 @@ The experimental results indicate that SIVF delivers robust search performance t
 
 We evaluate the efficiency of the vector deletion mechanism in ElasticIVF (SIVF) by comparing it against the standard Faiss GPU IVF baseline. The experiment measures latency and throughput when removing a batch of 10,000 vectors from a populated index of 1 million 128-dimensional vectors.
 
-Figure~\ref{fig:deletion_perf} illustrates the performance comparison between the two methods. The results indicate that the baseline Faiss implementation incurs a substantial deletion latency of approximately \textbf{202.20 ms}. In stark contrast, SIVF completes the same batch deletion operation in an average of \textbf{0.68 ms}. This represents a massive speedup of \textbf{298.5$\times$}. Correspondingly, deletion throughput surges from $4.9 \times 10^4$ vectors per second in the baseline to nearly \textbf{$1.47 \times 10^7$ vectors per second} in SIVF.
-
-This transformative performance gain is attributed to the architectural shift in handling deletions. The baseline approach enforces contiguous memory layouts, necessitating expensive $O(N)$ memory compaction (e.g., \texttt{memmove}) to fill gaps left by deleted vectors. SIVF, however, leverages its GPU-resident Address Translation Table (ATT) to perform \textit{logical deletions}. By mapping user IDs directly to physical slots and atomically toggling the corresponding bit in the validity bitmap, SIVF achieves \textbf{$O(1)$} complexity. This mechanism effectively eliminates the overhead of physical memory reorganization, enabling ultra-low-latency updates essential for real-time streaming applications.
-
-\begin{figure}[t]
+% \FloatBarrier
+\begin{figure*}[t]
     \centering
-    % Ensure this matches the filename from the python script
-    \includegraphics[width=0.95\linewidth]{figures/performance_delete.pdf}
+    \includegraphics[width=0.7\linewidth]{./figures/performance_delete.pdf}
     \caption{Performance comparison of vector deletion between Faiss IVF (Baseline) and SIVF. (a) Deletion latency (log scale), where SIVF achieves a 298.5$\times$ reduction compared to the baseline. (b) Deletion throughput (log scale), demonstrating SIVF's capacity to sustain over 14 million deletions per second.}
     \label{fig:deletion_perf}
     \Description{Two bar graphs comparing deletion latency and throughput between Faiss IVF and SIVF, highlighting the significant speedup achieved by SIVF.}
-\end{figure}
+\end{figure*}
+
+Figure~\ref{fig:deletion_perf} illustrates the performance comparison between the two methods. The results indicate that the baseline Faiss implementation incurs a substantial deletion latency of approximately 202.20 ms. In stark contrast, SIVF completes the same batch deletion operation in an average of 0.68 ms. This represents a massive speedup of 298.5$\times$. Correspondingly, deletion throughput surges from $4.9 \times 10^4$ vectors per second in the baseline to nearly $1.47 \times 10^7$ vectors per second in SIVF.
+
+This transformative performance gain is attributed to the architectural shift in handling deletions. The baseline approach enforces contiguous memory layouts, necessitating expensive $O(N)$ memory compaction (e.g., memmove) to fill gaps left by deleted vectors. SIVF, however, leverages its GPU-resident Address Translation Table (ATT) to perform logical deletions. By mapping user IDs directly to physical slots and atomically toggling the corresponding bit in the validity bitmap, SIVF achieves $O(1)$ complexity. This mechanism effectively eliminates the overhead of physical memory reorganization, enabling ultra-low-latency updates essential for real-time streaming applications.
 
 \section{Conclusion}
 \label{sec:conclusion}
-In this paper, we identified a critical performance bottleneck in existing GPU-accelerated ANN indices stemming from the lack of native support for in-place data eviction. We analyzed the root causes of this limitation and proposed SIVF, a new indexing architecture that enables efficient streaming insertion and deletion directly on the GPU. By introducing slab-based memory management, bitmap-based lazy eviction, and a GPU-resident address translation table, SIVF overcomes the challenges of dynamic data structures in VRAM. Our evaluation demonstrates that SIVF significantly reduces eviction latency, paving the way for real-time streaming vector search applications on GPUs.
 
 \section*{Acknowledgment}
 Results presented in this paper were obtained using the Chameleon testbed supported by the National Science Foundation.
@@ -414,8 +425,12 @@ Results presented in this paper were obtained using the Chameleon testbed suppor
 \bibliography{ref}
 \bibliographystyle{acm}
 
-% \newpage
+\newpage
 \appendix
+
+\section{Appendix}
+
+\subsection{More Experimental Details}
 
 \end{document}
 \endinput
