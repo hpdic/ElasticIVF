@@ -146,3 +146,10 @@ target_link_libraries(test_sivf_sift_search
     CUDA::cudart
     CUDA::cublas
 )
+add_executable(test_sivf_sift_delete hpdic/experiment/sift/test_sivf_sift_delete.cpp)
+target_link_libraries(test_sivf_sift_delete 
+    faiss 
+    OpenMP::OpenMP_CXX 
+    CUDA::cudart 
+    CUDA::cublas
+)

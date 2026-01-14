@@ -35,6 +35,10 @@ make -j test_sivf_delete
 cd ~/ElasticIVF/build
 make -j test_sivf_sift_add
 ./test_sivf_sift_add
+make -j test_sivf_sift_search
+./test_sivf_sift_search
+make -j test_sivf_sift_delete
+./test_sivf_sift_delete
 ```
 
 ## Benchmarks
