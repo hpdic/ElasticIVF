@@ -225,7 +225,7 @@ When a slab becomes full ($\text{slot} \ge C$), the insertion kernel triggers a 
 
 To attach the new slab to the inverted list, we employ a Compare-And-Swap (CAS) operation on the list head. A critical design decision in ElasticIVF is the handling of CAS failures (contention). If multiple threads attempt to expand the same list simultaneously, only one succeeds. For the failing threads, instead of attempting to return the allocated slab to the pool (which would require complex synchronization), we adopt a ``Leak-on-Failure'' strategy: the conflicting slab is discarded, and the thread retries the allocation-insertion loop:
 \begin{equation}
-    \text{success} = \text{atomicCAS}(\&\text{list\_head}, \text{old}, \text{new}) == \text{old}
+    \text{success} = \text{atomicCAS}(\&\text{list\_head}, \text{old}, \text{new}) == \text{old}.
 \end{equation}
 
 While this theoretically wastes a negligible amount of memory (bound by the number of concurrent warps), it eliminates the possibility of logical cycles in the linked list and removes the need for fine-grained locks, serving as the cornerstone of our high-throughput ingestion.
