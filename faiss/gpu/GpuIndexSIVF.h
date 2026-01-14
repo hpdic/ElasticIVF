@@ -70,6 +70,8 @@ class GpuIndexSIVF : public GpuIndexIVF {
     // 我们总是向 Head 插入数据 (或者你可以维护 Tail，这里简化为 Head/Active
     // Slab)
     DeviceVector<int>* list_heads_;
+
+    DeviceVector<idx_t>* slab_id_buffer_; // 专门用来存每个 Slab 里的 ID
 };
 
 } // namespace gpu

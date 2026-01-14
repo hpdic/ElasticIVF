@@ -32,7 +32,8 @@ GpuIndexSIVF::GpuIndexSIVF(
         : GpuIndexIVF(provider, dims, metric, 0.0f, nlist, config),
           slab_manager_(nullptr),
           is_slab_initialized_(false),
-          list_heads_(nullptr) {
+          list_heads_(nullptr),
+          slab_id_buffer_(nullptr) {
     // [关键修正 1] 强制标记为未训练，确保 index.train() 真正执行！
     this->is_trained = false;
 
@@ -53,6 +54,10 @@ GpuIndexSIVF::~GpuIndexSIVF() {
         delete list_heads_;
         list_heads_ = nullptr;
     }
+    if (slab_id_buffer_) {
+        delete slab_id_buffer_;
+        slab_id_buffer_ = nullptr;
+    }
 }
 
 void GpuIndexSIVF::initSlabManager(size_t max_vectors, size_t pool_size) {
@@ -62,34 +67,58 @@ void GpuIndexSIVF::initSlabManager(size_t max_vectors, size_t pool_size) {
     int device = getCurrentDevice();
     auto stream = resources_->getDefaultStream(device);
 
-    // 1. 初始化 SlabManager
-    // 这里的 slab_manager_ 构造函数内部也是用的 explicit
-    // AllocInfo，所以它没报错
+    // =========================================================
+    // [核心修复] 同步扩容 max_vectors 和 pool_size
+    // =========================================================
+
+    // 1. 计算需要的 Slab 数 (向量数 / 32)
+    size_t needed_slabs = (max_vectors + 31) / 32;
+
+    // 2. 暴力扩容：给 5 倍余量，防止 OOM
+    size_t safe_pool_size = std::max(pool_size, needed_slabs * 5 + 4096);
+
+    // 3. [关键!] 根据 Slab 数反推需要的总向量存储空间
+    // 如果不改这个，写入后面的 Slab 时会发生显存越界，踩坏链表！
+    size_t safe_max_vectors = safe_pool_size * 32;
+
+    printf("\n[HPDIC MEMORY FIX] Resizing:\n");
+    printf("  > Slab Pool:   %zu -> %zu\n", pool_size, safe_pool_size);
+    printf("  > Data Buffer: %zu -> %zu vectors (Avoids Overflow)\n\n",
+           max_vectors,
+           safe_max_vectors);
+
+    // 4. 初始化 SlabManager (传入扩容后的大小!)
     slab_manager_ = new SlabManager(
-            resources_.get(), device, max_vectors, pool_size, this->d);
+            resources_.get(),
+            device,
+            safe_max_vectors,
+            safe_pool_size,
+            this->d);
 
-    // 2. 初始化 List Heads
+    // 5. 初始化 ID Buffer (大小对齐)
+    slab_id_buffer_ = new DeviceVector<idx_t>(
+            resources_.get(), makeDevAlloc(AllocType::Other, stream));
+    slab_id_buffer_->resize(safe_max_vectors, stream);
+
+    // 初始化为 -1
+    CUDA_VERIFY(cudaMemsetAsync(
+            slab_id_buffer_->data(),
+            -1,
+            safe_max_vectors * sizeof(idx_t),
+            stream));
+
+    // 6. 初始化 List Heads
     if (list_heads_ == nullptr) {
-        // [修复] 显式构造 AllocInfo，避免 makeDevAlloc 可能的默认参数问题
         AllocInfo info(AllocType::Other, device, MemorySpace::Device, stream);
-
         list_heads_ = new DeviceVector<int>(resources_.get(), info);
     }
-
-    // 分配空间
-    // 确保 nlist 有效
     FAISS_ASSERT(this->nlist > 0);
     list_heads_->resize(this->nlist, stream);
 
-    // [新增] 检查分配是否成功
     if (list_heads_->data() == nullptr) {
-        printf("[ERROR] Failed to allocate list_heads_ (size=%d)\n",
-               this->nlist);
         FAISS_THROW_MSG("DeviceVector allocation failed");
     }
 
-    // 初始化为 -1
-    // 这里使用 data() 获取指针，确保指针有效
     CUDA_VERIFY(cudaMemsetAsync(
             list_heads_->data(), -1, this->nlist * sizeof(int), stream));
 
@@ -173,6 +202,7 @@ void GpuIndexSIVF::addImpl_(idx_t n, const float* x, const idx_t* ids) {
     runSIVFAppend(
             manager_view,
             list_heads_->data(), // [修改] 使用 ->data()
+            slab_id_buffer_->data(),
             (int)n,
             this->d,
             assignments.data(),
@@ -259,6 +289,7 @@ void GpuIndexSIVF::searchImpl_(
     runSIVFSearch(
             device_view,
             list_heads_->data(),
+            slab_id_buffer_->data(),
             (int)n, // 强转 idx_t -> int
             this->d,
             k,

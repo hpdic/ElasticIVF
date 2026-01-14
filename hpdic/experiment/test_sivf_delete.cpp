@@ -109,73 +109,100 @@ int main() {
 
 /**
  * Example Output:
- cc@rtx6000:~/ElasticIVF/build$
-cc@rtx6000:~/ElasticIVF/build$
-cc@rtx6000:~/ElasticIVF/build$ ./faiss/gpu/test_sivf_delete
+cc@rtx6000:~/ElasticIVF/build$ make test_sivf_delete -j
+[ 65%] Built target faiss_gpu_objs
+[100%] Built target faiss
+[100%] Building CXX object faiss/gpu/CMakeFiles/test_sivf_delete.dir/__/__/hpdic/experiment/test_sivf_delete.cpp.o
+[100%] Linking CXX executable test_sivf_delete
+[100%] Built target test_sivf_delete
+cc@rtx6000:~/ElasticIVF/build$ ./faiss/gpu/test_sivf_delete 
 Generating 1000000 vectors...
 [HPDIC MOD] Faiss GPU initialized on device ID: 0
+
+[HPDIC MEMORY FIX] Resizing:
+  > Slab Pool:   66875 -> 238471
+  > Data Buffer: 1500000 -> 7631072 vectors (Avoids Overflow)
+
 Training...
 [SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...
-WARNING clustering 50000 points to 4096 centroids: please provide at least
-159744 training points Clustering 50000 points in 128D to 4096 clusters, redo 1
-times, 20 iterations Preprocessing in 0.02 s Iteration 19 (0.40 s, search 0.27
-s): objective=420117 imbalance=1.874 nsplit=0 [SIVF::train] GPU K-Means
-complete. Quantizer populated with 4096 centroids. Adding 1000000 vectors...
+WARNING clustering 50000 points to 4096 centroids: please provide at least 159744 training points
+Clustering 50000 points in 128D to 4096 clusters, redo 1 times, 20 iterations
+  Preprocessing in 0.02 s
+  Iteration 19 (0.39 s, search 0.26 s): objective=420117 imbalance=1.874 nsplit=0       
+[SIVF::train] GPU K-Means complete. Quantizer populated with 4096 centroids.
+Adding 1000000 vectors...
 Benchmark: Removing 10000 vectors...
 
 ================ PERFORMANCE REPORT ================
 Workload:        Delete 10000 vectors
 Baseline (Faiss):202.2 ms
-SIVF (Ours):     0.685226 ms
+SIVF (Ours):     0.681474 ms
 ----------------------------------------------------
-Speedup:         295.085 x
-Latency per ID:  0.0685226 ns
-Actual Removed:  9991 (Recall Rate: 99.91%)
+Speedup:         296.71 x
+Latency per ID:  0.0681474 ns
+Actual Removed:  10000 (Recall Rate: 100%)
 ====================================================
 
-cc@rtx6000:~/ElasticIVF/build$ ./faiss/gpu/test_sivf_delete
+cc@rtx6000:~/ElasticIVF/build$ 
+cc@rtx6000:~/ElasticIVF/build$ 
+cc@rtx6000:~/ElasticIVF/build$ ./faiss/gpu/test_sivf_delete 
 Generating 1000000 vectors...
 [HPDIC MOD] Faiss GPU initialized on device ID: 0
+
+[HPDIC MEMORY FIX] Resizing:
+  > Slab Pool:   66875 -> 238471
+  > Data Buffer: 1500000 -> 7631072 vectors (Avoids Overflow)
+
 Training...
 [SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...
-WARNING clustering 50000 points to 4096 centroids: please provide at least
-159744 training points Clustering 50000 points in 128D to 4096 clusters, redo 1
-times, 20 iterations Preprocessing in 0.02 s Iteration 19 (0.37 s, search 0.26
-s): objective=420117 imbalance=1.874 nsplit=0 [SIVF::train] GPU K-Means
-complete. Quantizer populated with 4096 centroids. Adding 1000000 vectors...
+WARNING clustering 50000 points to 4096 centroids: please provide at least 159744 training points
+Clustering 50000 points in 128D to 4096 clusters, redo 1 times, 20 iterations
+  Preprocessing in 0.02 s
+  Iteration 19 (0.38 s, search 0.27 s): objective=420117 imbalance=1.874 nsplit=0       
+[SIVF::train] GPU K-Means complete. Quantizer populated with 4096 centroids.
+Adding 1000000 vectors...
 Benchmark: Removing 10000 vectors...
 
 ================ PERFORMANCE REPORT ================
 Workload:        Delete 10000 vectors
 Baseline (Faiss):202.2 ms
-SIVF (Ours):     0.683324 ms
+SIVF (Ours):     0.683111 ms
 ----------------------------------------------------
-Speedup:         295.906 x
-Latency per ID:  0.0683324 ns
-Actual Removed:  9989 (Recall Rate: 99.89%)
+Speedup:         295.999 x
+Latency per ID:  0.0683111 ns
+Actual Removed:  10000 (Recall Rate: 100%)
 ====================================================
 
-cc@rtx6000:~/ElasticIVF/build$ ./faiss/gpu/test_sivf_delete
+cc@rtx6000:~/ElasticIVF/build$ 
+cc@rtx6000:~/ElasticIVF/build$ 
+cc@rtx6000:~/ElasticIVF/build$ 
+cc@rtx6000:~/ElasticIVF/build$ ./faiss/gpu/test_sivf_delete 
 Generating 1000000 vectors...
 [HPDIC MOD] Faiss GPU initialized on device ID: 0
+
+[HPDIC MEMORY FIX] Resizing:
+  > Slab Pool:   66875 -> 238471
+  > Data Buffer: 1500000 -> 7631072 vectors (Avoids Overflow)
+
 Training...
 [SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...
-WARNING clustering 50000 points to 4096 centroids: please provide at least
-159744 training points Clustering 50000 points in 128D to 4096 clusters, redo 1
-times, 20 iterations Preprocessing in 0.02 s Iteration 19 (0.38 s, search 0.27
-s): objective=420117 imbalance=1.874 nsplit=0 [SIVF::train] GPU K-Means
-complete. Quantizer populated with 4096 centroids. Adding 1000000 vectors...
+WARNING clustering 50000 points to 4096 centroids: please provide at least 159744 training points
+Clustering 50000 points in 128D to 4096 clusters, redo 1 times, 20 iterations
+  Preprocessing in 0.02 s
+  Iteration 19 (0.39 s, search 0.27 s): objective=420117 imbalance=1.874 nsplit=0       
+[SIVF::train] GPU K-Means complete. Quantizer populated with 4096 centroids.
+Adding 1000000 vectors...
 Benchmark: Removing 10000 vectors...
 
 ================ PERFORMANCE REPORT ================
 Workload:        Delete 10000 vectors
 Baseline (Faiss):202.2 ms
-SIVF (Ours):     0.676997 ms
+SIVF (Ours):     0.66785 ms
 ----------------------------------------------------
-Speedup:         298.672 x
-Latency per ID:  0.0676997 ns
-Actual Removed:  9992 (Recall Rate: 99.92%)
+Speedup:         302.763 x
+Latency per ID:  0.066785 ns
+Actual Removed:  10000 (Recall Rate: 100%)
 ====================================================
 
-cc@rtx6000:~/ElasticIVF/build$
+cc@rtx6000:~/ElasticIVF/build$ 
  */
