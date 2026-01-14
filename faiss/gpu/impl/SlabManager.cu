@@ -86,12 +86,12 @@ SlabManager::SlabManager(
     int block_size = 256;
     int grid_size = ((int)slab_pool_size + block_size - 1) / block_size;
 
-    // [关键修复] 必须将 Metadata 区域清零！
-    // 否则 valid_count 是随机值，导致 Add Kernel 以为 slab 满了或者越界
+    // [新增修复] 将 Address Table 初始化为 INVALID (全 0xFF)
+    // 这样未插入的 ID 查表时会返回 INVALID_COORD，而不是 0
     CUDA_VERIFY(cudaMemsetAsync(
-            slab_metadata_.data(),
-            0,
-            slab_pool_size * sizeof(SlabMetadata),
+            address_table_.data(),
+            0xFF,
+            max_vectors * sizeof(uint64_t),
             stream));
 
     // 初始化空闲链表

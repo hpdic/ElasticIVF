@@ -59,34 +59,41 @@ void GpuIndexSIVF::initSlabManager(size_t max_vectors, size_t pool_size) {
     if (is_slab_initialized_)
         return;
 
-    auto stream = resources_->getDefaultStream(getCurrentDevice());
+    int device = getCurrentDevice();
+    auto stream = resources_->getDefaultStream(device);
 
     // 1. 初始化 SlabManager
+    // 这里的 slab_manager_ 构造函数内部也是用的 explicit
+    // AllocInfo，所以它没报错
     slab_manager_ = new SlabManager(
-            resources_.get(),
-            getCurrentDevice(),
-            max_vectors,
-            pool_size,
-            this->d);
+            resources_.get(), device, max_vectors, pool_size, this->d);
 
     // 2. 初始化 List Heads
     if (list_heads_ == nullptr) {
-        list_heads_ = new DeviceVector<int>(
-                resources_.get(), makeDevAlloc(AllocType::Other, stream));
+        // [修复] 显式构造 AllocInfo，避免 makeDevAlloc 可能的默认参数问题
+        AllocInfo info(AllocType::Other, device, MemorySpace::Device, stream);
+
+        list_heads_ = new DeviceVector<int>(resources_.get(), info);
     }
 
     // 分配空间
+    // 确保 nlist 有效
+    FAISS_ASSERT(this->nlist > 0);
     list_heads_->resize(this->nlist, stream);
 
-    // [检查这一段！]
-    // 必须是 cudaMemsetAsync，且 value 是 -1
+    // [新增] 检查分配是否成功
+    if (list_heads_->data() == nullptr) {
+        printf("[ERROR] Failed to allocate list_heads_ (size=%d)\n",
+               this->nlist);
+        FAISS_THROW_MSG("DeviceVector allocation failed");
+    }
+
+    // 初始化为 -1
+    // 这里使用 data() 获取指针，确保指针有效
     CUDA_VERIFY(cudaMemsetAsync(
             list_heads_->data(), -1, this->nlist * sizeof(int), stream));
 
     is_slab_initialized_ = true;
-
-    // [DEBUG] 打印一句，证明初始化跑到了
-    // printf("DEBUG: SlabManager initialized. List heads reset to -1.\n");
 }
 
 // 声明外部定义的启动函数
@@ -172,6 +179,9 @@ void GpuIndexSIVF::addImpl_(idx_t n, const float* x, const idx_t* ids) {
             x,
             ids,
             stream);
+
+    // Faiss 的基类不会自动帮你加这个数，得自己加。
+    this->ntotal += n;
 }
 
 // [匹配头文件] searchImpl_ (带下划线), 参数 k 是 int

@@ -26,6 +26,10 @@ cd ~/ElasticIVF/build
 make -j test_sivf_search
 ./faiss/gpu/test_sivf_search
 
+# SIVF delete benchmark:
+cd ~/ElasticIVF/build
+make -j test_sivf_delete
+./faiss/gpu/test_sivf_delete
 ```
 
 ## Benchmarks
