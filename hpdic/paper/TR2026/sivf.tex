@@ -291,7 +291,37 @@ To support non-blocking insertions, we exploit the weak memory model. The Append
 
 \subsection{Bitmap-based Lazy Eviction}
 \label{sec:bitmap_lazy_eviction}
-\don{TODO}
+
+Traditional vector deletion in IVF indices necessitates physical memory compaction to close the gaps left by removed elements, incurring an $O(N_{list})$ cost where $N_{list}$ is the length of the inverted list. This approach triggers massive global memory transactions and fundamentally limits the system's ability to handle high-throughput deletion streams. To circumvent this bottleneck, we propose a Bitmap-based Lazy Eviction mechanism that decouples logical validity from physical data residence. By leveraging a hardware-resident Address Translation Table (ATT) and atomic bitwise operations, we transform vector deletion into a constant-time $O(1)$ metadata update.
+
+\subsubsection{Address Translation Table (ATT) Architecture}
+
+The foundation of our deletion mechanism is the Address Translation Table, a global memory structure $\mathcal{T}$ that provides a direct mapping from a unique user identifier $u \in \mathbb{U}$ to its physical coordinate in the GPU memory hierarchy. Unlike standard IVF implementations that require traversing linked lists to locate a specific ID, the ATT enables random access retrieval.
+
+The table $\mathcal{T}$ is implemented as a flat array of 64-bit integers. For a given vector with ID $u$, the entry $\mathcal{T}[u]$ encodes a composite physical address $\mathcal{P}_u$. We define the encoding scheme as:
+\begin{equation}
+\mathcal{P}_u = (\text{idx}_{slab} \ll 32) \mid \text{idx}_{slot},
+\end{equation}
+where $\text{idx}_{slab}$ denotes the index of the resident slab in the global slab pool, and $\text{idx}_{slot} \in [0, 31]$ represents the specific offset within that slab. This composite encoding allows the deletion kernel to resolve the precise memory location of any target vector in a single global memory read transaction, bypassing the need for pointer chasing through the inverted index structure.
+
+\subsubsection{Atomic Bitwise Invalidation}
+
+Once the physical coordinates $(\text{idx}_{slab}, \text{idx}_{slot})$ are resolved, the actual eviction is executed via the slab's validity bitmap. Let $\mathcal{B}_i$ denote the 32-bit validity bitmap associated with slab $S_i$. Each bit $b_j \in \mathcal{B}_i$ corresponds to the $j$-th slot in the slab. A value of $1$ indicates a valid vector participating in search, while $0$ marks a tombstone.
+
+The deletion operation $\text{Delete}(u)$ is implemented as an atomic Read-Modify-Write (RMW) operation on the bitmap. To ensure thread safety under concurrent high-concurrency updates, we utilize the \texttt{atomicAnd} CUDA intrinsic. The state transition of the bitmap is defined as:
+\begin{equation}
+\mathcal{B}_i \leftarrow \text{atomicAnd}(\mathcal{B}_i, \sim(1 \ll \text{idx}_{slot})).
+\end{equation}
+This operation flips the target bit to $0$ instantaneously. Crucially, the physical vector data $\mathbf{v}_u$ remains untouched in the slab data segment. This lazy eviction strategy eliminates the memory bandwidth overhead associated with \texttt{memmove} or swap-and-pop techniques used in conventional indices.
+
+\subsubsection{Dual-State Consistency and Complexity Analysis}
+To maintain index consistency without locking the entire data structure, we enforce a strict ordering of metadata updates. The deletion process follows a two-stage invalidation protocol. First, the validity bitmap is updated via the atomic operation described above. This ensures that any concurrent search kernels, which perform bitwise checks, will immediately ignore the deleted vector in the subsequent clock cycle:
+\begin{equation}
+\text{active\_mask} = \mathcal{B}_i \ \& \ (1 \ll \text{tid}).
+\end{equation}
+Second, the entry in the ATT is marked as invalid by writing a sentinel value $\mathcal{T}[u] \leftarrow \text{UINT64\_MAX}$. This prevents future deletion requests for the same ID from accessing stale physical addresses.
+
+From a complexity perspective, let $W$ be the memory write volume. In the baseline approach, deleting a vector requires moving subsequent elements, yielding $W_{base} \propto (N_{list} \times D \times \text{sizeof(float)})$. In SIVF, the write volume is constant: $W_{sivf} = \text{sizeof(Bitmap)} + \text{sizeof(ATT\_Entry)}$, which equals 12 bytes. This reduction from linear to constant complexity explains the 295.1x speedup observed in our evaluation.
 
 \section{Evaluation}
 \label{sec:evaluation}
@@ -353,6 +383,23 @@ The efficiency ratio, i.e., $QPS_{SIVF} / QPS_{Vanilla}$, reveals the effectiven
 \end{itemize}
 
 The experimental results indicate that SIVF delivers robust search performance that is highly competitive with static index structures. By maintaining up to 95\% of native GPU efficiency while providing lock-free dynamic updates, SIVF proves to be an ideal foundation for high-performance, frequently updated vector databases.
+
+\subsection{SIVF Performance of Vector Deletion}
+\label{sec:eval_deletion_performance}
+
+We evaluate the efficiency of the vector deletion mechanism in SIVF by comparing it against the standard Faiss IVF baseline. The experiment measures the latency and throughput when removing a batch of 10,000 vectors from a populated index of 1 million 128-dimensional vectors.
+
+Figure~\ref{fig:deletion_perf} illustrates the performance comparison between the two methods. The results indicate that the baseline Faiss implementation incurs a deletion latency of approximately 202.20 ms. In contrast, SIVF completes the same batch deletion operation in just 0.69 ms. This represents a speedup of 295.1x. Correspondingly, the deletion throughput increases from $4.9 \times 10^4$ vectors per second in the baseline to $1.5 \times 10^7$ vectors per second in SIVF.
+
+The substantial performance gain is attributed to the architectural differences in handling deletions. The baseline approach typically requires scanning inverted lists or performing memory compaction to maintain data contiguity, which involves expensive memory movement and synchronization overhead on the GPU. SIVF leverages its GPU-resident Address Translation Table to perform logical deletions. By mapping user IDs directly to physical slots and toggling the corresponding bit in the validity bitmap, SIVF achieves $O(1)$ complexity for deletion operations. This approach effectively eliminates the overhead of physical memory reorganization and enables real-time updates for high-throughput data streams.
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=0.95\linewidth]{figures/performance_delete.pdf}
+    \caption{Performance comparison of vector deletion between Faiss IVF (Baseline) and SIVF. (a) shows the deletion latency in milliseconds on a log scale, where SIVF achieves a 295.1x speedup. (b) shows the deletion throughput in vectors per second on a log scale.}
+    \label{fig:deletion_perf}
+    \Description{Two bar graphs comparing deletion latency and throughput between Faiss IVF and SIVF, highlighting the significant speedup achieved by SIVF.}
+\end{figure}
 
 \section{Conclusion}
 \label{sec:conclusion}
