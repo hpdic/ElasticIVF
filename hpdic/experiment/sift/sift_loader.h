@@ -54,3 +54,44 @@ float* fvecs_read(const char* fname, size_t* d_out, size_t* n_out) {
     fclose(f);
     return x;
 }
+
+int* ivecs_read(const char* fname, size_t* d_out, size_t* n_out) {
+    if (!file_exists(fname)) {
+        fprintf(stderr, "[Error] File not found: %s\n", fname);
+        exit(1);
+    }
+
+    FILE* f = fopen(fname, "r");
+    if (!f) {
+        fprintf(stderr, "Could not open %s\n", fname);
+        exit(1);
+    }
+
+    int d;
+    if (fread(&d, 1, sizeof(int), f) != sizeof(int)) {
+        fprintf(stderr, "Error reading dimension\n");
+        exit(1);
+    }
+    *d_out = (size_t)d;
+
+    fseek(f, 0, SEEK_END);
+    long size = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    *n_out = size / (sizeof(int) + d * sizeof(int)); // 注意这里是 sizeof(int)
+
+    int* x = new int[*n_out * *d_out];
+    
+    size_t nr = 0;
+    for (size_t i = 0; i < *n_out; i++) {
+        int d_check;
+        fread(&d_check, 1, sizeof(int), f);
+        if (d_check != d) {
+            fprintf(stderr, "Error at vector %zu: dim %d != %d\n", i, d_check, d);
+            exit(1);
+        }
+        nr += fread(x + i * d, sizeof(int), d, f);
+    }
+    
+    fclose(f);
+    return x;
+}
