@@ -153,3 +153,11 @@ target_link_libraries(test_sivf_sift_delete
     CUDA::cudart 
     CUDA::cublas
 )
+
+# --- GIST Benchmarks ---
+add_executable(test_sivf_gist_add hpdic/experiment/gist/test_sivf_gist_add.cpp)
+target_link_libraries(test_sivf_gist_add faiss OpenMP::OpenMP_CXX CUDA::cudart CUDA::cublas)
+add_executable(test_sivf_gist_search hpdic/experiment/gist/test_sivf_gist_search.cpp)
+target_link_libraries(test_sivf_gist_search faiss OpenMP::OpenMP_CXX CUDA::cudart CUDA::cublas)
+add_executable(test_sivf_gist_delete hpdic/experiment/gist/test_sivf_gist_delete.cpp)
+target_link_libraries(test_sivf_gist_delete faiss OpenMP::OpenMP_CXX CUDA::cudart CUDA::cublas)
