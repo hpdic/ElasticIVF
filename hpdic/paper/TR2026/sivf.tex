@@ -1,4 +1,5 @@
 \documentclass[sigconf,nonacm]{acmart}
+
 \setlength{\marginparwidth}{2cm}
 
 \usepackage{placeins}
@@ -68,16 +69,28 @@
 
 \begin{abstract}
 GPU-accelerated Approximate Nearest Neighbor (ANN) search has become the standard for large-scale vector similarity retrieval. However, existing GPU indices are predominantly designed for static, write-once-read-many workloads. In streaming scenarios such as real-time recommendation and security monitoring, where data must be frequently inserted and evicted to maintain a sliding window, current architectures suffer from a critical bottleneck: the lack of native support for in-place mutation. Consequently, evicting data necessitates an expensive CPU-GPU roundtrip to reorganize the index layout, causing system latency to spike from milliseconds to seconds.
-
 In this paper, we propose SIVF (Streaming Inverted File), a GPU-native indexing architecture designed specifically for high-velocity streaming data. SIVF abandons the traditional contiguous memory layout in favor of a dynamic slab-based allocation system combined with a validity bitmap, enabling efficient, lock-free in-place insertion and deletion directly in VRAM. To resolve the overhead of locating vectors for deletion, we introduce a GPU-resident address translation table that provides $O(1)$ access to physical storage slots. 
-
 We evaluate SIVF against state-of-the-art baselines on the SIFT1M and GIST1M datasets. Experimental results demonstrate that SIVF reduces deletion latency by up to $13,300\times$ (from 11.8 seconds to 0.89 ms on GIST1M) and improves ingestion throughput by $36\times$ to $105\times$ compared to standard Faiss implementations. While sustaining competitive search recall, SIVF effectively eliminates the mutation bottleneck, paving the way for fully GPU-resident, real-time streaming vector analytics.
 \end{abstract}%%
 \maketitle
 
 % \lipsum
 
+\begin{CCSXML}
+<ccs2012>
+   <concept>
+       <concept_id>10002951.10003317.10003338.10003346</concept_id>
+       <concept_desc>Information systems~Top-k retrieval in databases</concept_desc>
+       <concept_significance>500</concept_significance>
+       </concept>
+ </ccs2012>
+\end{CCSXML}
+
+\ccsdesc[500]{Information systems~Top-k retrieval in databases}
+
 \section{Introduction}
+
+Approximate Nearest Neighbor (ANN) search has emerged as a critical primitive for modern machine learning infrastructure, underpinning applications ranging from semantic information retrieval and recommendation systems to the long-term memory of Large Language Models. While the primary focus of research has historically been on optimizing query throughput and recall for static, read-only datasets, the industry is increasingly shifting towards real-time scenarios. In these streaming environments, such as fraud detection or smart healthcare, data freshness is paramount, requiring the index to support high-velocity ingestion and timely eviction of obsolete vectors. However, adapting existing GPU-accelerated indices, originally designed for immutable workloads, to this dynamic paradigm presents significant architectural challenges.
 
 \subsection{Observation: The Deletion Bottleneck}
 
@@ -87,7 +100,7 @@ To quantify the gap between insertion and eviction performance, we conducted ben
 
 \begin{figure}[!h]
     \centering
-    \includegraphics[width=0.8\linewidth]{figures/motivation_bar_chart_comparison.pdf}
+    \includegraphics[width=\linewidth]{figures/motivation_bar_chart_comparison.pdf}
     \caption{The asymmetry between insertion and deletion latency on GPU indices. While insertion benefits from GPU parallelism, standard deletion triggers a costly CPU-GPU roundtrip, resulting in multi-second latencies for batch evictions (e.g., $\sim$1.6s for 10k vectors). This creates a prohibitive bottleneck for streaming applications.}
     \label{fig:motivation}
 \end{figure}
@@ -126,12 +139,56 @@ This paper makes three primary contributions to the field of high-performance ve
     \item \textbf{Orders-of-Magnitude Performance Gains:} We evaluate SIVF against state-of-the-art libraries on the SIFT1M and GIST1M datasets. Our results show that SIVF reduces deletion latency by up to $13,000\times$ (from 11.8s to 0.89ms) and improves ingestion throughput by over $36\times$, effectively closing the gap between static and streaming vector search performance on GPUs.
 \end{itemize}
 
+\paragraph{Organization}
+The remainder of this paper is organized as follows. 
+Section~\ref{sec:related_work} reviews the existing landscape of ANN search, distinguishing between CPU-based dynamic methods and static GPU-accelerated indices. 
+Section~\ref{sec:design_implementation} details the architectural design of SIVF, elaborating on the slab-based memory allocator, the validity bitmap mechanism, and the GPU-resident address translation table. 
+Section~\ref{sec:evaluation} presents our experimental methodology and a comprehensive evaluation of SIVF against state-of-the-art baselines. 
+Finally, Section~\ref{sec:conclusion} concludes the paper and outlines directions for future research.
+
 \section{Related Work}
 \label{sec:related_work}
-\don{TODO}
+
+Recent advancements in Approximate Nearest Neighbor (ANN) search have primarily focused on refining graph-based indexing structures, integrating attribute filtering for hybrid queries, and enhancing system scalability through quantization and hardware acceleration.
+
+\subsection{Optimization of Graph-Based Indices}
+
+Graph-based indices remain the state-of-the-art for high-recall retrieval. To address performance bottlenecks in production, general frameworks like VSAG~\cite{10.14778/3750601.3750624} optimize memory access patterns and parameter tuning, while SOAR~\cite{DBLP:conf/nips/SunSDGK23} improves indexing structures. 
+Navigational efficiency is a key optimization target; SHG~\cite{10.14778/3748191.3748212} introduces a hierarchical graph with shortcuts to bypass redundant levels, and probabilistic routing methods~\cite{lu2024probabilistic} have been proposed to enhance traversal. 
+Several works focus on distance metric optimizations: ADA-NNS~\cite{10.1145/3696410.3714870} utilizes angular distance guidance to filter irrelevant neighbors, DADE~\cite{10.14778/3712221.3712244} accelerates comparisons via data-aware distance estimation in lower dimensions, and HSCG~\cite{10.1145/3769786} adapts the Monotonic Relative Neighbor Graph for cosine similarity using hemi-sphere centroids.
+
+Efforts to improve graph construction and maintenance include LIGS~\cite{10.1145/3726302.3730028}, which employs locality-sensitive hashing to simulate proximity graphs for faster updates, and CSPG~\cite{DBLP:conf/nips/YangCZ24}, which crosses sparse proximity graphs. 
+Addressing robustness, Hua et al.~\cite{10.1145/3769783} propose dynamically detecting and fixing graph hardness for out-of-distribution queries. MIRAGE-ANNS~\cite{10.1145/3725325} attempts to bridge the gap between incremental and refinement-based construction. 
+Furthermore, theoretical frameworks like Subspace Collision~\cite{10.1145/3709729} provide rigorous guarantees on result quality using clustering-based indexing.
+
+\subsection{Attribute-Filtered and Hybrid Search}
+
+The integration of structured constraints with vector search has led to a surge in Filtered ANN research. Li et al.~\cite{10.1145/3769763} provide a comprehensive taxonomy and benchmark of these methods. 
+A primary focus is handling dynamic updates and specific filter types such as ranges or windows. 
+For range filtering, UNIFY~\cite{10.14778/3717755.3717770} introduces a segmented inclusive graph to support pre-, post-, and hybrid filtering strategies. 
+Dynamic environments are addressed by DIGRA~\cite{10.1145/3725399}, which uses a multi-way tree structure for dynamic graph indexing, and RangePQ~\cite{10.1145/3725401}, which offers a linear-space indexing scheme for range-filtered updates. 
+Peng et al.~\cite{10.14778/3748191.3748193} propose dynamic segment graphs to handle mixed streams of data and queries.
+
+Regarding specific constraints, Wang et al.~\cite{DBLP:conf/nips/WangLX0YN23} present a robust framework for general attribute constraints. 
+Engels et al.~\cite{engels2024approximate} focus on window filters, while WoW~\cite{10.1145/3769843} develops a window-graph based index to handle window-to-window incremental construction efficiently.
+
+\subsection{Quantization, Scalability, and System Implementations}
+
+To manage high-dimensional data at scale, quantization and system-level optimizations are critical. 
+RaBitQ~\cite{10.1145/3654970} and its extended version~\cite{10.1145/3725413} provide theoretical error bounds for bitwise quantization with flexible compression rates. 
+SymphonyQG~\cite{10.1145/3709730} integrates quantization codes directly with graph structures to reduce memory access overhead, while LoRANN~\cite{DBLP:conf/nips/JaasaariHR24} utilizes low-rank matrix factorization for compression.
+
+In terms of system architecture, Tagore~\cite{10.1145/3769825} leverages GPUs for accelerating graph index construction. 
+For distributed environments, HARMONY~\cite{10.1145/3749167} employs a multi-granularity partition strategy to balance load. 
+WebANNS~\cite{10.1145/3726302.3730115} enables efficient search within web browsers via WebAssembly. 
+From a theoretical perspective, Indyk and Xu~\cite{DBLP:conf/nips/IndykX23} analyze the worst-case performance limits of popular implementations. 
+Finally, DARTH~\cite{10.1145/3749160} introduces declarative recall targets through adaptive early termination to balance performance and result quality.
+
 
 \section{Design and Implementation of SIVF}
 \label{sec:design_implementation}
+
+In this section, we detail the architecture of SIVF, designed to enable high-concurrency mutability on GPUs. We begin by introducing the Slab-based Dynamic Memory Allocator (Section~\ref{sec:slab_memory_management}), which replaces rigid contiguous arrays with a flexible pool of fixed-size blocks to mitigate fragmentation. Building on this storage layer, we describe the Lock-free Parallel Ingestion protocol (Section~\ref{sec:lock_free_ingestion}) that allows conflict-free streaming updates via atomic slot reservation. To ensure retrieval efficiency despite the non-contiguous memory layout, we present a specialized High-Performance Search Kernel (Section~\ref{sec:methods_search_kernel}) utilizing warp-level collaboration. Finally, we detail the Bitmap-based Lazy Eviction mechanism (Section~\ref{sec:bitmap_lazy_eviction}), which achieves $O(1)$ deletion complexity through a GPU-resident address translation table.
 
 \subsection{Slab-based Memory Management}
 \label{sec:slab_memory_management}
@@ -388,13 +445,13 @@ The experimental results indicate that SIVF delivers robust search performance t
 We evaluate the efficiency of the vector deletion mechanism in ElasticIVF (SIVF) by comparing it against the standard Faiss GPU IVF baseline. The experiment measures latency and throughput when removing a batch of 10,000 vectors from a populated index of 1 million 128-dimensional vectors.
 
 % \FloatBarrier
-\begin{figure*}[t]
+\begin{figure}[t]
     \centering
-    \includegraphics[width=0.7\linewidth]{./figures/performance_delete.pdf}
+    \includegraphics[width=\columnwidth]{./figures/performance_delete.pdf}
     \caption{Performance comparison of vector deletion between Faiss IVF (Baseline) and SIVF. (a) Deletion latency (log scale), where SIVF achieves a 298.5$\times$ reduction compared to the baseline. (b) Deletion throughput (log scale), demonstrating SIVF's capacity to sustain over 14 million deletions per second.}
     \label{fig:deletion_perf}
     \Description{Two bar graphs comparing deletion latency and throughput between Faiss IVF and SIVF, highlighting the significant speedup achieved by SIVF.}
-\end{figure*}
+\end{figure}
 
 Figure~\ref{fig:deletion_perf} illustrates the performance comparison between the two methods. The results indicate that the baseline Faiss implementation incurs a substantial deletion latency of approximately 202.20 ms. In stark contrast, SIVF completes the same batch deletion operation in an average of 0.68 ms. This represents a massive speedup of 298.5$\times$. Correspondingly, deletion throughput surges from $4.9 \times 10^4$ vectors per second in the baseline to nearly $1.47 \times 10^7$ vectors per second in SIVF.
 
@@ -470,7 +527,7 @@ Real-world applications often require filtering search results based on metadata
 \section*{Acknowledgment}
 Results presented in this paper were obtained using the Chameleon testbed supported by the National Science Foundation.
 
-\bibliography{ref}
+\bibliography{ref,ann}
 \bibliographystyle{acm}
 
 \newpage
@@ -478,7 +535,77 @@ Results presented in this paper were obtained using the Chameleon testbed suppor
 
 \section{Appendix}
 
-\subsection{More Experimental Details}
+\subsection{Codebase Implementation and Modifications}
+\label{app:codebase}
+
+Our implementation is built upon the Faiss library. To integrate the SIVF architecture, we introduced significant modifications to the GPU module and developed a dedicated benchmarking suite. Table~\ref{tab:file_structure} summarizes the actual source files added or modified in the repository based on our development history.
+
+\begin{table*}[t]
+    \centering
+    \caption{Summary of Source Files and Modifications in SIVF Project}
+    \label{tab:file_structure}
+    \begin{tabular}{l|p{11cm}}
+    \hline
+    \textit{File Path} & \textit{Description} \\
+    \hline
+    \multicolumn{2}{c}{\textit{Core SIVF Architecture \& Memory Management}} \\
+    \hline
+    \texttt{faiss/gpu/GpuIndexSIVF.h} & Header definition for the SIVF index class, inheriting from \texttt{GpuIndex}. \\
+    \texttt{faiss/gpu/GpuIndexSIVF.cu} & Main entry point. Manages host-device synchronization and overrides standard \texttt{add}/\texttt{search} operations. \\
+    \texttt{faiss/gpu/impl/SlabManager.cuh} & Defines the device-side slab structures, arena pointers, and metadata layout. \\
+    \texttt{faiss/gpu/impl/SlabManager.cu} & Implements the Slab-based Dynamic Memory Allocator (SDMA) and memory pool management. \\
+    \texttt{faiss/gpu/impl/SIVFStructs.cuh} & Shared data structures and metadata definitions used across host and device code. \\
+    \hline
+    \multicolumn{2}{c}{\textit{CUDA Kernels (Ingestion, Search, Deletion)}} \\
+    \hline
+    \texttt{faiss/gpu/impl/SIVFAppend.cuh} & Device function templates for the ingestion logic. \\
+    \texttt{faiss/gpu/impl/SIVFAppend.cu} & Implements the lock-free insertion kernel, atomic slot reservation, and slab expansion logic. \\
+    \texttt{faiss/gpu/impl/SIVFSearch.cuh} & Templates for Warp-Level Collaborative Search (WLCS) and shared memory reduction. \\
+    \texttt{faiss/gpu/impl/SIVFSearch.cu} & Implements the search kernel, including distance computation and heap aggregation. \\
+    \texttt{faiss/gpu/SIVFDeletion.cu} & Implements the bitmap-based lazy eviction and deletion kernels. \\
+    \hline
+    \multicolumn{2}{c}{\textit{Experimental Benchmarks (C++)}} \\
+    \hline
+    \texttt{hpdic/experiment/test\_sivf\_add.cpp} & Benchmark driver for measuring high-throughput vector ingestion latency and speed. \\
+    \texttt{hpdic/experiment/test\_sivf\_search.cpp} & Benchmark driver for measuring query latency and recall (SIFT/GIST). \\
+    \texttt{hpdic/experiment/test\_sivf\_delete.cpp} & Benchmark driver for evaluating deletion throughput and memory reclamation. \\
+    \texttt{hpdic/experiment/sift/sift\_loader.h} & Data loader utility for the SIFT1M dataset. \\
+    \texttt{hpdic/experiment/gist/gist\_loader.h} & Data loader utility for the GIST1M dataset. \\
+    \texttt{hpdic/experiment/benchmark\_baseline.cpp} & Baseline comparison logic for standard IVF implementations. \\
+    \hline
+    \multicolumn{2}{c}{\textit{Build System \& Configuration}} \\
+    \hline
+    \texttt{faiss/gpu/CMakeLists.txt} & Updated CMake configuration to compile SIVF kernels and link dependencies. \\
+    \texttt{hpdic/config/c\_cpp\_properties.json} & VS Code configuration for IntelliSense and include paths. \\
+    \hline
+    \end{tabular}
+\end{table*}
+
+\subsection{Sensitivity Analysis and Tuning}
+\label{app:sensitivity}
+
+In addition to the main evaluation, we conducted sensitivity analyses to determine the optimal configuration for the slab size and batch processing dimensions.
+
+\paragraph{Impact of Slab Capacity}
+We experimented with slab capacities $C \in \{16, 32, 64, 128\}$. Our results indicate that $C=32$ provides the optimal balance. A capacity of 16 leads to excessive pointer chasing overhead (doubling the number of memory jumps), while a capacity of 128 increases the probability of warp divergence during the filtering phase. $C=32$ aligns perfectly with the NVIDIA warp size, maximizing the efficiency of the collaborative search kernel.
+
+
+
+\paragraph{Batch Size Sensitivity}
+Unlike CPU-based indices which typically require large batch sizes to amortize overhead, SIVF maintains high throughput even at smaller batch sizes. We observed that ingestion throughput saturates at a batch size of 256 vectors. This low saturation point validates our persistent kernel design, making SIVF highly suitable for real-time streaming where data arrives in small, frequent micro-batches.
+
+\subsection{Lessons Learned}
+\label{app:lessons_learned}
+
+Developing a fully dynamic, GPU-resident index presented several unique engineering challenges. We summarize the key lessons learned during the development of SIVF:
+
+\begin{itemize}
+    \item \textit{Implicit Synchronization Risks.} In the early stages of development, we encountered non-deterministic data corruption during high-concurrency ingestion. We traced this to the GPU's relaxed memory consistency model. Writes to a new slab were sometimes not visible to other streaming multiprocessors before the slab was linked to the list. We learned that explicit \texttt{\_\_threadfence()} instructions are non-negotiable when implementing lock-free data structures on GPUs, even within the same kernel launch.
+    
+    \item \textit{Register Pressure vs. Occupancy.} Our initial search kernel utilized complex template meta-programming to handle various metric types, which bloated the register usage per thread and limited occupancy. We found that manually unrolling loops and using simpler, distinct kernels for Inner Product and L2 distance significantly reduced register pressure, allowing more warps to be active simultaneously and hiding global memory latency more effectively.
+    
+    \item \textit{The Cost of Allocators.} We initially attempted to use the built-in CUDA \texttt{malloc} for dynamic node creation. This proved disastrous for performance due to internal locking within the driver. This failure motivated the design of the custom \texttt{SlabManager}. The lesson is that for high-throughput system code, general-purpose memory allocators on the device are rarely sufficient; domain-specific, arena-based allocators are essential for performance.
+\end{itemize}
 
 \end{document}
 \endinput
