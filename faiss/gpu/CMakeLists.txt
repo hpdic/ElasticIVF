@@ -391,3 +391,8 @@ set_target_properties(test_sivf_search PROPERTIES CUDA_ARCHITECTURES "75") # 根
 add_executable(test_sivf_delete ${PROJECT_SOURCE_DIR}/hpdic/experiment/test_sivf_delete.cpp)
 target_link_libraries(test_sivf_delete PRIVATE faiss CUDA::cudart CUDA::cublas)
 set_target_properties(test_sivf_delete PROPERTIES CUDA_ARCHITECTURES "75") # 根据你的显卡调整，RTX6000是75
+
+# 新增 Delete 测试 Target
+add_executable(test_sivf_sensitivity ${PROJECT_SOURCE_DIR}/hpdic/experiment/test_sivf_sensitivity.cpp)
+target_link_libraries(test_sivf_sensitivity PRIVATE faiss CUDA::cudart CUDA::cublas)
+set_target_properties(test_sivf_sensitivity PROPERTIES CUDA_ARCHITECTURES "75") # 根据你的显卡调整，RTX6000是75

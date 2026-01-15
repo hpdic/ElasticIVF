@@ -31,6 +31,11 @@ cd ~/ElasticIVF/build
 make -j test_sivf_delete
 ./faiss/gpu/test_sivf_delete
 
+# SIVF sensitivity benchmark:
+cd ~/ElasticIVF/build
+make -j test_sivf_sensitivity
+./faiss/gpu/test_sivf_sensitivity
+
 # Dataset SIFT:
 cd ~/ElasticIVF/build
 make -j test_sivf_sift_add
