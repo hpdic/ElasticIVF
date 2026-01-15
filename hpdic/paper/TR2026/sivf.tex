@@ -7,8 +7,9 @@
 \usepackage{amsmath}
 \usepackage{mathtools}
 % \usepackage{amsthm}
-\usepackage{algorithmic}
+% \usepackage{algorithmic}
 \usepackage{algorithm}
+\usepackage{algpseudocode}
 
 \usepackage{graphicx}      % 用于插入图片
 % \usepackage{subcaption}    % 关键！用于 \begin{subfigure}
@@ -149,6 +150,8 @@ Finally, Section~\ref{sec:conclusion} concludes the paper and outlines direction
 \section{Related Work}
 \label{sec:related_work}
 
+\don{Add a new subsection about GPUs from SC/HPDC}
+
 Recent advancements in Approximate Nearest Neighbor (ANN) search have primarily focused on refining graph-based indexing structures, integrating attribute filtering for hybrid queries, and enhancing system scalability through quantization and hardware acceleration.
 
 \subsection{Optimization of Graph-Based Indices}
@@ -193,54 +196,100 @@ In this section, we detail the architecture of SIVF, designed to enable high-con
 \subsection{Slab-based Memory Management}
 \label{sec:slab_memory_management}
 
-Standard GPU-based IVF indices rely on contiguous memory arrays to store inverted lists. This monolithic design suffers from severe limitations in streaming scenarios: (1) \textit{high resizing latency}, as expanding a list requires allocating a larger memory block and copying data, causing synchronization stalls; and (2) \textit{memory fragmentation}, caused by frequent allocation and deallocation of variable-sized lists.
+Standard GPU-based IVF indices rely on contiguous memory arrays to store inverted lists. This monolithic design exhibits severe limitations in streaming scenarios. First, resizing an inverted list requires allocating a larger memory region and copying existing data, introducing synchronization stalls and high latency. Second, frequent insertions and deletions of variable-length lists exacerbate memory fragmentation and reduce allocator efficiency on GPUs.
 
-To address these challenges, we propose a Slab-based Dynamic Memory Allocator (SDMA). Instead of managing variable-length arrays, SDMA pre-allocates a large, contiguous GPU memory arena and manages it as a pool of fixed-size blocks, termed \textit{Slabs}.
+To address these challenges, we propose a Slab-based Dynamic Memory Allocator (SDMA). Instead of managing variable-length arrays, SDMA pre-allocates a large contiguous GPU memory arena and manages it as a pool of fixed-size blocks, referred to as Slabs. This design transforms dynamic list growth into constant-time block allocation while maintaining predictable memory access patterns.
 
 \subsubsection{Slab Layout and Metadata}
-We define a Slab as the fundamental unit of storage. Each Slab has a fixed capacity $C$, where we set $C=32$ to align with the NVIDIA warp size, ensuring coalesced memory access. A Slab $S_i$ consists of two distinct regions:
+
+A Slab is defined as the fundamental unit of storage. Each Slab has a fixed capacity $C$, and we set $C = 32$ to align with the NVIDIA warp size, thereby enabling coalesced memory access when threads within a warp operate on the same slab. A Slab $S_i$ consists of two regions:
 
 \begin{itemize}
-    \item \textit{Data Payload}: Stores the quantized vectors. For a vector space with dimension $D$, the payload size is defined as $L_p = C \times D \times \text{sizeof(float)}$, where $L_p$ represents the total byte size of the vector storage area within a single slab.
-    
-    \item \textit{Metadata Header}: Contains control information for traversing and managing the slab, formally defined as a tuple $M_i$:
+    \item \textit{Data Payload}: Stores quantized vectors contiguously. For a vector space of dimension $D$, the payload size is
+    \[
+        L_p = C \times D \times \text{sizeof(float)}.
+    \]
+
+    \item \textit{Metadata Header}: Stores control information required for traversal and mutation. The metadata of slab $S_i$ is represented as
     \begin{equation}
         M_i = \langle n_{next}, b_{valid}, c_{valid} \rangle,
     \end{equation}
-    where $n_{next}$ is the identifier of the subsequent slab in the logical linked list, allowing distinct physical blocks to form a coherent inverted list; $b_{valid}$ is a 32-bit integer serving as a validity bitmap, in which the $k$-th bit indicates the occupancy status of the $k$-th slot; and $c_{valid}$ represents the current count of valid vectors stored in $S_i$.
+    where $n_{next}$ denotes the identifier of the next slab in the logical list, $b_{valid}$ is a 32-bit validity bitmap indicating occupied slots, and $c_{valid}$ records the number of valid vectors currently stored in the slab.
 \end{itemize}
 
-This design enables logical deletion with $O(1)$ complexity via atomic bit-flipping on $b_{valid}$, eliminating the need for memory compaction during removal operations.
+Logical deletion is implemented by atomically clearing the corresponding bit in $b_{valid}$, yielding constant-time removal without triggering memory compaction or data movement.
 
 \subsubsection{Conflict-Free Monotonic Allocator}
-Traditional device-side memory management (e.g., \texttt{malloc/free} inside kernels) incurs significant fragmentation and locking overhead. We implement a simplified \textit{Monotonic Linear Allocator} tailored for high-throughput stability.
 
-The allocator manages a global \textit{Slab Pool} as a pre-allocated array. To maximize concurrency and eliminate the ABA problem (a common hazard in lock-free linked lists), we adopt an \textbf{allocation-only} strategy during the ingestion phase:
+General-purpose device-side memory allocators incur substantial synchronization and fragmentation overhead when invoked from GPU kernels. SDMA instead adopts a simplified monotonic allocation strategy optimized for high-throughput ingestion.
 
-\begin{itemize}
-    \item \textit{Atomic Allocation}: A thread requests a new Slab by atomically decrementing a global cursor $P_{top}$. This ensures that every requested Slab ID is unique throughout the kernel's lifecycle:
-    \begin{equation}
-        idx = \texttt{atomicSub}(P_{top}, 1) - 1.
-    \end{equation}
-    
-    \item \textit{No Physical Deallocation}: Unlike general-purpose allocators, SDMA does not recycle Slab IDs back to the pool immediately upon vector deletion. Instead, evicted space is reclaimed logically via the validity bitmap (see Section~\ref{sec:bitmap_lazy_eviction}). This design choice trades GPU memory capacity for absolute thread safety, ensuring that no active search kernel ever accesses a recycled slab address that has been repurposed by a concurrent writer.
-\end{itemize}
+The allocator manages a global Slab Pool pre-allocated during index construction. Free slab identifiers are organized as a stack initialized once by a device kernel. Allocation proceeds by atomically decrementing a global stack pointer $P_{top}$:
+\begin{equation}
+    s_{id} = \texttt{atomicSub}(P_{top}, 1) - 1.
+\end{equation}
+
+In lock-free allocators, reusing memory identifiers may lead to the well-known ABA problem, where a shared variable changes from value $A$ to $B$ and back to $A$ between two observations, causing concurrent threads to falsely assume that the system state remains unchanged.
+In the context of GPU memory management, this can result in a slab identifier being reclaimed, reused, and reassigned while another thread still holds a stale reference to the same identifier.
+
+SDMA avoids this issue by design.
+Slab identifiers are allocated monotonically from a pre-initialized pool and are never recycled during the lifetime of the index.
+Deletion only invalidates logical occupancy via a bitmap and does not return slab identifiers to the free list.
+As a result, once a slab identifier is observed by a thread, its physical meaning remains stable throughout the execution, eliminating ABA hazards without additional versioning or synchronization.
 
 \subsubsection{Virtual Addressing via Address Table}
-To decouple the logical vector ID from its physical storage location, we introduce a global \textit{Address Table}. This table implements a mapping function $\mathcal{T}$ that translates a unique vector identifier $v_{id}$ to a physical coordinate tuple:
+
+To decouple logical vector identifiers from physical storage locations, SDMA introduces a global Address Table that implements a translation function
 \begin{equation}
     \mathcal{T}(v_{id}) \rightarrow \langle s_{id}, o_{slot} \rangle,
 \end{equation}
-where $s_{id}$ represents the physical Slab ID and $o_{slot}$ denotes the offset index within that slab (where $0 \le o_{slot} < C$). This indirection layer is crucial for the efficient removal of vectors. Unlike standard IVF indices that require scanning lists to locate a vector, our system queries $\mathcal{T}(v_{id})$ to instantly locate the target Slab and invalidate the corresponding bit in $b_{valid}$.
+where $s_{id}$ denotes the slab identifier and $o_{slot}$ denotes the slot offset within that slab, with $0 \le o_{slot} < C$.
+
+The Address Table is initialized with an invalid sentinel value for all entries. Upon insertion, the table is updated to record the physical location of each vector. During deletion, the system queries $\mathcal{T}(v_{id})$ to directly locate the corresponding slab and slot, enabling constant-time invalidation without scanning inverted lists.
 
 \subsubsection{System Implementation}
-We implemented the proposed architecture using CUDA C++ within the Faiss framework. To bridge the gap between high-level resource management and low-level kernel execution, our implementation adopts a \textit{dual-view architecture}.
 
-\paragraph{Host-Device Separation} On the host side, we utilize the well-accepted RAII-compliant containers (specifically \texttt{DeviceVector}) to manage the lifecycle of GPU memory resources, ensuring automatic deallocation and preventing memory leaks. These containers are encapsulated within a \textit{SlabManager} class. For kernel execution, we project these resources into a lightweight \textit{SlabManagerDevice} structure, which contains only raw pointers and scalar parameters. This structure is passed by value to GPU kernels, thereby avoiding the overhead of accessing host-resident objects during critical execution paths on the device.
+We implemented SDMA in CUDA C++ within the Faiss framework using a dual-view architecture.
 
-\paragraph{Atomic State Transitions} The concurrency control within the allocator relies on hardware-supported atomic instructions rather than software locks. Specifically, the stack pointer $P_{top}$ is manipulated via \texttt{atomicSub} and \texttt{atomicAdd} intrinsics, guaranteeing that simultaneous allocation requests from thousands of CUDA threads result in unique slab assignments. Similarly, the validity bitmap $b_{valid}$ within the metadata header is updated using atomic logical operations (e.g., \texttt{atomicAnd}), enabling concurrent deletions within the same slab without race conditions.
+On the host side, GPU memory resources are managed using RAII-compliant containers, encapsulated in a \texttt{SlabManager} class. These containers handle allocation and lifetime management of slab metadata, slab data, address tables, and allocator state. For kernel execution, these resources are projected into a lightweight \texttt{SlabManagerDevice} structure containing only raw pointers and scalar parameters, which is passed by value to device kernels.
 
-\paragraph{Integration with Faiss} We integrated SDMA by extending the standard \texttt{GpuIndexIVF} class. By overriding the protected virtual methods \texttt{addImpl\_} and \texttt{searchImpl\_}, we redirect the vector storage logic from the default continuous memory arrays to our slab-based system, while retaining the optimized coarse quantizer implementations provided by the base library for cluster assignment.
+Concurrency control relies exclusively on hardware-supported atomic instructions. The slab allocator pointer $P_{top}$ is manipulated using \texttt{atomicSub}, guaranteeing unique slab assignments under concurrent allocation. Similarly, updates to the validity bitmap $b_{valid}$ are performed using atomic bitwise operations, enabling concurrent deletions within the same slab without race conditions.
+
+SDMA is integrated by extending the \texttt{GpuIndexIVF} class. By overriding the protected methods \texttt{addImpl\_} and \texttt{searchImpl\_}, vector storage is redirected from contiguous arrays to the slab-based allocator while preserving the original coarse quantization and cluster assignment logic provided by Faiss.
+
+Algorithm~\ref{alg:slab_manager} illustrates the core allocation and deletion procedures of SDMA. 
+During insertion, a thread atomically acquires a unique slab identifier by decrementing the global stack pointer. 
+The vector is written to a free slot within the allocated slab, and the corresponding validity bit is set atomically. 
+The Address Table is then updated to record the physical location of the vector.
+
+Deletion follows a symmetric but non-destructive procedure. 
+Given a vector identifier, the Address Table is queried to retrieve its slab identifier and slot offset. 
+The vector is removed logically by atomically clearing the corresponding validity bit, while the slab itself remains allocated. 
+This design ensures constant-time deletion without memory compaction or slab reuse, enabling safe concurrent execution of insertion, deletion, and search kernels.
+
+\begin{algorithm}[t]
+\caption{Slab Allocation and Logical Deletion in SDMA}
+\label{alg:slab_manager}
+\begin{algorithmic}[1]
+\State \textbf{Input:} Vector identifier $v_{id}$, vector data $x$
+\State \textbf{Global State:} Slab pool, free list stack pointer $P_{top}$, Address Table $\mathcal{T}$
+
+\Procedure{AllocateSlot}{$v_{id}, x$}
+    \State $s_{id} \gets \texttt{atomicSub}(P_{top}, 1) - 1$
+    \State Select a free slot $o_{slot}$ in slab $s_{id}$
+    \State Write vector $x$ to slab data[$s_{id}$][$o_{slot}$]
+    \State Atomically set bit $o_{slot}$ in $b_{valid}$
+    \State $\mathcal{T}(v_{id}) \gets \langle s_{id}, o_{slot} \rangle$
+\EndProcedure
+
+\Procedure{Delete}{$v_{id}$}
+    \State $\langle s_{id}, o_{slot} \rangle \gets \mathcal{T}(v_{id})$
+    \If{$\langle s_{id}, o_{slot} \rangle$ is valid}
+        \State Atomically clear bit $o_{slot}$ in $b_{valid}$
+        \State Mark $\mathcal{T}(v_{id})$ as invalid
+    \EndIf
+\EndProcedure
+\end{algorithmic}
+\end{algorithm}
 
 \subsection{Lock-free Parallel Ingestion}
 \label{sec:lock_free_ingestion}
@@ -554,6 +603,12 @@ Results presented in this paper were obtained using the Chameleon testbed suppor
 \label{app:codebase}
 
 Our implementation is built upon the Faiss library. To integrate the SIVF architecture, we introduced significant modifications to the GPU module and developed a dedicated benchmarking suite. Table~\ref{tab:file_structure} summarizes the actual source files added or modified in the repository based on our development history.
+
+The SIVF implementation entails a non-trivial engineering effort.
+Based on Git history statistics, the project introduces approximately 7,000 lines of code changes (insertions and deletions) spanning over 30 source files.
+Specifically, more than 2,500 lines are devoted to GPU index logic, including new CUDA kernels for insertion, deletion, and search, GPU-side metadata management, and a slab-based memory allocator (\texttt{SlabManager}).
+An additional 3,000+ lines support experimental evaluation, including micro-benchmarks, dataset loaders, and end-to-end performance tests.
+The remaining code includes build configurations, CI workflows, and scripts for result visualization, ensuring reproducibility and ease of integration with existing Faiss workflows.
 
 \begin{table*}[t]
     \centering
