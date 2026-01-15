@@ -374,9 +374,12 @@ From a complexity perspective, let $W$ be the memory write volume. In the baseli
 \section{Evaluation}
 \label{sec:evaluation}
 
-\don{TODO: add the total lines of code}
-
 We implement SIVF by extending the GPU components of the widely-adopted Faiss library~\cite{douze2024faiss}, integrating our proposed slab-based memory management and lock-free update mechanisms into its core indexing architecture. Our evaluation benchmarks SIVF directly against the native Faiss GPU implementations, specifically targeting ingestion throughput and deletion latency under high-concurrency streaming workloads. To foster reproducibility and future research, we have open-sourced our complete implementation and evaluation scripts in the \emph{ElasticIVF} repository hosted on GitHub\footnote{\url{https://github.com/hpdic/ElasticIVF}}.
+
+Implementing SIVF required substantial modifications to the Faiss GPU backend and associated experimental infrastructure.
+In total, the implementation involves over 7,000 lines of code changes across 30+ files.
+Core system changes are concentrated in the GPU index implementation, including new GPU-native insertion, deletion, and search operators (e.g., \texttt{GpuIndexSIVF}, \texttt{SIVFAppend}, \texttt{SIVFSearch}), as well as a custom slab-based memory manager and lock-free metadata structures.
+In addition, we implemented extensive benchmarks, datasets loaders, and plotting scripts to support comprehensive evaluation.
 
 \subsection{Experimental Setup}
 \label{sec:exp_setup}
