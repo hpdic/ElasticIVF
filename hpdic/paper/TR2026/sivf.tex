@@ -56,7 +56,7 @@
 
 \begin{document}
 
-\title{SIVF: Breaking the 13,000$\times$ Deletion Bottleneck in GPU-Native Streaming Vector Search with Sub-Millisecond Eviction Latency}
+\title{SIVF: GPU-Resident Indexing for Streaming Vector Search with Sub-Millisecond Latency}
 
 \author{Dongfang Zhao}
 \email{dzhao@uw.edu}
@@ -245,6 +245,8 @@ We implemented the proposed architecture using CUDA C++ within the Faiss framewo
 \subsection{Lock-free Parallel Ingestion}
 \label{sec:lock_free_ingestion}
 
+\don{TODO: Added a pseudocode algorithm for this}
+
 Traditional GPU-based ANN indices often rely on sorting and bulk-copying for data ingestion, which incurs high latency for streaming data. In contrast, ElasticIVF implements a fully parallel, lock-free insertion kernel designed for high-throughput streams.
 
 \subsubsection{Atomic Slot Reservation}
@@ -288,6 +290,8 @@ While linked-list structures typically suffer from poor memory locality (pointer
 
 \subsection{High-Performance Search Kernel}
 \label{sec:methods_search_kernel}
+
+\don{TODO: Added a pseudocode algorithm for this}
 
 To bridge the performance gap between linked-slab traversal and contiguous memory access, we design a specialized search kernel optimized for the NVIDIA Ampere and Ada Lovelace architectures. The core challenge lies in the pointer-chasing nature of SIVF, which inherently threatens the Single Instruction, Multiple Threads (SIMT) efficiency. We overcome this through a hardware-aware design.
 
@@ -334,6 +338,8 @@ To support non-blocking insertions, we exploit the weak memory model. The Append
 \subsection{Bitmap-based Lazy Eviction}
 \label{sec:bitmap_lazy_eviction}
 
+\don{TODO: Added a pseudocode algorithm for this}
+
 Traditional vector deletion in IVF indices necessitates physical memory compaction to close the gaps left by removed elements, incurring an $O(N_{list})$ cost where $N_{list}$ is the length of the inverted list. This approach triggers massive global memory transactions and fundamentally limits the system's ability to handle high-throughput deletion streams. To circumvent this bottleneck, we propose a Bitmap-based Lazy Eviction mechanism that decouples logical validity from physical data residence. By leveraging a hardware-resident Address Translation Table (ATT) and atomic bitwise operations, we transform vector deletion into a constant-time $O(1)$ metadata update.
 
 \subsubsection{Address Translation Table (ATT) Architecture}
@@ -368,6 +374,8 @@ From a complexity perspective, let $W$ be the memory write volume. In the baseli
 \section{Evaluation}
 \label{sec:evaluation}
 
+\don{TODO: add the total lines of code}
+
 We implement SIVF by extending the GPU components of the widely-adopted Faiss library~\cite{douze2024faiss}, integrating our proposed slab-based memory management and lock-free update mechanisms into its core indexing architecture. Our evaluation benchmarks SIVF directly against the native Faiss GPU implementations, specifically targeting ingestion throughput and deletion latency under high-concurrency streaming workloads. To foster reproducibility and future research, we have open-sourced our complete implementation and evaluation scripts in the \emph{ElasticIVF} repository hosted on GitHub\footnote{\url{https://github.com/hpdic/ElasticIVF}}.
 
 \subsection{Experimental Setup}
@@ -380,7 +388,7 @@ For acceleration, the node features an NVIDIA Quadro RTX 6000 GPU with 24 GB of 
 To ensure statistical reliability, each reported data point represents the average of at least three independent executions. Error bars are omitted in figures where the standard deviation is negligible to maintain visual clarity. 
 Unless explicitly stated (as in Section~\ref{sec:eval_real_world}), our experiments utilize synthetic datasets consisting of random vectors generated from a uniform distribution. We employ this configuration as a neutral baseline to isolate system-level overheads (e.g., memory allocation, PCIe transfer) from data distribution effects. Note that because uniform data lacks the clustering structure inherent in real-world applications, the performance advantages of SIVF in early micro-benchmarks are primarily architectural and appear more conservative than those observed on skewed, real-world datasets.
 
-\subsection{SIVF Performance of Adding Vectors}
+\subsection{Microbenchmark: Ingestion}
 \label{sec:eval_add_performance}
 
 We evaluate the ingestion throughput of ElasticIVF against the baseline method, the standard Faiss GPU IVFFlat implementation. The experiments are conducted on an NVIDIA RTX 6000 Ada Generation GPU. We measure the insertion throughput (vectors per second) while varying two key parameters: the database size ($N_B$) from 1M to 4M vectors, and the number of clusters ($n_{list}$) from 1024 to 16384.
@@ -409,7 +417,7 @@ We observe that ingestion throughput is sensitive to the number of clusters $n_{
 Overall Speedup (Fig.~\ref{fig:add_perf}c).
 The heatmap confirms that ElasticIVF outperforms the baseline in every tested configuration. The speedup is robust, typically ranging from 2.4$\times$ to 2.9$\times$ for most configurations. Even under the highest load (4M vectors with $n_{list}=1024$), where contention for slab heads is maximized, ElasticIVF maintains a 1.79$\times$ advantage. This performance gap highlights the efficiency of our non-blocking, slab-based ingestion pipeline, making it particularly well-suited for high-throughput streaming scenarios.
 
-\subsection{SIVF Performance of Vector Search}
+\subsection{Microbenchmark: Search}
 \label{sec:eval_search_performance}
 
 In this section, we evaluate the query performance of ElasticIVF (SIVF) against the Vanilla Faiss GPU implementation. Theoretically, SIVF is expected to exhibit a slight degradation in search throughput compared to the baseline, as its linked-slab architecture sacrifices memory contiguity (and thus perfect memory coalescing) to enable highly efficient, fine-grained updates. Our objective is to verify that this structural overhead remains within a marginal range that does compromise overall system utility. As summarized in Figure~\ref{fig:search_perf}, the results confirm that SIVF maintains competitive search efficiency, reaching up to 91\% of the baseline performance in optimized configurations, demonstrating that the cost of supporting instant mutability is remarkably low.
@@ -439,7 +447,7 @@ The efficiency ratio, i.e., $QPS_{SIVF} / QPS_{Vanilla}$, reveals the effectiven
 
 The experimental results indicate that SIVF delivers robust search performance that is highly competitive with static index structures. By maintaining up to 91\% of native GPU efficiency while providing lock-free dynamic updates, SIVF proves to be an ideal foundation for high-performance, frequently updated vector databases.
 
-\subsection{SIVF Performance of Vector Deletion}
+\subsection{Microbenchmark: Deletion}
 \label{sec:eval_deletion_performance}
 
 We evaluate the efficiency of the vector deletion mechanism in ElasticIVF (SIVF) by comparing it against the standard Faiss GPU IVF baseline. The experiment measures latency and throughput when removing a batch of 10,000 vectors from a populated index of 1 million 128-dimensional vectors.
@@ -460,7 +468,7 @@ This transformative performance gain is attributed to the architectural shift in
 \subsection{Real-world Datasets}
 \label{sec:eval_real_world}
 
-To evaluate SIVF under realistic conditions, we utilized two standard large-scale benchmarks: SIFT1M ($d=128$) and GIST1M ($d=960$). These datasets allow us to assess system performance across varying dimensionalities, directly testing the scalability of our slab-based memory management against the contiguous memory model of the baseline (Faiss).
+To evaluate SIVF under realistic conditions, we utilized two standard large-scale benchmarks: SIFT1M~\cite{jegou2011product} (128 dimensions) and GIST1M~\cite{jegou2011product} (960 dimensions). SIFT1M is a standard computer vision dataset using Euclidean distance; GIST1M is a high-dimensional dataset representing global image features, which is particularly challenging for index structures due to the sparsity of the space and the high intrinsic dimensionality. These datasets allow us to assess system performance across varying dimensionalities, directly testing the scalability of our slab-based memory management against the contiguous memory model of the baseline (Faiss).
 
 \begin{figure*}[t]
     \centering
@@ -507,7 +515,11 @@ Figure~\ref{fig:eval_search} presents the query performance (QPS) at comparable 
 
 However, on the high-dimensional GIST1M dataset, we observe a performance trade-off. SIVF achieves approximately 37\% of the baseline's query throughput (1.3k vs. 3.6k QPS). This reduction is attributed to the non-contiguous memory access pattern inherent in the linked-slab design, which reduces memory coalescing efficiency when fetching large 960-dimensional vectors. We argue that this is an acceptable compromise for streaming systems, where the orders-of-magnitude improvements in mutability (ingestion and deletion) outweigh the moderate cost in raw search throughput.
 
-\section{Conclusion}
+\subsection{Ablation Study}
+
+\don{TODO}
+
+\section{Conclusion and Future Work}
 \label{sec:conclusion}
 
 In this work, we addressed the fundamental mismatch between the static design of existing GPU-accelerated ANN indices and the dynamic requirements of real-time streaming applications. Through rigorous benchmarking, we identified the ``roundtrip bottleneck'', i.e., the necessity of transferring index data across the PCIe bus for modification, as the primary inhibitor of low-latency eviction. To overcome this limitation, we proposed a new index architecture, namely SIVF, that relocates memory management responsibilities entirely onto the GPU. SIVF enables high-throughput and in-place mutability directly in VRAM. By implementing a slab-based memory allocator, a lock-free validity bitmap, and a GPU-resident address translation table, SIVF decouples index maintenance from the host CPU. Our evaluation on the SIFT1M and GIST1M datasets demonstrates that SIVF transforms the landscape of streaming vector search: it accelerates data deletion by up to $13,300\times$ (sub-millisecond latency) and improves ingestion throughput by over $36\times$ compared to the industry-standard Faiss library. These results confirm that moving memory management responsibilities from the CPU to the GPU is not only feasible but essential for the next generation of real-time neural search systems.

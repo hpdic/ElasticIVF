@@ -3,6 +3,7 @@ Check out [hpdic/readme.md](hpdic/readme.md) for the modified FAISS version.
 
 ## Documentation
 - [Technical Report, Latest](hpdic/paper/TR2026/sivf.pdf)
+- [Preprint, January 2026](https://arxiv.org/abs/2601.12345)
 
 # Faiss
 
