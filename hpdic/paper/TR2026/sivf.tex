@@ -265,7 +265,7 @@ Algorithm~\ref{alg:sdma_core} summarizes the allocator and deletion logic. Inser
     \While{$s$ is invalid \textbf{or} no free slot exists in slab $s$}
         \State $s_{new} \gets \texttt{atomicSub}(P_{top}, 1) - 1$
         \State Initialize metadata of $s_{new}$ with $b_{valid}=0$ and $n_{next}=s$
-        \State Atomically update $H[\ell]$ to $s_{new}$ if unchanged, otherwise discard $s_{new}$ and retry
+        \State Update $H[\ell]$ to $s_{new}$ if unchanged, otherwise retry
         \State $s \gets H[\ell]$
     \EndWhile
     \State Reserve a free slot $o$ in slab $s$ via atomic update of $c_{valid}$
