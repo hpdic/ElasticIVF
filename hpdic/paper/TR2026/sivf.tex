@@ -143,12 +143,12 @@ This paper makes three technical contributions to the field of high-performance 
     \item \textbf{Orders-of-Magnitude Performance Gains:} We evaluate SIVF against state-of-the-art libraries on the multiple real-world datasets. Our results show that SIVF reduces deletion latency by up to $13,000\times$ (from 11.8s to 0.89ms) and improves ingestion throughput by over $36\times$, effectively closing the gap between static and streaming vector search performance on GPUs.
 \end{itemize}
 
-% \paragraph{Organization}
-% The remainder of this paper is organized as follows. 
-% Section~\ref{sec:related_work} reviews the existing landscape of ANN search, distinguishing between CPU-based dynamic methods and static GPU-accelerated indices. 
-% Section~\ref{sec:design_implementation} details the architectural design of SIVF, elaborating on the slab-based memory allocator, the validity bitmap mechanism, and the GPU-resident address translation table. 
-% Section~\ref{sec:evaluation} presents our experimental methodology and a comprehensive evaluation of SIVF against state-of-the-art baselines. 
-% Finally, Section~\ref{sec:conclusion} concludes the paper and outlines directions for future research.
+\paragraph{Organization}
+The remainder of this paper is organized as follows. 
+Section~\ref{sec:related_work} reviews the existing landscape of ANN search, distinguishing between CPU-based dynamic methods and static GPU-accelerated indices. 
+Section~\ref{sec:design_implementation} details the architectural design of SIVF, elaborating on the slab-based memory allocator, the validity bitmap mechanism, and the GPU-resident address translation table. 
+Section~\ref{sec:evaluation} presents our experimental methodology and a comprehensive evaluation of SIVF against state-of-the-art baselines. 
+Finally, Section~\ref{sec:conclusion} concludes the paper and outlines directions for future research.
 
 \section{Related Work}
 \label{sec:related_work}
@@ -714,6 +714,28 @@ Deletion batch size primarily affects amortization rather than per-vector work. 
 
 \paragraph{Stable Sub-Millisecond Deletion.}
 The most critical observation from Figure~\ref{fig:sivf_sensitivity_lat} is that deletion latency remains strictly within the sub-millisecond range (0.58 ms to 0.93 ms) across all tested configurations. This robustness stems from the fact that deletions do not depend on the current occupancy of inverted lists, nor do they require structural reorganization (e.g., compaction, re-clustering, or CPU--GPU roundtrips). Even when processing a deletion batch of 1{,}000 vectors, the system achieves a peak throughput of over 1.7M vec/s, demonstrating that SIVF can sustain high-rate churn workloads with tight latency constraints.
+
+\subsection{End-to-End Streaming Performance of Sliding Windows}
+\label{sec:eval_streaming}
+
+While isolated insertion and deletion micro-benchmarks provide insights into atomic operation costs, they do not fully capture the dynamics of a continuous streaming system. To evaluate the practical applicability of SIVF in real-time scenarios, we designed a \textit{Sliding Window} benchmark that mimics a production environment. The system maintains a fixed window of active vectors (denoted as $W$) in the GPU memory. For every update step, a new batch of vectors ($B$) is ingested, and the oldest batch ($B$) is evicted to maintain the window size $W$.
+
+We evaluated two datasets: SIFT1M ($d=128$, $W=200\text{K}$, $B=10\text{K}$) and GIST1M ($d=960$, $W=100\text{K}$, $B=5\text{K}$). Figure~\ref{fig:eval_sliding} illustrates the latency per update step for both the Faiss baseline and SIVF.
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=1.0\linewidth]{figures/eval_sliding.pdf}
+    \caption{End-to-End Streaming Performance. Comparison of per-step latency in a sliding window scenario on SIFT1M (left) and GIST1M (right). 
+    % The baseline suffers from high latency due to the CPU-GPU roundtrip required for deletion. SIVF maintains single-digit millisecond latency via native in-place updates, achieving a speedup of 161$\times$ on SIFT1M and 266$\times$ on GIST1M.
+    }
+    \label{fig:eval_sliding}
+\end{figure}
+
+The results reveal a limitation in the standard static index architecture. For the Faiss baseline, every update step triggers a full reconstruction cycle where the GPU index must be copied to the CPU, modified, and re-uploaded. This roundtrip overhead results in substantial system freezes, averaging 355~ms for SIFT1M and over 1.1~s for GIST1M per update. Such latency renders the baseline unsuitable for latency-sensitive streaming applications, as the indexing pipeline becomes blocked for significant durations.
+
+In contrast, SIVF demonstrates superior stability and performance. By leveraging its slab-based memory management and native in-kernel deletion, SIVF executes the entire sliding window update strictly within the GPU. The total latency per step is reduced to approximately 2.2~ms for SIFT1M and 4.2~ms for GIST1M. This represents a speedup of 161$\times$ and 266$\times$, respectively.
+
+Notably, the performance gap widens as the data dimensionality increases. In the 960-dimensional GIST1M task, the baseline suffers from PCIe bandwidth saturation due to the massive data movement required for the roundtrip. SIVF avoids this bottleneck entirely, maintaining single-digit millisecond latency even under high-dimensional workloads. These results confirm that SIVF effectively transforms the GPU IVF index from a static search structure into a fully dynamic, real-time streaming engine.
 
 \section{Conclusion}
 \label{sec:conclusion}
