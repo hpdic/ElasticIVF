@@ -25,7 +25,7 @@
 
 // Use the generic loader provided in the previous step
 // GIST and SIFT both use the Corpus-Texmex .fvecs format
-#include "sift_loader.h" 
+#include "gist_loader.h" 
 
 using namespace faiss::gpu;
 
