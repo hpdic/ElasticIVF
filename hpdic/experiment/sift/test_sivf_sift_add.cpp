@@ -1,3 +1,15 @@
+/**
+ * test_sivf_sift_add.cpp
+ *
+ * Author: Dongfang Zhao
+ * Email:  dzhao@uw.edu
+ *
+ * Benchmark: SIFT1M Ingestion Performance (Baseline vs. SIVF)
+ *
+ * This test loads SIFT vectors, trains an index (or uses K-Means fallback),
+ * and benchmarks the insertion throughput (QPS).
+ */
+
 #include <iostream>
 #include <vector>
 #include <chrono>
@@ -10,14 +22,14 @@
 #include <faiss/gpu/GpuIndexIVFFlat.h>
 #include <faiss/gpu/StandardGpuResources.h>
 #include <faiss/IndexFlat.h>
-#include <faiss/gpu/GpuIndexSIVF.h> // 你的 SIVF 头文件
+#include <faiss/gpu/GpuIndexSIVF.h> // SIVF Header
 
 #include "sift_loader.h"
 
 using namespace faiss::gpu;
 
 // ---------------------------------------------------------
-// 辅助: 性能测试函数
+// Helper: Performance Benchmark Function
 // ---------------------------------------------------------
 double run_benchmark(const std::string& name, faiss::Index* index, 
                      size_t n, const float* data, bool sync_gpu = true) {
@@ -28,7 +40,7 @@ double run_benchmark(const std::string& name, faiss::Index* index,
 
     auto t_start = std::chrono::high_resolution_clock::now();
     
-    // 核心 Add 操作
+    // Core Add Operation
     index->add(n, data);
     
     if(sync_gpu) cudaDeviceSynchronize();
@@ -46,20 +58,20 @@ double run_benchmark(const std::string& name, faiss::Index* index,
 }
 
 int main(int argc, char** argv) {
-    // 1. 配置参数 (默认只跑 10万)
+    // 1. Configuration (Default: 100k vectors)
     const char* base_file = "/home/cc/ElasticIVF/hpdic/data/sift/sift_base.fvecs";
-    size_t target_nb = 100000; // <--- 改成了 10w
-    int nlist = 1024;          // <--- 10w数据配1024聚类比较合适，4096太稀疏会报错
+    size_t target_nb = 100000; // Adjusted to 100k for rapid testing
+    int nlist = 1024;          // 1024 clusters is appropriate for 100k data (4096 is too sparse)
 
     if (argc > 1) target_nb = std::stoll(argv[1]);
     if (argc > 2) nlist = std::stoi(argv[2]);
 
-    // 2. 加载数据
+    // 2. Load Data
     size_t d, file_nb;
     std::cout << "[Loader] Reading SIFT1M..." << std::endl;
     float* raw_data = fvecs_read(base_file, &d, &file_nb);
     
-    // 准备数据
+    // Prepare Database (Tile/Copy if target_nb > file_nb)
     std::vector<float> database(target_nb * d);
     #pragma omp parallel for
     for (size_t i = 0; i < target_nb; ++i) {
@@ -68,12 +80,12 @@ int main(int argc, char** argv) {
     }
     delete[] raw_data;
     
-    // 训练数据 (最多取 5万 就够了，太大了训练慢)
+    // Training Set (Cap at 50k for speed)
     size_t n_train = std::min((size_t)50000, target_nb); 
     std::cout << "[Info] Test Size: " << target_nb << ", Train Size: " << n_train << ", nlist: " << nlist << std::endl;
 
     StandardGpuResources res;
-    res.setTempMemory(512 * 1024 * 1024); // 512MB Temp
+    res.setTempMemory(512 * 1024 * 1024); // 512MB Temp Memory
 
     faiss::IndexFlatL2 quantizer_base(d);
 
@@ -87,32 +99,33 @@ int main(int argc, char** argv) {
         baseline_index.train(n_train, database.data());
         
         run_benchmark("Faiss GPU Baseline", &baseline_index, target_nb, database.data());
-    } // 跑完立刻销毁，释放显存
+    } // Index destroyed immediately to free VRAM
 
-// =========================================================
+    // =========================================================
     // Round 2: SIVF (Ours)
     // =========================================================
     {
-        // 修正点 1: Config 类型必须是 IVFFlatConfig
+        // Fix 1: Config type must be IVFFlatConfig
         faiss::gpu::GpuIndexIVFFlatConfig config; 
         config.device = 0; 
 
-        // 修正点 2: 构造函数去掉 &quantizer (参数列表: res, d, nlist, metric, config)
+        // Fix 2: Constructor does not take &quantizer 
+        // Signature: (res, d, nlist, metric, config)
         faiss::gpu::GpuIndexSIVF sivf_index(&res, d, nlist, faiss::METRIC_L2, config);
 
-        // 关键初始化
-        size_t capacity = target_nb * 1.5; // 留点余量
+        // Critical Initialization
+        size_t capacity = target_nb * 1.5; // Reserve buffer
         std::cout << "[SIVF] Initializing Slab Manager (Capacity: " << capacity << ")..." << std::endl;
         
-        // 修正点 3: 补上维度 d，否则算不出内存大小
-        // 如果这里还报错，请看一下你的 GpuIndexSIVF.h 里的 initSlabManager 定义
+        // Fix 3: Pass dimension 'd' to correctly calculate memory footprint
+        // Ensure GpuIndexSIVF::initSlabManager accepts 'd' if modified locally
         sivf_index.initSlabManager(capacity, d); 
 
-        // 训练
+        // Train
         std::cout << "[SIVF] Training..." << std::endl;
         sivf_index.train(n_train, database.data());
         
-        // 测速
+        // Benchmark
         run_benchmark("SIVF (Ours)", &sivf_index, target_nb, database.data());
     }
 

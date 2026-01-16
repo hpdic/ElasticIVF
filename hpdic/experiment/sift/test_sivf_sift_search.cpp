@@ -1,3 +1,15 @@
+/**
+ * test_sivf_sift_search.cpp
+ *
+ * Author: Dongfang Zhao
+ * Email:  dzhao@uw.edu
+ *
+ * Benchmark: SIFT1M Search Performance (Baseline vs. SIVF)
+ *
+ * This test loads the SIFT1M dataset, builds indices for both Vanilla Faiss
+ * and SIVF, and measures Search Throughput (QPS) and Recall@1.
+ */
+
 #include <iostream>
 #include <vector>
 #include <chrono>
@@ -18,13 +30,13 @@
 using namespace faiss::gpu;
 
 // ---------------------------------------------------------
-// 辅助函数: 计算 Recall
-// R@K: 看 Top-K 结果里有没有包含 Ground Truth 的第1名 (1-NN)
+// Helper: Compute Recall
+// R@K: Checks if the Ground Truth 1-NN is present in the Top-K results.
 // ---------------------------------------------------------
 double compute_recall_at_1(int nq, int k, const int* I, const int* gt, int gt_dim) {
     int n_ok = 0;
     for (int i = 0; i < nq; i++) {
-        int true_nn = gt[i * gt_dim]; // GT 的第 0 个就是 1-NN
+        int true_nn = gt[i * gt_dim]; // The 0-th element of GT is the 1-NN
         for (int j = 0; j < k; j++) {
             if (I[i * k + j] == true_nn) {
                 n_ok++;
@@ -36,7 +48,7 @@ double compute_recall_at_1(int nq, int k, const int* I, const int* gt, int gt_di
 }
 
 // ---------------------------------------------------------
-// Search Benchmark 函数
+// Benchmark Execution Function
 // ---------------------------------------------------------
 void benchmark_search(const std::string& name, faiss::gpu::GpuIndexIVF* index, 
                       int nq, const float* xq, int k, int nprobe,
@@ -44,18 +56,18 @@ void benchmark_search(const std::string& name, faiss::gpu::GpuIndexIVF* index,
     
     std::cout << "\n[Benchmark] " << name << " (nprobe=" << nprobe << ", k=" << k << ")" << std::endl;
     
-    // 设置 nprobe (直接修改成员变量)
+    // Set nprobe (direct member modification is allowed in Faiss GPU indices)
     index->nprobe = nprobe;
     
-    // 结果 buffer
+    // Result buffers
     std::vector<float> D(nq * k);
     std::vector<faiss::idx_t> I(nq * k);
 
-    // 预热
+    // Warmup run
     index->search(100, xq, k, D.data(), I.data());
     cudaDeviceSynchronize();
 
-    // 计时
+    // Timing measurement
     auto t1 = std::chrono::high_resolution_clock::now();
     index->search(nq, xq, k, D.data(), I.data());
     cudaDeviceSynchronize();
@@ -64,11 +76,11 @@ void benchmark_search(const std::string& name, faiss::gpu::GpuIndexIVF* index,
     double time = std::chrono::duration<double>(t2 - t1).count();
     double qps = nq / time;
 
-    // 转换 idx_t -> int 以计算 Recall (Sift GT 是 int)
+    // Convert idx_t (int64) -> int for Recall calculation (SIFT GT is int32)
     std::vector<int> I_int(nq * k);
     for(size_t i=0; i<I.size(); ++i) I_int[i] = (int)I[i];
 
-    // 计算 Recall@1 (1-NN found in top-K)
+    // Compute Recall@1
     double recall = compute_recall_at_1(nq, k, I_int.data(), gt, gt_dim);
 
     std::cout << "  -> Time:   " << time * 1000.0 << " ms" << std::endl;
@@ -77,26 +89,26 @@ void benchmark_search(const std::string& name, faiss::gpu::GpuIndexIVF* index,
 }
 
 int main(int argc, char** argv) {
-    // 1. 路径配置
+    // 1. Path Configuration
     std::string dir = "/home/cc/ElasticIVF/hpdic/data/sift/";
     std::string base_path = dir + "sift_base.fvecs";
     std::string query_path = dir + "sift_query.fvecs";
     std::string gt_path   = dir + "sift_groundtruth.ivecs";
 
-    // 2. 参数
-    int nlist = 1024; // 10w 数据用 1024 聚类
-    int k = 10;       // Search Top-10
-    int nprobe = 10;  // 搜索 10 个桶
+    // 2. Parameters
+    int nlist = 1024; // 1024 clusters suitable for 1M or subset vectors
+    int k = 10;       // Retrieve Top-10
+    int nprobe = 10;  // Search 10 clusters (buckets)
 
-    // 3. 加载数据
+    // 3. Load Data
     size_t d, nb, nq, ngt_dim, ngt_num;
     
     std::cout << "[Loader] Loading Base..." << std::endl;
     float* xb = fvecs_read(base_path.c_str(), &d, &nb);
     
-    // 限制数据量
+    // Limit dataset size for this specific test
     size_t nb_test = 1000000;
-    size_t nt_test = 50000;
+    size_t nt_test = 50000; // Training subset size
     if (nb_test > nb) nb_test = nb;
 
     std::cout << "[Loader] Loading Query..." << std::endl;
@@ -107,13 +119,13 @@ int main(int argc, char** argv) {
 
     std::cout << "[Info] Base: " << nb_test << ", Query: " << nq << ", Dim: " << d << std::endl;
 
-    // 4. 资源
+    // 4. Resource Initialization
     StandardGpuResources res;
-    res.setTempMemory(512 * 1024 * 1024);
+    res.setTempMemory(512 * 1024 * 1024); // 512MB Temp Memory
     faiss::IndexFlatL2 quantizer(d);
 
     // =========================================================
-    // Round 1: Baseline
+    // Round 1: Baseline (Standard Faiss)
     // =========================================================
     {
         faiss::gpu::GpuIndexIVFFlat baseline_index(&res, &quantizer, d, nlist, faiss::METRIC_L2);
@@ -122,32 +134,34 @@ int main(int argc, char** argv) {
         baseline_index.train(nt_test, xb);
         baseline_index.add(nb_test, xb);
         
-        // Search
+        // Execute Search Benchmark
         benchmark_search("Baseline", &baseline_index, nq, xq, k, nprobe, gt, ngt_dim);
-    } // Baseline 析构释放显存
+    } // Baseline index is destructed here to release VRAM
 
     // =========================================================
-    // Round 2: SIVF
+    // Round 2: SIVF (Proposed)
     // =========================================================
     {
-        // 配置
+        // Configuration
         faiss::gpu::GpuIndexIVFFlatConfig config;
         config.device = 0;
         
-        // 实例化 (不带 quantizer)
+        // Instantiate SIVF (without quantizer passed in constructor)
         faiss::gpu::GpuIndexSIVF sivf_index(&res, d, nlist, faiss::METRIC_L2, config);
 
-        // 初始化内存池 (带维度 d)
+        // Initialize Memory Pool (Slab Manager)
+        // Pass dimension 'd' to ensure correct memory stride calculations
         sivf_index.initSlabManager(nb_test * 1.5, d);
 
         std::cout << "[SIVF] Training & Adding..." << std::endl;
         sivf_index.train(nt_test, xb);
         sivf_index.add(nb_test, xb);
 
-        // Search
+        // Execute Search Benchmark
         benchmark_search("SIVF (Ours)", &sivf_index, nq, xq, k, nprobe, gt, ngt_dim);
     }
 
+    // Cleanup Host Memory
     delete[] xb;
     delete[] xq;
     delete[] gt;

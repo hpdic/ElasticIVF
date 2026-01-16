@@ -1,4 +1,13 @@
-// sift_loader.h
+/**
+ * sift_loader.h
+ *
+ * Author: Dongfang Zhao
+ * Email:  dzhao@uw.edu
+ *
+ * Utility functions for loading standard ANN benchmark datasets (SIFT, GIST)
+ * stored in .fvecs and .ivecs binary formats.
+ */
+
 #pragma once
 #include <cstdio>
 #include <cstdlib>
@@ -6,12 +15,23 @@
 #include <iostream>
 #include <sys/stat.h>
 
+/**
+ * Check if a file exists on the filesystem.
+ */
 inline bool file_exists(const char* name) {
     struct stat buffer;
     return (stat(name, &buffer) == 0);
 }
 
-// 读取 fvecs 格式: [dim] [v1...] [dim] [v2...]
+/**
+ * Read a file in .fvecs format.
+ * Format structure: [dim (int)] [vector_data (float * dim)] ... repeated n times
+ *
+ * @param fname Path to the .fvecs file
+ * @param d_out Pointer to store the dimension of vectors
+ * @param n_out Pointer to store the number of vectors
+ * @return Pointer to the allocated float array containing raw vector data
+ */
 float* fvecs_read(const char* fname, size_t* d_out, size_t* n_out) {
     if (!file_exists(fname)) {
         fprintf(stderr, "[Error] File not found: %s\n", fname);
@@ -31,7 +51,7 @@ float* fvecs_read(const char* fname, size_t* d_out, size_t* n_out) {
     }
     *d_out = (size_t)d;
 
-    // 计算向量总数
+    // Calculate total number of vectors based on file size
     fseek(f, 0, SEEK_END);
     long size = ftell(f);
     fseek(f, 0, SEEK_SET);
@@ -39,7 +59,7 @@ float* fvecs_read(const char* fname, size_t* d_out, size_t* n_out) {
 
     float* x = new float[*n_out * *d_out];
     
-    // 循环读取
+    // Read vectors sequentially
     size_t nr = 0;
     for (size_t i = 0; i < *n_out; i++) {
         int d_check;
@@ -55,6 +75,15 @@ float* fvecs_read(const char* fname, size_t* d_out, size_t* n_out) {
     return x;
 }
 
+/**
+ * Read a file in .ivecs format (typically used for ground truth indices).
+ * Format structure: [dim (int)] [index_data (int * dim)] ... repeated n times
+ *
+ * @param fname Path to the .ivecs file
+ * @param d_out Pointer to store the dimension (usually k for ground truth)
+ * @param n_out Pointer to store the number of queries
+ * @return Pointer to the allocated int array containing raw index data
+ */
 int* ivecs_read(const char* fname, size_t* d_out, size_t* n_out) {
     if (!file_exists(fname)) {
         fprintf(stderr, "[Error] File not found: %s\n", fname);
@@ -74,10 +103,12 @@ int* ivecs_read(const char* fname, size_t* d_out, size_t* n_out) {
     }
     *d_out = (size_t)d;
 
+    // Calculate total number of vectors
     fseek(f, 0, SEEK_END);
     long size = ftell(f);
     fseek(f, 0, SEEK_SET);
-    *n_out = size / (sizeof(int) + d * sizeof(int)); // 注意这里是 sizeof(int)
+    // Note: The element size here is sizeof(int)
+    *n_out = size / (sizeof(int) + d * sizeof(int)); 
 
     int* x = new int[*n_out * *d_out];
     

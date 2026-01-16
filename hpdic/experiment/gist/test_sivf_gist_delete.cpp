@@ -1,10 +1,23 @@
+/**
+ * test_sivf_gist_delete.cpp
+ *
+ * Author: Dongfang Zhao
+ * Email:  dzhao@uw.edu
+ *
+ * Benchmark: GIST1M Deletion Performance (Roundtrip vs. Native)
+ *
+ * This test evaluates the deletion latency on high dimensional data (960d).
+ * It contrasts the prohibitive cost of the standard CPU GPU roundtrip (moving
+ * ~3.8GB of data) against the SIVF native in kernel deletion mechanism.
+ */
+
 #include <iostream>
 #include <vector>
 #include <chrono>
 #include <random>
 #include <algorithm>
 
-// 头文件补全
+// Header completions
 #include <faiss/IndexFlat.h>
 #include <faiss/IndexIVFFlat.h>
 #include <faiss/gpu/GpuIndexIVFFlat.h>
@@ -22,40 +35,42 @@ int main() {
     size_t n_delete = 10000; 
 
     size_t d, fnb;
-    // 这里其实不需要重新读文件来获取 d，不过为了保险还是读一下头
-    // 也可以硬编码 d=960, fnb=1000000 以节省时间，但读一下头很快
+    // Reading the header is fast enough; alternatively, hardcoding d=960 is also valid.
     float* xb = fvecs_read(base_file, &d, &fnb);
     if(nb > fnb) nb = fnb;
 
-    // 随机删除 ID
+    // Generate random IDs for deletion
     std::vector<faiss::idx_t> ids(nb);
-    for(size_t i=0; i<nb; ++i) ids[i] = i;
+    for(size_t i=0; i<nb; ++i) ids[i] = (faiss::idx_t)i;
     std::random_device rd; std::mt19937 g(rd());
     std::shuffle(ids.begin(), ids.end(), g);
     ids.resize(n_delete);
     faiss::IDSelectorBatch sel(n_delete, ids.data());
 
-    // 调小 Temp，给 GIST 数据腾地方
+    // Reduce Temp Memory to accommodate the large GIST dataset (3.8GB resident)
     StandardGpuResources res;
     res.setTempMemory(512 * 1024 * 1024); 
     faiss::IndexFlatL2 quantizer(d);
 
     // ==========================================
-    // Round 1: Baseline (Roundtrip)
+    // Round 1: Baseline (Roundtrip Deletion)
     // ==========================================
     {
         std::cout << "[Baseline] Preparing..." << std::endl;
         faiss::gpu::GpuIndexIVFFlat index(&res, &quantizer, d, nlist, faiss::METRIC_L2);
-        index.train(50000, xb); // 训练少一点省时间
+        index.train(50000, xb); // Train on a subset to save time
         index.add(nb, xb);
         cudaDeviceSynchronize();
 
         std::cout << "[Baseline] Deleting (Roundtrip 3.8GB data!)..." << std::endl;
         auto t1 = std::chrono::high_resolution_clock::now();
         
-        // 这三步是罪魁祸首
+        // The Bottleneck: Full Index Roundtrip
+        // 1. Download to CPU
         faiss::Index* cpu = faiss::gpu::index_gpu_to_cpu(&index); 
+        // 2. Delete on CPU
         cpu->remove_ids(sel); 
+        // 3. Re upload and Rebuild on GPU
         faiss::gpu::GpuIndexIVFFlat* new_gpu = 
             dynamic_cast<faiss::gpu::GpuIndexIVFFlat*>(faiss::gpu::index_cpu_to_gpu(&res, 0, cpu)); 
         
@@ -68,18 +83,19 @@ int main() {
         delete cpu; delete new_gpu;
     } 
 
-    // 强制同步清理显存
+    // Force synchronization and cleanup
     cudaDeviceSynchronize();
 
     // ==========================================
-    // Round 2: SIVF
+    // Round 2: SIVF (Native Deletion)
     // ==========================================
     {
         std::cout << "[SIVF] Preparing..." << std::endl;
         faiss::gpu::GpuIndexIVFFlatConfig cfg; cfg.device = 0;
         faiss::gpu::GpuIndexSIVF index(&res, d, nlist, faiss::METRIC_L2, cfg);
         
-        // 关键修复：去掉 1.5 倍余量，只申请 1.0 (exact capacity)
+        // Critical Fix: Allocate exact capacity (1.0x) instead of 1.5x redundancy
+        // GIST vectors are large, so avoiding overallocation prevents OOM.
         size_t cap = nb; 
         std::cout << "[SIVF] Allocating exact capacity: " << cap << std::endl;
         index.initSlabManager(cap, d);
@@ -91,7 +107,7 @@ int main() {
         std::cout << "[SIVF] Deleting (Native)..." << std::endl;
         auto t1 = std::chrono::high_resolution_clock::now();
         
-        // 原生删除，无需搬运
+        // Native deletion, no data movement required
         index.remove_ids(sel);
         
         cudaDeviceSynchronize();

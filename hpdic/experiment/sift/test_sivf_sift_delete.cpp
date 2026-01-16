@@ -1,3 +1,16 @@
+/**
+ * test_sivf_sift_delete.cpp
+ *
+ * Author: Dongfang Zhao
+ * Email:  dzhao@uw.edu
+ *
+ * Benchmark: SIFT1M Deletion Performance (Roundtrip vs. Native)
+ *
+ * This test evaluates the latency and throughput of vector deletion.
+ * It compares the standard Faiss approach (which requires a costly CPU-GPU
+ * synchronization and re-upload) against the SIVF native in-kernel deletion.
+ */
+
 #include <iostream>
 #include <vector>
 #include <chrono>
@@ -10,7 +23,7 @@
 #include <faiss/gpu/GpuIndexIVF.h>
 #include <faiss/gpu/GpuIndexIVFFlat.h>
 #include <faiss/gpu/StandardGpuResources.h>
-#include <faiss/gpu/GpuCloner.h> // 用于 GPU <-> CPU 拷贝
+#include <faiss/gpu/GpuCloner.h> // Required for Index transfer (GPU <-> CPU)
 #include <faiss/IndexFlat.h>
 #include <faiss/IndexIVFFlat.h>
 #include <faiss/gpu/GpuIndexSIVF.h> 
@@ -20,57 +33,57 @@
 using namespace faiss::gpu;
 
 // ---------------------------------------------------------
-// 辅助函数: 生成随机删除的 ID
+// Helper: Generate Random IDs for Deletion
 // ---------------------------------------------------------
 std::vector<faiss::idx_t> generate_delete_ids(size_t total_vectors, size_t delete_count) {
     std::vector<faiss::idx_t> ids(total_vectors);
-    for(size_t i=0; i<total_vectors; ++i) ids[i] = i;
+    for(size_t i=0; i<total_vectors; ++i) ids[i] = (faiss::idx_t)i;
     
-    // 洗牌
+    // Shuffle to select random targets
     std::random_device rd;
     std::mt19937 g(rd());
     std::shuffle(ids.begin(), ids.end(), g);
     
-    // 取前 N 个
+    // Keep the first N IDs
     ids.resize(delete_count);
     return ids;
 }
 
 int main(int argc, char** argv) {
-    // 1. 配置
+    // 1. Configuration
     const char* base_file = "/home/cc/ElasticIVF/hpdic/data/sift/sift_base.fvecs";
-    size_t nb = 1000000; // 跑满 1M
-    int nlist = 1024;    // 聚类数
-    size_t n_delete = 10000; // 删除 1万条 (论文里的 Batch Size)
+    size_t nb = 1000000;     // Full SIFT1M size
+    int nlist = 1024;        // Number of centroids
+    size_t n_delete = 10000; // Batch size (consistent with paper methodology)
 
-    // 2. 加载数据
+    // 2. Load Data
     size_t d, file_nb;
     std::cout << "[Loader] Reading SIFT1M..." << std::endl;
     float* xb = fvecs_read(base_file, &d, &file_nb);
     if(nb > file_nb) nb = file_nb;
 
-    // 生成对应的 ID (0, 1, 2... N-1)
-    // Faiss 需要 IDSelector 或者是 ID 列表，这里我们用 IDSelectorBatch
+    // Prepare Deletion Targets
+    // We use IDSelectorBatch to pass the list of IDs to remove
     std::cout << "[Prepare] Generating " << n_delete << " random IDs to delete..." << std::endl;
     std::vector<faiss::idx_t> delete_ids = generate_delete_ids(nb, n_delete);
     
-    // ID 选择器
+    // Construct Selector
     faiss::IDSelectorBatch selector(n_delete, delete_ids.data());
 
-    // 资源
+    // GPU Resources
     StandardGpuResources res;
-    res.setTempMemory(1024 * 1024 * 512);
+    res.setTempMemory(1024 * 1024 * 512); // 512MB Temp Memory
     faiss::IndexFlatL2 quantizer(d);
 
     // =========================================================
-    // Round 1: Baseline (Roundtrip Deletion)
+    // Round 1: Baseline (CPU-GPU Roundtrip Deletion)
     // =========================================================
     {
         std::cout << "\n[Baseline] Setting up GPU Index..." << std::endl;
         faiss::gpu::GpuIndexIVFFlat gpu_index(&res, &quantizer, d, nlist, faiss::METRIC_L2);
         
-        // 训练 & 添加
-        gpu_index.train(100000, xb); // 用前10w训练
+        // Train & Add
+        gpu_index.train(100000, xb); // Train on subset
         gpu_index.add(nb, xb);
         
         cudaDeviceSynchronize();
@@ -78,15 +91,17 @@ int main(int argc, char** argv) {
 
         auto t1 = std::chrono::high_resolution_clock::now();
 
-        // --- 模拟 Faiss 不支持 GPU 删除的 workaround ---
-        // 1. Copy GPU -> CPU
+        // --- Simulate the "Roundtrip" Workaround ---
+        // Since standard GpuIndexIVF does not support in-place deletion:
+        
+        // 1. Download: Copy Index from GPU VRAM to CPU RAM
         faiss::Index* cpu_index = faiss::gpu::index_gpu_to_cpu(&gpu_index);
         
-        // 2. CPU Delete
+        // 2. Modify: Perform deletion on the CPU
         cpu_index->remove_ids(selector);
         
-        // 3. Copy CPU -> GPU (重建 Index)
-        // 注意：这里必须把旧的 gpu_index 覆盖或者新建一个，为了模拟完整开销，我们转回 GPU
+        // 3. Upload: Copy Index back from CPU RAM to GPU VRAM
+        // Note: This effectively rebuilds the GPU index structures
         faiss::gpu::GpuIndexIVFFlat* new_gpu_index = 
             dynamic_cast<faiss::gpu::GpuIndexIVFFlat*>(faiss::gpu::index_cpu_to_gpu(&res, 0, cpu_index));
         
@@ -102,7 +117,7 @@ int main(int argc, char** argv) {
     }
 
     // =========================================================
-    // Round 2: SIVF (Native Deletion)
+    // Round 2: SIVF (Native In-Kernel Deletion)
     // =========================================================
     {
         std::cout << "\n[SIVF] Setting up..." << std::endl;
@@ -110,10 +125,10 @@ int main(int argc, char** argv) {
         config.device = 0;
         faiss::gpu::GpuIndexSIVF sivf_index(&res, d, nlist, faiss::METRIC_L2, config);
         
-        // 初始化内存池
+        // Initialize Slab Memory Pool
         sivf_index.initSlabManager(nb * 1.5, d);
 
-        // 训练 & 添加
+        // Train & Add
         sivf_index.train(100000, xb);
         sivf_index.add(nb, xb);
 
@@ -122,8 +137,9 @@ int main(int argc, char** argv) {
 
         auto t1 = std::chrono::high_resolution_clock::now();
 
-        // --- SIVF 原生删除 ---
-        // 直接在 GPU 上操作 Bitmap
+        // --- Native Deletion ---
+        // Executes entirely on the GPU via atomic bitmap updates.
+        // No PCI-e transfer or host-side synchronization required.
         sivf_index.remove_ids(selector);
 
         cudaDeviceSynchronize();

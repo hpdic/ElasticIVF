@@ -1,3 +1,16 @@
+/**
+ * test_sivf_gist_add.cpp
+ *
+ * Author: Dongfang Zhao
+ * Email:  dzhao@uw.edu
+ *
+ * Benchmark: GIST1M Ingestion Performance (Baseline vs. SIVF)
+ *
+ * This test evaluates ingestion throughput on high-dimensional data (GIST: 960d).
+ * The high dimensionality places significant pressure on memory bandwidth and
+ * allocation efficiency, highlighting the advantages of the Slab architecture.
+ */
+
 #include <iostream>
 #include <vector>
 #include <chrono>
@@ -9,14 +22,22 @@
 #include <faiss/gpu/StandardGpuResources.h>
 #include <faiss/gpu/GpuIndexSIVF.h> 
 #include <faiss/IndexFlat.h>
-#include "gist_loader.h"
+
+// Use the generic loader provided in the previous step
+// GIST and SIFT both use the Corpus-Texmex .fvecs format
+#include "sift_loader.h" 
 
 using namespace faiss::gpu;
 
 int main() {
-    // 路径
+    // ==========================================
+    // 1. Configuration
+    // ==========================================
     const char* base_file = "/home/cc/ElasticIVF/hpdic/data/gist/gist_base.fvecs";
-    size_t target_nb = 100000; // 先测 10万 看看速度 (全量跑太久可以改)
+    
+    // Benchmark Subset: 100k vectors for rapid throughput testing.
+    // (Full 1M GIST run takes longer but shows similar trends)
+    size_t target_nb = 100000; 
     int nlist = 1024;
 
     size_t d, file_nb;
@@ -24,18 +45,22 @@ int main() {
     float* raw_data = fvecs_read(base_file, &d, &file_nb);
     std::cout << "  Dim: " << d << " (High Dim!), Total in file: " << file_nb << std::endl;
 
-    // 截取测试数据
+    // Safety check: Limit dataset size if target exceeds file size
     if(target_nb > file_nb) target_nb = file_nb;
     
-    // 资源
+    // ==========================================
+    // 2. Resource Initialization
+    // ==========================================
     StandardGpuResources res;
-    res.setTempMemory(1024L * 1024 * 1024 * 2); // 给 2GB Temp，GIST 很大
+    // Allocate 2GB Temp Memory. 
+    // GIST vectors (960d) are ~7.5x larger than SIFT (128d), requiring significant VRAM workspace.
+    res.setTempMemory(1024L * 1024 * 1024 * 2); 
 
-    // Train 数据 (5万够了)
+    // Training Subset (50k samples is sufficient for centroid convergence)
     size_t n_train = std::min((size_t)50000, target_nb);
 
     // ==========================================
-    // Round 1: Baseline Add
+    // Round 1: Baseline (Standard Faiss)
     // ==========================================
     {
         faiss::IndexFlatL2 quantizer(d);
@@ -45,23 +70,28 @@ int main() {
         
         cudaDeviceSynchronize();
         auto t1 = std::chrono::high_resolution_clock::now();
+        
+        // Execute Batch Addition
         baseline.add(target_nb, raw_data);
+        
         cudaDeviceSynchronize();
         auto t2 = std::chrono::high_resolution_clock::now();
         
         double time = std::chrono::duration<double>(t2 - t1).count();
         std::cout << "[Baseline] Add QPS: " << (size_t)(target_nb / time) << std::endl;
-    }
+    } // Baseline index destructed here to free VRAM
 
     // ==========================================
-    // Round 2: SIVF Add
+    // Round 2: SIVF (Proposed)
     // ==========================================
     {
         faiss::gpu::GpuIndexIVFFlatConfig config;
         config.device = 0;
         faiss::gpu::GpuIndexSIVF sivf(&res, d, nlist, faiss::METRIC_L2, config);
 
-        // 关键：初始化内存池 (GIST 每个向量大，Slab要大一点)
+        // Critical: Initialize Slab Memory Pool
+        // Pre-allocate buffer with 1.5x redundancy to handle dynamic allocation overheads
+        // Explicitly pass dimension 'd' (960) to ensure correct slot sizing in slabs
         size_t cap = target_nb * 1.5;
         sivf.initSlabManager(cap, d);
 
@@ -69,7 +99,10 @@ int main() {
 
         cudaDeviceSynchronize();
         auto t1 = std::chrono::high_resolution_clock::now();
+        
+        // Execute Native SIVF Addition
         sivf.add(target_nb, raw_data);
+        
         cudaDeviceSynchronize();
         auto t2 = std::chrono::high_resolution_clock::now();
 

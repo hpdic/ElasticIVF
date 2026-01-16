@@ -1,9 +1,22 @@
+/**
+ * test_sivf_gist_search.cpp
+ *
+ * Author: Dongfang Zhao
+ * Email:  dzhao@uw.edu
+ *
+ * Benchmark: GIST1M Search Performance (Baseline vs. SIVF)
+ *
+ * This test evaluates the search throughput and recall on the high-dimensional
+ * GIST dataset (960d). It demonstrates the trade-off between the contiguous
+ * memory access of the baseline and the linked-slab architecture of SIVF.
+ */
+
 #include <iostream>
 #include <vector>
 #include <chrono>
 #include <algorithm>
 
-// 必须引用的头文件
+// Essential Faiss Headers
 #include <faiss/IndexFlat.h> 
 #include <faiss/gpu/GpuIndexIVFFlat.h>
 #include <faiss/gpu/StandardGpuResources.h>
@@ -12,9 +25,13 @@
 
 using namespace faiss::gpu;
 
+// ---------------------------------------------------------
+// Helper: Calculate Recall@K
+// ---------------------------------------------------------
 double calc_recall(int nq, int k, const int* I, const int* gt, int gt_dim) {
     int ok = 0;
     for (int i = 0; i < nq; i++) {
+        // GIST Ground Truth stores the nearest neighbor at index 0
         int true_id = gt[i * gt_dim];
         for (int j = 0; j < k; j++) {
             if (I[i * k + j] == true_id) { ok++; break; }
@@ -23,16 +40,21 @@ double calc_recall(int nq, int k, const int* I, const int* gt, int gt_dim) {
     return (double)ok / nq;
 }
 
+// ---------------------------------------------------------
+// Benchmark Execution Function
+// ---------------------------------------------------------
 void bench(const char* name, GpuIndexIVF* index, int nq, float* xq, int k, int* gt, int gt_dim) {
-    index->nprobe = 20; // GIST 稍微大一点
+    // Set nprobe slightly higher for high-dimensional GIST data
+    index->nprobe = 20; 
     
     std::vector<float> D(nq * k);
     std::vector<faiss::idx_t> I(nq * k);
     
-    // Warmup
+    // Warmup Search
     index->search(10, xq, k, D.data(), I.data());
     cudaDeviceSynchronize();
 
+    // Benchmark Search
     auto t1 = std::chrono::high_resolution_clock::now();
     index->search(nq, xq, k, D.data(), I.data());
     cudaDeviceSynchronize();
@@ -40,6 +62,7 @@ void bench(const char* name, GpuIndexIVF* index, int nq, float* xq, int k, int* 
     
     double time = std::chrono::duration<double>(t2 - t1).count();
     
+    // Convert idx_t (long) to int for recall calculation
     std::vector<int> I_int(nq * k);
     for(size_t i=0; i<I.size(); ++i) I_int[i] = (int)I[i];
     
@@ -48,8 +71,9 @@ void bench(const char* name, GpuIndexIVF* index, int nq, float* xq, int k, int* 
 }
 
 int main() {
+    // 1. Configuration
     std::string dir = "/home/cc/ElasticIVF/hpdic/data/gist/";
-    size_t nb_load = 1000000; // 依然尝试跑满 1M
+    size_t nb_load = 1000000; // Load full 1M vectors
     int nlist = 1024;
     int k = 10;
 
@@ -60,37 +84,39 @@ int main() {
     float* xq = fvecs_read((dir + "gist_query.fvecs").c_str(), &d, &nq);
     int* gt   = ivecs_read((dir + "gist_groundtruth.ivecs").c_str(), &ngt_dim, &ngt_num);
 
-    // 1. 降低临时显存占用 (2GB -> 512MB)
-    // SIVF 这种高维数据主要吃显存，Temp不需要太大
+    // 2. Reduce Temporary Memory Usage (2GB -> 512MB)
+    // SIVF consumes significant VRAM for 960d vectors; minimize temp buffer.
     StandardGpuResources res;
     res.setTempMemory(512 * 1024 * 1024); 
 
     // ==========================================
-    // Round 1: Baseline
+    // Round 1: Baseline (Standard Faiss)
     // ==========================================
     {
         faiss::IndexFlatL2 quantizer(d);
         faiss::gpu::GpuIndexIVFFlat index(&res, &quantizer, d, nlist, faiss::METRIC_L2);
-        index.train(50000, xb); // 训练数据少一点没关系
+        
+        // Train on a subset (50k is sufficient)
+        index.train(50000, xb); 
         index.add(nb_load, xb);
         bench("Baseline", &index, nq, xq, k, gt, ngt_dim);
-    } // 这里的括号结束会触发 Baseline index 的析构，释放显存
+    } // Baseline index is destructed here, releasing VRAM
 
-    // 强制清理一下
+    // Ensure cleanup
     cudaDeviceSynchronize();
 
     // ==========================================
-    // Round 2: SIVF
+    // Round 2: SIVF (Proposed)
     // ==========================================
     {
         faiss::gpu::GpuIndexIVFFlatConfig config;
         config.device = 0;
         faiss::gpu::GpuIndexSIVF index(&res, d, nlist, faiss::METRIC_L2, config);
         
-        // 关键修改！！！
-        // 不要乘 1.5，直接给 1.0，甚至 1.05 即可。
-        // 对于 Search 任务，我们不需要之后再 Add，所以刚好够用就行。
-        size_t cap = nb_load; // 去掉了 * 1.5
+        // Critical Optimization: Exact Capacity Allocation
+        // For search benchmarks, we do not need the 1.5x buffer reserved for dynamic insertion.
+        // Allocating exact capacity prevents OOM on high-dimensional data.
+        size_t cap = nb_load; 
         
         std::cout << "[SIVF] Allocating exact capacity: " << cap << std::endl;
         index.initSlabManager(cap, d); 
