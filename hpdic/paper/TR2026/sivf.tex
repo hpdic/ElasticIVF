@@ -58,21 +58,26 @@
 
 \begin{document}
 
-\title{SIVF: A GPU-Resident Inverted File Index for Streaming Vector Databases}
+\title{GPU-Resident Inverted File Index for Streaming Vector Databases}
 
 \author{Dongfang Zhao}
-\email{dzhao@uw.edu}
+\email{dzhao@cs.washington.edu}
+% \email{dzhao@.edu}
 \affiliation{%
   \institution{High-Performance Data-Intelligence Computing (HPDIC) Lab}
 %   \city{University of Washington}
 %   \state{WA}
   \country{University of Washington, USA}
+    % \country{\url{https://hpdic.github.io/}}
 }
 
 \begin{abstract}
 Vector search has emerged as the computational backbone of modern AI infrastructure, powering critical systems ranging from Vector Databases to Retrieval-Augmented Generation (RAG). While the GPU-accelerated Inverted File (IVF) index acts as one of the most widely used techniques for these large-scale workloads due to its memory efficiency, its traditional architecture remains fundamentally static. Existing designs rely on rigid and contiguous memory layouts that lack native support for in-place mutation, creating a severe bottleneck for streaming scenarios. In applications requiring real-time knowledge updates, such as live recommendation engines or dynamic RAG systems, maintaining index freshness necessitates expensive CPU-GPU roundtrips that cause system latency to spike from milliseconds to seconds.
 In this paper, we propose SIVF (Streaming Inverted File), a new GPU-native architecture designed to empower vector databases with high-velocity data ingestion and deletion capabilities. SIVF replaces the static memory layout with a slab-based allocation system and a validity bitmap, enabling lock-free and in-place mutation directly in VRAM. We further introduce a GPU-resident address translation table (ATT) to resolve the overhead of locating vectors, providing $O(1)$ access to physical storage slots.
 We evaluate SIVF against the industry-standard GPU IVF implementation on the SIFT1M and GIST1M datasets. Microbenchmarks demonstrate that SIVF reduces deletion latency by up to $13,300\times$ (from 11.8 seconds to 0.89 ms on GIST1M) and improves ingestion throughput by $36\times$ to $105\times$. In end-to-end sliding window scenarios, SIVF eliminates system freezes and achieves a $161\times$ to $266\times$ speedup with single-digit millisecond latency. Notably, this performance incurs negligible storage penalty, maintaining less than 0.8\% memory overhead compared to static indices. These results demonstrate that SIVF effectively bridges the gap between static search libraries and the requirements of next-generation streaming vector databases.
+
+% \noindent
+% \textbf{The complete implementation and evaluation scripts are available on GitHub: \url{https://github.com/hpdic/ElasticIVF}.}
 \end{abstract}
 
 \maketitle
@@ -768,6 +773,9 @@ In this work, we addressed the structural deficiency inherent in standard GPU-ac
 To overcome this limitation, we proposed SIVF, a new GPU-native architecture that relocates memory management responsibilities entirely onto the device. By synthesizing a slab-based memory allocator, a lock-free validity bitmap, and a GPU-resident address translation table, SIVF decouples index maintenance from the host CPU to enable high-throughput and in-place mutation directly in VRAM.
 Our comprehensive evaluation against the industry-standard Faiss library demonstrates that SIVF transforms the landscape of streaming vector search. It accelerates data deletion by up to $13,300\times$ to achieve sub-millisecond latency and improves ingestion throughput by $36\times$ to $105\times$. In end-to-end sliding window scenarios, SIVF eliminates system freezes and achieves a $161\times$ to $266\times$ speedup while maintaining negligible memory overhead ($<0.8\%$) compared to compact static indices. These results confirm that moving memory management from the CPU to the GPU is essential for bridging the gap between static search libraries and the dynamic requirements of streaming vector databases.
 
+% \noindent
+% \textbf{The complete implementation and evaluation scripts are available on GitHub: \url{https://github.com/hpdic/ElasticIVF}.}
+
 % \subsection{Limitations and Future Directions}
 % \label{sec:limitations}
 
@@ -779,87 +787,87 @@ Our comprehensive evaluation against the industry-standard Faiss library demonst
 
 % Finally, our consistency model prioritizes throughput over strict linearizability. While sufficient for the probabilistic nature of ANN search, future work will investigate lightweight snapshot isolation mechanisms to support transactional semantics without compromising the lock-free ingestion speed.
 
-% \section*{Acknowledgment}
-% Results presented in this paper were obtained using the Chameleon testbed supported by the National Science Foundation.
+\section*{Acknowledgment}
+Results presented in this paper were obtained using the Chameleon testbed supported by the National Science Foundation.
 
 \bibliography{ref,ann,gpu}
 \bibliographystyle{acm}
 
-% \newpage
-% \appendix
+\newpage
+\appendix
 
-% \section{Appendix}
+\section{Appendix}
 
-% \subsection{Codebase Implementation and Modifications}
-% \label{app:codebase}
+\subsection{Codebase Implementation and Modifications}
+\label{app:codebase}
 
-% Our implementation is built upon the Faiss library. To integrate the SIVF architecture, we introduced significant modifications to the GPU module and developed a comprehensive benchmarking suite. Table~\ref{tab:file_structure} summarizes the key source files added or modified in the repository based on our development history.
+Our implementation is built upon the Faiss library. To integrate the SIVF architecture, we introduced significant modifications to the GPU module and developed a comprehensive benchmarking suite. Table~\ref{tab:file_structure} summarizes the key source files added or modified in the repository based on our development history.
 
-% The SIVF implementation entails a non-trivial engineering effort. Based on Git history statistics, the project introduces approximately 9,000 lines of code changes (insertions and deletions) spanning over 45 source files. Specifically, more than 3,000 lines are devoted to the core GPU index logic, including new CUDA kernels for lock-free insertion, bitmap-based deletion, and collaborative search, alongside a custom slab-based memory allocator (\texttt{SlabManager}). A substantial portion of the codebase (over 5,000 lines) is dedicated to the experimental ecosystem. This includes granular micro-benchmarks for specific operations (addition, deletion, search), complex end-to-end scenarios (sliding window streaming, memory fragmentation stress tests), and hyperparameter sensitivity analysis. The remaining code comprises build configurations (CMake), dataset loaders for SIFT1M and GIST1M, and Python scripts for automated result visualization, ensuring reproducibility and ease of integration.
+The SIVF implementation entails a non-trivial engineering effort. Based on Git history statistics, the project introduces approximately 9,000 lines of code changes (insertions and deletions) spanning over 45 source files. Specifically, more than 3,000 lines are devoted to the core GPU index logic, including new CUDA kernels for lock-free insertion, bitmap-based deletion, and collaborative search, alongside a custom slab-based memory allocator (\texttt{SlabManager}). A substantial portion of the codebase (over 5,000 lines) is dedicated to the experimental ecosystem. This includes granular micro-benchmarks for specific operations (addition, deletion, search), complex end-to-end scenarios (sliding window streaming, memory fragmentation stress tests), and hyperparameter sensitivity analysis. The remaining code comprises build configurations (CMake), dataset loaders for SIFT1M and GIST1M, and Python scripts for automated result visualization, ensuring reproducibility and ease of integration.
 
-% \begin{table*}[t]
-%     \centering
-%     \caption{Summary of Source Files and Modifications in SIVF Project}
-%     \label{tab:file_structure}
-%     \begin{tabular}{l|p{10.5cm}}
-%     \hline
-%     \textit{File Path} & \textit{Description} \\
-%     \hline
-%     \multicolumn{2}{c}{\textit{Core SIVF Architecture \& Memory Management}} \\
-%     \hline
-%     \texttt{faiss/gpu/GpuIndexSIVF.h} & Header definition for the SIVF index class, inheriting from \texttt{GpuIndex}. \\
-%     \texttt{faiss/gpu/GpuIndexSIVF.cu} & Manages host-device synchronization and overrides standard operations. \\
-%     \texttt{faiss/gpu/impl/SlabManager.cuh} & Defines the device-side slab structures, arena pointers, and metadata layout. \\
-%     \texttt{faiss/gpu/impl/SlabManager.cu} & Slab-based Dynamic Memory Allocator (SDMA) and memory pool management. \\
-%     \texttt{faiss/gpu/impl/SIVFStructs.cuh} & Shared data structures and metadata definitions used across host and device code. \\
-%     \hline
-%     \multicolumn{2}{c}{\textit{CUDA Kernels (Ingestion, Search, Deletion)}} \\
-%     \hline
-%     \texttt{faiss/gpu/impl/SIVFAppend.cuh} & Device function templates for the ingestion logic. \\
-%     \texttt{faiss/gpu/impl/SIVFAppend.cu} & Lock-free insertion kernel, atomic slot reservation, and slab expansion logic. \\
-%     \texttt{faiss/gpu/impl/SIVFSearch.cuh} & Warp-Level Collaborative Search (WLCS) and shared memory reduction. \\
-%     \texttt{faiss/gpu/impl/SIVFSearch.cu} & Search kernel, including distance computation and heap aggregation. \\
-%     \texttt{faiss/gpu/SIVFDeletion.cu} & Bitmap-based lazy eviction and deletion kernels. \\
-%     \hline
-%     \multicolumn{2}{c}{\textit{Experimental Benchmarks (C++)}} \\
-%     \hline
-%     \texttt{hpdic/experiment/test\_sivf\_sift\_add.cpp} & Throughput benchmark for SIFT1M vector ingestion. \\
-%     \texttt{hpdic/experiment/test\_sivf\_gist\_add.cpp} & Throughput benchmark for GIST1M vector ingestion. \\
-%     \texttt{hpdic/experiment/test\_sivf\_sift\_search.cpp} & Latency and recall benchmark for SIFT1M queries. \\
-%     \texttt{hpdic/experiment/test\_sivf\_gist\_search.cpp} & Latency and recall benchmark for GIST1M queries. \\
-%     \texttt{hpdic/experiment/test\_sivf\_sift\_delete.cpp} & Deletion throughput and stability test for SIFT1M. \\
-%     \texttt{hpdic/experiment/test\_sivf\_gist\_delete.cpp} & Deletion throughput and stability test for GIST1M. \\
-%     \texttt{hpdic/experiment/test\_sivf\_sliding.cpp} & End-to-End Streaming Benchmark simulating a sliding window workload. \\
-%     \texttt{hpdic/experiment/test\_sivf\_memory.cpp} & Memory Scalability Benchmark quantifying VRAM overhead and reuse. \\
-%     \texttt{hpdic/experiment/test\_sivf\_sensitivity.cpp} & Parameter Study evaluating performance sensitivity to batch/slab settings. \\
-%     \texttt{hpdic/experiment/benchmark\_baseline.cpp} & Comparison baseline implementing CPU-GPU roundtrip logic for standard IVF. \\
-%     \hline
-%     \multicolumn{2}{c}{\textit{Data Utilities \& Visualization}} \\
-%     \hline
-%     \texttt{hpdic/experiment/sift/sift\_loader.h} & Optimized raw vector loader for SIFT1M dataset. \\
-%     \texttt{hpdic/experiment/gist/gist\_loader.h} & Optimized raw vector loader for GIST1M dataset. \\
-%     \texttt{hpdic/experiment/plot\_add.py} & Python script for generating ingestion throughput figures. \\
-%     \texttt{hpdic/experiment/plot\_search.py} & Python script for generating QPS vs. Recall trade-off figures. \\
-%     \texttt{hpdic/experiment/plot\_delete.py} & Python script for generating deletion latency figures. \\
-%     \texttt{hpdic/experiment/plot\_sliding.py} & Python script for generating sliding window streaming performance figures. \\
-%     \texttt{hpdic/experiment/plot\_memory.py} & Python script for generating memory scalability and overhead figures. \\
-%     \texttt{hpdic/experiment/plot\_sensitivity.py} & Python script for generating parameter sensitivity heatmaps or curves. \\
-%     \hline
-%     \end{tabular}
-% \end{table*}
+\begin{table*}[t]
+    \centering
+    \caption{Summary of Source Files and Modifications in SIVF Project}
+    \label{tab:file_structure}
+    \begin{tabular}{l|p{10.5cm}}
+    \hline
+    \textit{File Path} & \textit{Description} \\
+    \hline
+    \multicolumn{2}{c}{\textit{Core SIVF Architecture \& Memory Management}} \\
+    \hline
+    \texttt{faiss/gpu/GpuIndexSIVF.h} & Header definition for the SIVF index class, inheriting from \texttt{GpuIndex}. \\
+    \texttt{faiss/gpu/GpuIndexSIVF.cu} & Manages host-device synchronization and overrides standard operations. \\
+    \texttt{faiss/gpu/impl/SlabManager.cuh} & Defines the device-side slab structures, arena pointers, and metadata layout. \\
+    \texttt{faiss/gpu/impl/SlabManager.cu} & Slab-based Dynamic Memory Allocator (SDMA) and memory pool management. \\
+    \texttt{faiss/gpu/impl/SIVFStructs.cuh} & Shared data structures and metadata definitions used across host and device code. \\
+    \hline
+    \multicolumn{2}{c}{\textit{CUDA Kernels (Ingestion, Search, Deletion)}} \\
+    \hline
+    \texttt{faiss/gpu/impl/SIVFAppend.cuh} & Device function templates for the ingestion logic. \\
+    \texttt{faiss/gpu/impl/SIVFAppend.cu} & Lock-free insertion kernel, atomic slot reservation, and slab expansion logic. \\
+    \texttt{faiss/gpu/impl/SIVFSearch.cuh} & Warp-Level Collaborative Search (WLCS) and shared memory reduction. \\
+    \texttt{faiss/gpu/impl/SIVFSearch.cu} & Search kernel, including distance computation and heap aggregation. \\
+    \texttt{faiss/gpu/SIVFDeletion.cu} & Bitmap-based lazy eviction and deletion kernels. \\
+    \hline
+    \multicolumn{2}{c}{\textit{Experimental Benchmarks (C++)}} \\
+    \hline
+    \texttt{hpdic/experiment/test\_sivf\_sift\_add.cpp} & Throughput benchmark for SIFT1M vector ingestion. \\
+    \texttt{hpdic/experiment/test\_sivf\_gist\_add.cpp} & Throughput benchmark for GIST1M vector ingestion. \\
+    \texttt{hpdic/experiment/test\_sivf\_sift\_search.cpp} & Latency and recall benchmark for SIFT1M queries. \\
+    \texttt{hpdic/experiment/test\_sivf\_gist\_search.cpp} & Latency and recall benchmark for GIST1M queries. \\
+    \texttt{hpdic/experiment/test\_sivf\_sift\_delete.cpp} & Deletion throughput and stability test for SIFT1M. \\
+    \texttt{hpdic/experiment/test\_sivf\_gist\_delete.cpp} & Deletion throughput and stability test for GIST1M. \\
+    \texttt{hpdic/experiment/test\_sivf\_sliding.cpp} & End-to-End Streaming Benchmark simulating a sliding window workload. \\
+    \texttt{hpdic/experiment/test\_sivf\_memory.cpp} & Memory Scalability Benchmark quantifying VRAM overhead and reuse. \\
+    \texttt{hpdic/experiment/test\_sivf\_sensitivity.cpp} & Parameter Study evaluating performance sensitivity to batch/slab settings. \\
+    \texttt{hpdic/experiment/benchmark\_baseline.cpp} & Comparison baseline implementing CPU-GPU roundtrip logic for standard IVF. \\
+    \hline
+    \multicolumn{2}{c}{\textit{Data Utilities \& Visualization}} \\
+    \hline
+    \texttt{hpdic/experiment/sift/sift\_loader.h} & Optimized raw vector loader for SIFT1M dataset. \\
+    \texttt{hpdic/experiment/gist/gist\_loader.h} & Optimized raw vector loader for GIST1M dataset. \\
+    \texttt{hpdic/experiment/plot\_add.py} & Python script for generating ingestion throughput figures. \\
+    \texttt{hpdic/experiment/plot\_search.py} & Python script for generating QPS vs. Recall trade-off figures. \\
+    \texttt{hpdic/experiment/plot\_delete.py} & Python script for generating deletion latency figures. \\
+    \texttt{hpdic/experiment/plot\_sliding.py} & Python script for generating sliding window streaming performance figures. \\
+    \texttt{hpdic/experiment/plot\_memory.py} & Python script for generating memory scalability and overhead figures. \\
+    \texttt{hpdic/experiment/plot\_sensitivity.py} & Python script for generating parameter sensitivity heatmaps or curves. \\
+    \hline
+    \end{tabular}
+\end{table*}
 
-% \subsection{Lessons Learned}
-% \label{app:lessons_learned}
+\subsection{Lessons Learned}
+\label{app:lessons_learned}
 
-% Developing a fully dynamic, GPU-resident index presented several unique engineering challenges. We summarize the key lessons learned during the development of SIVF:
+Developing a fully dynamic, GPU-resident index presented several unique engineering challenges. We summarize the key lessons learned during the development of SIVF:
 
-% \begin{itemize}
-%     \item \textit{Implicit Synchronization Risks.} In the early stages of development, we encountered non-deterministic data corruption during high-concurrency ingestion. We traced this to the GPU's relaxed memory consistency model. Writes to a new slab were sometimes not visible to other streaming multiprocessors before the slab was linked to the list. We learned that explicit \texttt{\_\_threadfence()} instructions are non-negotiable when implementing lock-free data structures on GPUs, even within the same kernel launch.
+\begin{itemize}
+    \item \textit{Implicit Synchronization Risks.} In the early stages of development, we encountered non-deterministic data corruption during high-concurrency ingestion. We traced this to the GPU's relaxed memory consistency model. Writes to a new slab were sometimes not visible to other streaming multiprocessors before the slab was linked to the list. We learned that explicit \texttt{\_\_threadfence()} instructions are non-negotiable when implementing lock-free data structures on GPUs, even within the same kernel launch.
     
-%     \item \textit{Register Pressure vs. Occupancy.} Our initial search kernel utilized complex template meta-programming to handle various metric types, which bloated the register usage per thread and limited occupancy. We found that manually unrolling loops and using simpler, distinct kernels for Inner Product and L2 distance significantly reduced register pressure, allowing more warps to be active simultaneously and hiding global memory latency more effectively.
+    \item \textit{Register Pressure vs. Occupancy.} Our initial search kernel utilized complex template meta-programming to handle various metric types, which bloated the register usage per thread and limited occupancy. We found that manually unrolling loops and using simpler, distinct kernels for Inner Product and L2 distance significantly reduced register pressure, allowing more warps to be active simultaneously and hiding global memory latency more effectively.
     
-%     \item \textit{The Cost of Allocators.} We initially attempted to use the built-in CUDA \texttt{malloc} for dynamic node creation. This proved disastrous for performance due to internal locking within the driver. This failure motivated the design of the custom \texttt{SlabManager}. The lesson is that for high-throughput system code, general-purpose memory allocators on the device are rarely sufficient; domain-specific, arena-based allocators are essential for performance.
-% \end{itemize}
+    \item \textit{The Cost of Allocators.} We initially attempted to use the built-in CUDA \texttt{malloc} for dynamic node creation. This proved disastrous for performance due to internal locking within the driver. This failure motivated the design of the custom \texttt{SlabManager}. The lesson is that for high-throughput system code, general-purpose memory allocators on the device are rarely sufficient; domain-specific, arena-based allocators are essential for performance.
+\end{itemize}
 
 \end{document}
 \endinput
