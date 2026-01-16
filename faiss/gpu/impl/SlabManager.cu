@@ -1,17 +1,34 @@
 /**
  * faiss/gpu/impl/SlabManager.cu
+ *
+ * Author: Dongfang Zhao
+ * Email:  dzhao@uw.edu
+ *
+ * Implementation of the Host side Slab Memory Manager.
+ * This file handles the allocation, initialization, and lifecycle management
+ * of GPU memory resources required for the SIVF index structure, including
+ * slab metadata, vector data storage, and the address translation table.
  */
 
+#include <faiss/gpu/impl/SlabManager.cuh>
 #include <faiss/gpu/GpuResources.h>
 #include <faiss/gpu/utils/DeviceUtils.h>
 #include <faiss/impl/FaissAssert.h>
-#include <faiss/gpu/impl/SlabManager.cuh>
 
 namespace faiss {
 namespace gpu {
 
-// Kernel: 初始化空闲链表 (这个还得留着，因为它是一个 global
-// kernel，不是成员函数)
+// =========================================================
+// Kernel Definitions
+// =========================================================
+
+/**
+ * Kernel: Initialize the free list.
+ *
+ * Populates the free list with sequential indices [0, pool_size - 1].
+ * Note: This remains a global kernel rather than a member function to
+ * facilitate direct invocation via CUDA launch semantics.
+ */
 __global__ void init_free_list_kernel(
         int* free_list,
         int* free_list_top,
@@ -20,6 +37,7 @@ __global__ void init_free_list_kernel(
     if (idx < pool_size) {
         free_list[idx] = idx;
     }
+    // Initialize the stack pointer to the top of the pool
     if (idx == 0) {
         *free_list_top = pool_size;
     }
@@ -76,6 +94,7 @@ SlabManager::SlabManager(
                           res->getDefaultStream(device))) {
     auto stream = res->getDefaultStream(device);
 
+    // Allocation of device memory resources
     slab_metadata_.resize(slab_pool_size, stream);
     slab_data_.resize(
             (size_t)slab_pool_size * SIVF_SLAB_CAPACITY * dim, stream);
@@ -86,22 +105,25 @@ SlabManager::SlabManager(
     int block_size = 256;
     int grid_size = ((int)slab_pool_size + block_size - 1) / block_size;
 
-    // [新增修复] 将 Address Table 初始化为 INVALID (全 0xFF)
-    // 这样未插入的 ID 查表时会返回 INVALID_COORD，而不是 0
+    // Initialization: Set Address Table to INVALID state (0xFF).
+    // This ensures that lookups for uninserted IDs return INVALID_COORD
+    // instead of a false positive index (e.g., 0).
     CUDA_VERIFY(cudaMemsetAsync(
             address_table_.data(),
             0xFF,
             max_vectors * sizeof(uint64_t),
             stream));
 
-    // 初始化空闲链表
+    // Initialization: Populate the free list with available slab indices.
     init_free_list_kernel<<<grid_size, block_size, 0, stream>>>(
             free_list_.data(), free_list_top_.data(), (int)slab_pool_size);
 
     CUDA_TEST_ERROR();
 }
 
-SlabManager::~SlabManager() {}
+SlabManager::~SlabManager() {
+    // Resources are automatically released by DeviceVector destructors
+}
 
 SlabManagerDevice SlabManager::getDeviceView() {
     SlabManagerDevice dev;
@@ -115,8 +137,9 @@ SlabManagerDevice SlabManager::getDeviceView() {
     return dev;
 }
 
-// [注意] 删除了之前的 Device Implementation 部分
-// 它们现在已经在 .cuh 里被定义为 inline __device__ 了
+// Note: Device side member function implementations (e.g., allocSlab, freeSlab)
+// have been moved to `SlabManager.cuh` as inline __device__ functions to
+// ensure proper visibility and inlining during CUDA compilation.
 
 } // namespace gpu
 } // namespace faiss

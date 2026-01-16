@@ -1,27 +1,33 @@
 /**
  * faiss/gpu/GpuIndexSIVF.cu
+ *
+ * Author: Dongfang Zhao
+ * Email:  dzhao@uw.edu
+ *
+ * Implementation of the GpuIndexSIVF class.
+ * This file implements the core lifecycle management (construction, destruction),
+ * initialization logic, and overrides for the training, addition, search, and
+ * deletion workflows of the Slab-based Inverted File index.
  */
 
-#include <faiss/Clustering.h> // 用于手动 KMeans
-#include <faiss/IndexFlat.h>  // 用于 CPU 临时 Index
+#include <faiss/Clustering.h> // For manual K-Means fallback
+#include <faiss/IndexFlat.h>  // For CPU temporary Index
 #include <faiss/gpu/GpuIndexFlat.h>
 #include <faiss/gpu/GpuIndexSIVF.h>
 #include <faiss/gpu/GpuResources.h>
-#include <faiss/gpu/utils/DeviceUtils.h> // [HPDIC]
+#include <faiss/gpu/utils/DeviceUtils.h> // [HPDIC] Device utilities
 #include <faiss/impl/FaissAssert.h>
-#include <faiss/gpu/impl/SIVFAppend.cuh> // [HPDIC]
-#include <faiss/gpu/impl/SIVFSearch.cuh>
+#include <faiss/gpu/impl/SIVFAppend.cuh> // [HPDIC] Append kernel interface
+#include <faiss/gpu/impl/SIVFSearch.cuh> // Search kernel interface
 #include <faiss/gpu/impl/SlabManager.cuh>
-#include <faiss/gpu/utils/DeviceTensor.cuh> // 确保包含 DeviceTensor
+#include <faiss/gpu/utils/DeviceTensor.cuh> // Essential for DeviceTensor usage
 
 namespace faiss {
 namespace gpu {
 
 // ===========================================================
-// 构造与析构
+// Construction & Destruction
 // ===========================================================
-
-// faiss/gpu/GpuIndexSIVF.cu
 
 GpuIndexSIVF::GpuIndexSIVF(
         GpuResourcesProvider* provider,
@@ -34,10 +40,10 @@ GpuIndexSIVF::GpuIndexSIVF(
           is_slab_initialized_(false),
           list_heads_(nullptr),
           slab_id_buffer_(nullptr) {
-    // [关键修正 1] 强制标记为未训练，确保 index.train() 真正执行！
+    // [Critical Fix 1] Explicitly mark as untrained to ensure train() executes.
     this->is_trained = false;
 
-    // 初始化 Quantizer (如果没有传进来的话)
+    // Initialize the Quantizer (if not provided externally)
     if (!this->quantizer) {
         this->quantizer =
                 new GpuIndexFlat(provider, dims, metric, config.flatConfig);
@@ -68,17 +74,17 @@ void GpuIndexSIVF::initSlabManager(size_t max_vectors, size_t pool_size) {
     auto stream = resources_->getDefaultStream(device);
 
     // =========================================================
-    // [核心修复] 同步扩容 max_vectors 和 pool_size
+    // [Core Fix] Synchronized resizing of max_vectors and pool_size
     // =========================================================
 
-    // 1. 计算需要的 Slab 数 (向量数 / 32)
+    // 1. Calculate required slabs (vectors / 32)
     size_t needed_slabs = (max_vectors + 31) / 32;
 
-    // 2. 暴力扩容：给 5 倍余量，防止 OOM
+    // 2. Aggressive expansion: 5x buffer to prevent OOM
     size_t safe_pool_size = std::max(pool_size, needed_slabs * 5 + 4096);
 
-    // 3. [关键!] 根据 Slab 数反推需要的总向量存储空间
-    // 如果不改这个，写入后面的 Slab 时会发生显存越界，踩坏链表！
+    // 3. [Critical!] Derive total vector storage from the slab count.
+    // Failure to align this will cause out-of-bounds writes in later slabs.
     size_t safe_max_vectors = safe_pool_size * 32;
 
     printf("\n[HPDIC MEMORY FIX] Resizing:\n");
@@ -87,7 +93,7 @@ void GpuIndexSIVF::initSlabManager(size_t max_vectors, size_t pool_size) {
            max_vectors,
            safe_max_vectors);
 
-    // 4. 初始化 SlabManager (传入扩容后的大小!)
+    // 4. Initialize SlabManager (with the expanded sizes)
     slab_manager_ = new SlabManager(
             resources_.get(),
             device,
@@ -95,19 +101,19 @@ void GpuIndexSIVF::initSlabManager(size_t max_vectors, size_t pool_size) {
             safe_pool_size,
             this->d);
 
-    // 5. 初始化 ID Buffer (大小对齐)
+    // 5. Initialize ID Buffer (aligned size)
     slab_id_buffer_ = new DeviceVector<idx_t>(
             resources_.get(), makeDevAlloc(AllocType::Other, stream));
     slab_id_buffer_->resize(safe_max_vectors, stream);
 
-    // 初始化为 -1
+    // Initialize to -1 (empty state)
     CUDA_VERIFY(cudaMemsetAsync(
             slab_id_buffer_->data(),
             -1,
             safe_max_vectors * sizeof(idx_t),
             stream));
 
-    // 6. 初始化 List Heads
+    // 6. Initialize List Heads
     if (list_heads_ == nullptr) {
         AllocInfo info(AllocType::Other, device, MemorySpace::Device, stream);
         list_heads_ = new DeviceVector<int>(resources_.get(), info);
@@ -125,7 +131,7 @@ void GpuIndexSIVF::initSlabManager(size_t max_vectors, size_t pool_size) {
     is_slab_initialized_ = true;
 }
 
-// 声明外部定义的启动函数
+// Declaration of external launcher function
 void run_sivf_deletion(
         SlabManager* slab_manager,
         GpuResources* res,
@@ -148,7 +154,7 @@ size_t GpuIndexSIVF::remove_ids(const faiss::IDSelector& sel) {
             ids_to_remove.push_back(id);
         }
     } else {
-        // 简单处理：对于非 Batch Selector，暂不支持或抛出异常
+        // Fallback or exception for non-batch selectors
         FAISS_THROW_MSG(
                 "SIVF remove_ids currently ONLY supports IDSelectorBatch");
     }
@@ -156,7 +162,7 @@ size_t GpuIndexSIVF::remove_ids(const faiss::IDSelector& sel) {
     int num_removed = 0;
     auto stream = resources_->getDefaultStream(config_.device);
 
-    // 调用我们在 SIVFDeletion.cu 里写好的逻辑
+    // Invoke the logic defined in SIVFDeletion.cu
     run_sivf_deletion(
             slab_manager_,
             resources_.get(),
@@ -173,7 +179,7 @@ size_t GpuIndexSIVF::remove_ids(const faiss::IDSelector& sel) {
 // Protected Overrides (Implementation Details)
 // ===========================================================
 
-// [匹配头文件] addImpl_ (带下划线), 参数 idx_t
+// [Matches Header] addImpl_ (with underscore), parameter type idx_t
 void GpuIndexSIVF::addImpl_(idx_t n, const float* x, const idx_t* ids) {
     FAISS_THROW_IF_NOT_MSG(
             is_slab_initialized_,
@@ -201,7 +207,7 @@ void GpuIndexSIVF::addImpl_(idx_t n, const float* x, const idx_t* ids) {
 
     runSIVFAppend(
             manager_view,
-            list_heads_->data(), // [修改] 使用 ->data()
+            list_heads_->data(), // [Modified] Use ->data()
             slab_id_buffer_->data(),
             (int)n,
             this->d,
@@ -210,11 +216,11 @@ void GpuIndexSIVF::addImpl_(idx_t n, const float* x, const idx_t* ids) {
             ids,
             stream);
 
-    // Faiss 的基类不会自动帮你加这个数，得自己加。
+    // Increment total count manually as base class does not handle this.
     this->ntotal += n;
 }
 
-// [匹配头文件] searchImpl_ (带下划线), 参数 k 是 int
+// [Matches Header] searchImpl_ (with underscore), parameter k is int
 void GpuIndexSIVF::searchImpl_(
         idx_t n,
         const float* x,
@@ -225,7 +231,7 @@ void GpuIndexSIVF::searchImpl_(
     FAISS_THROW_IF_NOT_MSG(is_slab_initialized_, "SIVF not initialized");
     FAISS_THROW_IF_NOT_MSG(this->is_trained, "SIVF not trained");
 
-    // 2. 处理 nprobe (支持通过 params 动态传入)
+    // 2. Handle nprobe (support dynamic override via params)
     int nprobe = this->nprobe;
     if (params) {
         const IVFSearchParameters* ivf_params =
@@ -235,12 +241,12 @@ void GpuIndexSIVF::searchImpl_(
         }
     }
 
-    // 3. Coarse Quantization (第一级粗搜)
-    // 使用 Faiss 的 DeviceTensor 自动管理显存
+    // 3. Coarse Quantization (First level search)
+    // Use Faiss DeviceTensor for automatic memory management
     auto stream = resources_->getDefaultStream(getCurrentDevice());
 
-    // 注意：Faiss GPU 内部很多地方用 int 索引，这里强转一下 n (通常 batch
-    // 不会超过 20亿)
+    // Note: Faiss GPU internals often use int indexing. Casting n is safe
+    // as batch size rarely exceeds 2 billion.
     DeviceTensor<float, 2, true> coarse_dis(
             resources_.get(),
             makeDevAlloc(AllocType::Other, stream),
@@ -250,39 +256,20 @@ void GpuIndexSIVF::searchImpl_(
             makeDevAlloc(AllocType::Other, stream),
             {(int)n, nprobe});
 
-    // 调用 Quantizer
+    // Invoke Quantizer
     quantizer->search(n, x, nprobe, coarse_dis.data(), coarse_ids.data());
 
     // ================== [DEBUG START] ==================
-    // // 1. 检查 Quantizer 是否为空
+    // // 1. Check if Quantizer is empty
     // if (quantizer->ntotal == 0) {
     //     printf("[ERROR] Quantizer is EMPTY! (ntotal=0). Did training fail?\n");
     // } else {
     //     // printf("[DEBUG] Quantizer ntotal = %ld\n", quantizer->ntotal);
     // }
-
-    // // 2. 检查粗搜结果是否全是 -1
-    // std::vector<idx_t> host_ids(nprobe);
-    // // 从 GPU 拷贝第 0 个 query 的结果到 CPU
-    // cudaMemcpyAsync(
-    //         host_ids.data(),
-    //         coarse_ids.data(),
-    //         nprobe * sizeof(idx_t),
-    //         cudaMemcpyDeviceToHost,
-    //         stream);
-    // cudaStreamSynchronize(stream); // 强制同步，确保读到数据
-
-    // if (host_ids[0] == -1) {
-    //     printf("[ERROR] Coarse Quantizer returned -1! Printing first %d results:\n",
-    //            nprobe);
-    //     for (int i = 0; i < nprobe; ++i)
-    //         printf("%ld ", host_ids[i]);
-    //     printf("\n");
-    // }
     // ================== [DEBUG END] ====================
 
-    // 4. Fine-grained Search (调用我们的 Kernel)
-    // 去掉 const 限制，因为我们需要获取 DeviceView
+    // 4. Fine-grained Search (Invoke our Kernel)
+    // Cast away constness to retrieve DeviceView
     SlabManager* mutable_mgr = const_cast<SlabManager*>(slab_manager_);
 
     SlabManagerDevice device_view = mutable_mgr->getDeviceView();
@@ -290,25 +277,25 @@ void GpuIndexSIVF::searchImpl_(
             device_view,
             list_heads_->data(),
             slab_id_buffer_->data(),
-            (int)n, // 强转 idx_t -> int
+            (int)n, // Cast idx_t -> int
             this->d,
             k,
             nprobe,
             x,
             coarse_ids
-                    .data(), // 只要 ID，不需要 coarse_dis (因为我们还没做残差)
+                    .data(), // Only IDs needed, residual not computed yet
             distances,
             labels,
             stream);
 }
 
 void GpuIndexSIVF::reset() {
-    // 1. 重置 Quantizer
+    // 1. Reset Quantizer
     if (quantizer) {
         quantizer->reset();
     }
 
-    // 2. 重置链表头 (全部设为 -1)
+    // 2. Reset List Heads (Set all to -1)
     if (is_slab_initialized_ && list_heads_) {
         int device = getCurrentDevice();
         auto stream = resources_->getDefaultStream(device);
@@ -316,39 +303,39 @@ void GpuIndexSIVF::reset() {
                 list_heads_->data(), -1, this->nlist * sizeof(int), stream);
     }
 
-    // TODO: SlabManager 也应该 reset (重置 free_list_top)，暂时跳过
-    // 下次优化时我们可以在 SlabManager 里加一个 reset() 方法
+    // TODO: SlabManager should also be reset (reset free_list_top).
+    // Deferred for future optimization.
 }
 
 void GpuIndexSIVF::updateQuantizer() {
-    // 这是一个回调函数，当用户在 CPU 侧替换了 Quantizer 时会被调用
-    // SIVF 暂时不需要特殊处理
+    // Callback invoked when the user replaces the CPU-side Quantizer.
+    // No specific handling required for SIVF currently.
 }
 
 void GpuIndexSIVF::train(idx_t n, const float* x) {
-    // 1. 尝试基类训练
+    // 1. Attempt base class training
     GpuIndexIVF::train(n, x);
 
-    // 2. 检查是否训练成功
+    // 2. Verify training success
     if (this->quantizer->ntotal == 0) {
         printf("[SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...\n");
 
-        // === 优化版保底方案：使用 GPU 加速聚类 ===
+        // === Optimized Fallback: GPU Accelerated Clustering ===
 
-        // 1. 设置聚类参数
+        // 1. Set clustering parameters
         faiss::Clustering clus(this->d, this->nlist);
         clus.verbose = true;
-        clus.niter = 20; // GPU 很快，可以多跑几轮保证质量
+        clus.niter = 20; // High iteration count for quality, fast on GPU
 
-        // 2. [关键] 直接把 GPU Quantizer 传进去！
-        // Faiss 会自动利用这个 GPU Index 加速 K-Means 的“分配”阶段
-        // 这里的 *this->quantizer 是 GpuIndexFlat，天生支持 GPU Search
+        // 2. [Critical] Pass the GPU Quantizer directly!
+        // Faiss will leverage the existing GPU Index to accelerate the assignment phase.
+        // *this->quantizer is GpuIndexFlat, which natively supports GPU Search.
         this->quantizer->reset();
         clus.train(n, x, *this->quantizer);
 
-        // 3. 将最终的 centroids 写入 Quantizer
-        // 注意：clus.train 会把中间结果存在 clus.centroids (CPU)
-        // 我们需要把最终结果再 add 一次进 GPU quantizer
+        // 3. Populate the Quantizer with final centroids
+        // Note: clus.train stores intermediate results in clus.centroids (CPU).
+        // We must re-add them to the GPU quantizer.
         this->quantizer->reset();
         this->quantizer->add(this->nlist, clus.centroids.data());
 

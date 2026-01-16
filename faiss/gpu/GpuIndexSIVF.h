@@ -1,11 +1,17 @@
 /**
  * faiss/gpu/GpuIndexSIVF.h
+ *
+ * Author: Dongfang Zhao
+ * Email:  dzhao@uw.edu
+ *
+ * Header definition for GpuIndexSIVF, a GPU-resident inverted file index
+ * supporting dynamic updates (insertion/deletion) via Slab memory management.
  */
 
 #pragma once
 
 #include <faiss/gpu/GpuIndexIVF.h>
-#include <faiss/gpu/utils/DeviceVector.cuh> // [修复] 必须加这个，否则 DeviceVector<int> 报错
+#include <faiss/gpu/utils/DeviceVector.cuh> // [Fix] Required for DeviceVector instantiation
 #include <vector>
 
 namespace faiss {
@@ -16,7 +22,7 @@ class SlabManager;
 
 class GpuIndexSIVF : public GpuIndexIVF {
    public:
-    // 构造函数：参数名和类型严格匹配基类
+    // Constructor: Matches base class signature strictly
     GpuIndexSIVF(
             GpuResourcesProvider* provider,
             int dims,
@@ -32,12 +38,12 @@ class GpuIndexSIVF : public GpuIndexIVF {
     // Public Overrides
     // =======================================================
 
-    // [修正] 不写 Index::idx_t，直接用 idx_t
+    // [Correction] Use idx_t directly (not Index::idx_t)
     void train(idx_t n, const float* x) override;
 
     size_t remove_ids(const faiss::IDSelector& sel) override;
     
-    // [新增] 必须实现的虚函数
+    // [New] Mandatory virtual implementations for state management
     void reset() override;
     void updateQuantizer() override;
 
@@ -46,13 +52,13 @@ class GpuIndexSIVF : public GpuIndexIVF {
     // Protected Overrides
     // =======================================================
 
-    // [核心修正]
-    // 1. 函数名是 addImpl_ (带下划线)
-    // 2. 类型是 idx_t (千万别写 Index::idx_t)
+    // [Core Fix]
+    // 1. Function name is addImpl_ (with trailing underscore)
+    // 2. Type must be idx_t
     void addImpl_(idx_t n, const float* x, const idx_t* ids) override;
 
-    // [核心修正]
-    // searchImpl_ 的参数 k 是 int，不是 idx_t
+    // [Core Fix]
+    // Note: The parameter 'k' in searchImpl_ is int, not idx_t
     void searchImpl_(
             idx_t n,
             const float* x,
@@ -65,13 +71,12 @@ class GpuIndexSIVF : public GpuIndexIVF {
     SlabManager* slab_manager_;
     bool is_slab_initialized_;
 
-    // 存储每个倒排链表当前的 "Head" Slab ID
-    // 大小 = nlist。如果 list_heads_[i] == -1，说明第 i 个簇是空的。
-    // 我们总是向 Head 插入数据 (或者你可以维护 Tail，这里简化为 Head/Active
-    // Slab)
+    // Stores the current "Head" Slab ID for each inverted list.
+    // Size = nlist. If list_heads_[i] == -1, the i-th cluster is empty.
+    // We always insert new data into the Head (Active) Slab.
     DeviceVector<int>* list_heads_;
 
-    DeviceVector<idx_t>* slab_id_buffer_; // 专门用来存每个 Slab 里的 ID
+    DeviceVector<idx_t>* slab_id_buffer_; // Dedicated buffer for storing IDs within each Slab
 };
 
 } // namespace gpu
