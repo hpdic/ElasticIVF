@@ -737,6 +737,24 @@ In contrast, SIVF demonstrates superior stability and performance. By leveraging
 
 Notably, the performance gap widens as the data dimensionality increases. In the 960-dimensional GIST1M task, the baseline suffers from PCIe bandwidth saturation due to the massive data movement required for the roundtrip. SIVF avoids this bottleneck entirely, maintaining single-digit millisecond latency even under high-dimensional workloads. These results confirm that SIVF effectively transforms the GPU IVF index from a static search structure into a fully dynamic, real-time streaming engine.
 
+\subsection{Memory Efficiency and Scalability}
+\label{sec:eval_memory}
+
+A common concern with dynamic graph-based or list-based indices is the potential for memory bloating due to structural overhead, such as pointers and metadata, as well as fragmentation. To quantify the space complexity of SIVF, we conducted a memory footprint analysis comparing the allocated VRAM usage of SIVF against a theoretically compact array baseline across varying dataset sizes ranging from 100K to 1M vectors.
+
+Figure~\ref{fig:eval_memory} illustrates the memory growth trends for both SIFT1M and GIST1M. The results demonstrate that SIVF exhibits deterministic linear scalability with negligible structural overhead. For SIFT1M ($d=128$), the overhead stabilizes at 0.77\%, while for the high-dimensional GIST1M ($d=960$), it is merely 0.10\%. This efficiency stems from our coarse-grained slab design, where the metadata cost (128-byte header) is amortized over a batch of 32 vectors. Consequently, SIVF achieves orders-of-magnitude performance gains in dynamic operations without imposing significant storage penalties compared to static, compact indices.
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=1.0\linewidth]{figures/eval_memory.pdf}
+    \caption{Memory Efficiency and Scalability. 
+    % Comparison of VRAM usage between the compact baseline and SIVF across varying dataset sizes. SIVF exhibits deterministic linear scalability with negligible structural overhead (0.77\% for SIFT1M and 0.10\% for GIST1M), confirming that high-performance dynamic indexing can be achieved without significant memory penalties.
+    }
+    \label{fig:eval_memory}
+\end{figure}
+
+Furthermore, we verified the efficacy of our memory reclamation strategy. In a stress test involving the deletion of 50\% of the dataset followed by immediate re-insertion, SIVF maintained a constant memory footprint without triggering OS-level deallocation. The deletion operation completed in sub-millisecond time per batch (e.g., 4.04~ms for 100K GIST vectors), confirming that memory slots are logically reclaimed via bitmap toggling and immediately available for reuse. This ``zero-cost'' reclamation ensures that SIVF can sustain long-running streaming workloads without suffering from memory leaks or fragmentation-induced bloat.
+
 \section{Conclusion}
 \label{sec:conclusion}
 
