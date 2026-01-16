@@ -7,7 +7,7 @@ namespace gpu {
 void runSIVFAppend(
         SlabManagerDevice& manager,
         int* list_heads,
-        idx_t* slab_ids, // <--- 必须加上这个！之前的版本这里没有，所以报错
+        idx_t* slab_ids, 
         int num_vecs,
         int dim,
         const idx_t* assignments,

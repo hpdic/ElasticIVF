@@ -1,13 +1,37 @@
+/**
+ * faiss/gpu/impl/SIVFDeletion.cu
+ *
+ * Author: Dongfang Zhao
+ * Email:  dzhao@uw.edu
+ *
+ * Implementation of the GPU-resident deletion logic for SIVF.
+ * This file contains the CUDA kernel for atomic bitmap invalidation and
+ * the host-side wrapper to manage memory transfer and kernel execution.
+ */
+
 #include <faiss/gpu/utils/DeviceUtils.h>
 #include <faiss/gpu/impl/SlabManager.cuh>
-#include <faiss/gpu/utils/Tensor.cuh> // [修复] 必须是 .cuh
-#include "GpuIndexSIVF.h"
+#include <faiss/gpu/utils/Tensor.cuh> // [Fix] Must include .cuh for template definitions
+#include <faiss/gpu/GpuIndexSIVF.h>
 
 namespace faiss {
 namespace gpu {
 
 constexpr uint64_t INVALID_COORD = 0xFFFFFFFFFFFFFFFFULL;
 
+/**
+ * Kernel: SIVF Deletion
+ *
+ * Performs in-place logical deletion by atomically flipping the validity bit
+ * in the Slab metadata.
+ *
+ * Algorithm:
+ * 1. Lookup the physical address (Slab ID + Slot ID) from the Address Table.
+ * 2. If valid, access the corresponding SlabMetadata.
+ * 3. Atomically clear the bit in `validity_bitmap`.
+ * 4. If the bit was previously set, decrement `valid_count` and the global counter.
+ * 5. Mark the Address Table entry as INVALID.
+ */
 __global__ void sivf_delete_kernel(
         SlabManagerDevice manager,
         const idx_t* ids_to_remove,
@@ -19,7 +43,9 @@ __global__ void sivf_delete_kernel(
 
     idx_t target_id = ids_to_remove[idx];
 
-    // [核心修复] 暴力强转：无视 AddressTableEntry 类型，直接按 uint64_t 读取
+    // [Critical Fix] Direct Pointer Cast
+    // Ignore AddressTableEntry struct type and read directly as uint64_t.
+    // This avoids overhead and ensures atomic-compatible access patterns.
     uint64_t* att_ptr = (uint64_t*)manager.address_table;
     uint64_t coord = att_ptr[target_id];
 
@@ -29,18 +55,23 @@ __global__ void sivf_delete_kernel(
     uint32_t slab_idx = (uint32_t)(coord >> 32);
     uint32_t slot_idx = (uint32_t)(coord & 0xFFFFFFFF);
 
-    // [核心修复] SlabManagerDevice 是 Struct，没有 get_metadata() 方法
-    // 直接通过数组下标访问
+    // [Critical Fix] Direct Array Access
+    // SlabManagerDevice is a POD struct and lacks accessor methods like get_metadata().
+    // We access the metadata array directly via the slab index.
     SlabMetadata* md = &manager.slab_metadata[slab_idx];
 
     uint32_t mask = ~(1u << slot_idx);
+    
+    // Atomic AND to clear the specific bit.
+    // old_bitmap stores the state BEFORE the operation.
     uint32_t old_bitmap = atomicAnd(&(md->validity_bitmap), mask);
 
+    // Check if the bit was previously 1 (i.e., we actually deleted something)
     if ((old_bitmap >> slot_idx) & 1u) {
         atomicSub(&(md->valid_count), 1);
         atomicAdd(deleted_count, 1);
 
-        // 同样强转指针来写回无效标记
+        // Invalidate the address table entry to prevent future access
         att_ptr[target_id] = INVALID_COORD;
     }
 }
@@ -56,23 +87,25 @@ void run_sivf_deletion(
         return;
     }
 
-    // [API 适配] 1. 获取当前设备 ID 用于构造 AllocInfo
+    // [API Adaptation] 1. Retrieve current device ID for AllocInfo construction
     int device;
     cudaGetDevice(&device);
 
-    // [API 适配] 2. 构造 AllocInfo (根据 DeviceVector 源码要求)
+    // [API Adaptation] 2. Construct AllocInfo
+    // Required by DeviceVector constructors to specify memory location.
     AllocInfo info(AllocType::Other, device, MemorySpace::Device, stream);
 
-    // [API 适配] 3. 正确构造 DeviceVector
+    // [API Adaptation] 3. Initialize DeviceVector for IDs
     DeviceVector<idx_t> d_ids(res, info);
 
-    // [API 适配] 4. 使用 append 替代 copyFrom (自动分配内存 + 拷贝)
+    // [API Adaptation] 4. Transfer Data
+    // Use append() instead of copyFrom() as it handles allocation and copy.
     d_ids.append(ids.data(), ids.size(), stream);
 
-    // [API 适配] 5. 计数器初始化
+    // [API Adaptation] 5. Initialize Output Counter
     DeviceVector<int> d_count(res, info);
-    d_count.resize(1, stream); // 分配空间
-    d_count.setAll(0, stream); // 初始化为 0
+    d_count.resize(1, stream); // Allocate storage
+    d_count.setAll(0, stream); // Initialize to 0
 
     int threads = 256;
     int blocks = (ids.size() + threads - 1) / threads;
@@ -85,7 +118,9 @@ void run_sivf_deletion(
 
     CUDA_TEST_ERROR();
 
-    // [API 适配] 6. 手动拷回结果 (DeviceVector 没有直接拷回指针的 copyTo)
+    // [API Adaptation] 6. Retrieve Result
+    // DeviceVector does not have a direct pointer copyTo method,
+    // so we use raw cudaMemcpyAsync.
     CUDA_VERIFY(cudaMemcpyAsync(
             h_count_out,
             d_count.data(),

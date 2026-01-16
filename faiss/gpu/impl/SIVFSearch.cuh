@@ -7,7 +7,7 @@ namespace gpu {
 void runSIVFSearch(
         SlabManagerDevice& manager,
         int* list_heads,
-        idx_t* slab_ids, // <--- 必须加上这个！
+        idx_t* slab_ids,
         int num_queries,
         int dim,
         int k,
