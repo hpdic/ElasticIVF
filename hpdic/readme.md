@@ -51,6 +51,12 @@ make test_sivf_gist_add test_sivf_gist_search test_sivf_gist_delete -j
 ./test_sivf_gist_add
 ./test_sivf_gist_search
 ./test_sivf_gist_delete
+
+# Sliding window:
+cd ~/ElasticIVF/build
+make -j test_sivf_sliding
+./test_sivf_sliding # default is SIFT
+./test_sivf_sliding gist
 ```
 
 ## Benchmarks
