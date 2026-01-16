@@ -72,6 +72,9 @@
 GPU-accelerated Approximate Nearest Neighbor (ANN) search has become the standard for large-scale vector similarity retrieval. However, existing GPU indices are predominantly designed for static, write-once-read-many workloads. In streaming scenarios such as real-time recommendation and security monitoring, where data must be frequently inserted and evicted to maintain a sliding window, current architectures suffer from a critical bottleneck: the lack of native support for in-place mutation on GPUs. Consequently, evicting data necessitates an expensive CPU-GPU roundtrip to reorganize the index layout, causing system latency to spike from milliseconds to seconds.
 In this paper, we propose SIVF (Streaming Inverted File), a GPU-native indexing architecture designed specifically for high-velocity streaming data. SIVF abandons the traditional contiguous memory layout in favor of a dynamic, slab-based allocation system combined with a validity bitmap, enabling efficient lock-free insertion and deletion directly in VRAM. To resolve the overhead of locating vectors for deletion, we introduce a GPU-resident address translation table (ATT) that provides $O(1)$ access to physical storage slots.
 We evaluate SIVF against state-of-the-art baselines on the SIFT1M and GIST1M datasets. Microbenchmarks demonstrate that SIVF reduces deletion latency by up to $13,300\times$ (from 11.8 seconds to 0.89 ms on GIST1M) and improves ingestion throughput by $36\times$ to $105\times$. In end-to-end sliding window scenarios, SIVF eliminates system freezes, achieving a $161\times$ to $266\times$ speedup with single-digit millisecond latency. Notably, this performance incurs negligible storage penalty, maintaining less than 0.8\% memory overhead compared to compact static indices. As a result, SIVF effectively transforms the GPU IVF index into a fully dynamic, real-time streaming engine.
+
+The complete implementation and evaluation scripts are available on GitHub: \url{https://github.com/hpdic/ElasticIVF}.
+
 \end{abstract}
 \maketitle
 
@@ -142,6 +145,8 @@ This paper makes three technical contributions to the field of high-performance 
     
     \item Orders-of-Magnitude Performance Gains: We evaluate SIVF against state-of-the-art baselines on SIFT1M and GIST1M. Experimental results demonstrate that SIVF reduces deletion latency by up to $13,300\times$ (from 11.8s to 0.89ms) and improves ingestion throughput by $36\times$ to $105\times$. Furthermore, in end-to-end sliding window scenarios, SIVF achieves a $161\times$ to $266\times$ speedup while maintaining negligible memory overhead (<0.8\%), effectively closing the gap between static and streaming vector search performance on GPUs.
 \end{itemize}
+
+The complete implementation and evaluation scripts are available on GitHub: \url{https://github.com/hpdic/ElasticIVF}.
 
 % \paragraph{Paper Organization}
 % The remainder of this paper is organized as follows. 
@@ -760,16 +765,18 @@ In this work, we addressed the fundamental mismatch between the static design of
 SIVF enables high-throughput and in-place mutability directly in VRAM. By implementing a slab-based memory allocator, a lock-free validity bitmap, and a GPU-resident address translation table, SIVF decouples index maintenance from the host CPU.
 Our comprehensive evaluation on the SIFT1M and GIST1M datasets demonstrates that SIVF transforms the landscape of streaming vector search. It accelerates data deletion by up to $13,300\times$ (sub-millisecond latency) and improves ingestion throughput by $36\times$ to $105\times$ compared to the industry-standard Faiss library. Notably, in end-to-end sliding window scenarios, SIVF eliminates system freezes, achieving a $161\times$ to $266\times$ speedup while maintaining negligible memory overhead ($<0.8\%$). These results confirm that moving memory management responsibilities from the CPU to the GPU is not only feasible but essential for the next generation of real-time neural search systems.
 
-\subsection{Limitations and Future Directions}
-\label{sec:limitations}
+The complete implementation and evaluation scripts are available on GitHub: \url{https://github.com/hpdic/ElasticIVF}.
 
-Despite the orders-of-magnitude improvement in mutation latency, our current SIVF design entails specific trade-offs. 
+% \subsection{Limitations and Future Directions}
+% \label{sec:limitations}
 
-First, the \textit{pointer-chasing overhead} inherent in the linked-slab architecture reduces memory coalescing efficiency for those high-dimensional vectors. As observed in the GIST1M ($d=960$) evaluation, this results in a $2.7\times$ reduction in raw search QPS compared to contiguous static indices. While acceptable for write-heavy streaming scenarios, future work will address this by exploring \textit{adaptive super-slabs} that enforce page-aligned storage to restore memory bandwidth utilization.
+% Despite the orders-of-magnitude improvement in mutation latency, our current SIVF design entails specific trade-offs. 
 
-Second, the current implementation operates on a single GPU, bounding the maximum active window size to the available VRAM (e.g., approx. 20M 128-dim vectors on a 24 GB card). While our sliding window experiments demonstrate stability under infinite streams, scaling the \textit{simultaneous} index capacity to billion-scale datasets will require extending SIVF with \textit{multi-GPU sharding} via NVLink and Unified Memory prefetching techniques.
+% First, the \textit{pointer-chasing overhead} inherent in the linked-slab architecture reduces memory coalescing efficiency for those high-dimensional vectors. As observed in the GIST1M ($d=960$) evaluation, this results in a $2.7\times$ reduction in raw search QPS compared to contiguous static indices. While acceptable for write-heavy streaming scenarios, future work will address this by exploring \textit{adaptive super-slabs} that enforce page-aligned storage to restore memory bandwidth utilization.
 
-Finally, our consistency model prioritizes throughput over strict linearizability. While sufficient for the probabilistic nature of ANN search, future work will investigate lightweight snapshot isolation mechanisms to support transactional semantics without compromising the lock-free ingestion speed.
+% Second, the current implementation operates on a single GPU, bounding the maximum active window size to the available VRAM (e.g., approx. 20M 128-dim vectors on a 24 GB card). While our sliding window experiments demonstrate stability under infinite streams, scaling the \textit{simultaneous} index capacity to billion-scale datasets will require extending SIVF with \textit{multi-GPU sharding} via NVLink and Unified Memory prefetching techniques.
+
+% Finally, our consistency model prioritizes throughput over strict linearizability. While sufficient for the probabilistic nature of ANN search, future work will investigate lightweight snapshot isolation mechanisms to support transactional semantics without compromising the lock-free ingestion speed.
 
 \section*{Acknowledgment}
 Results presented in this paper were obtained using the Chameleon testbed supported by the National Science Foundation.
