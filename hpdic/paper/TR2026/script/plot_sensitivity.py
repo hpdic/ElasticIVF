@@ -1,13 +1,25 @@
+"""
+plot_sivf_sensitivity.py
+
+Author: Dongfang Zhao
+Email:  dzhao@uw.edu
+
+Visualization script for SIVF parameter sensitivity analysis.
+Plots Insertion vs. Deletion metrics (throughput and latency) across varying
+memory pre-allocation factors (mv), slab redundancy factors (sl), and 
+deletion batch sizes (b).
+"""
+
 import matplotlib.pyplot as plt
 import numpy as np
 import os
 
 # ============================================================
-# 1. 最新实验数据 (2026-01-14)
+# 1. Experimental Data (Benchmark: 2026-01-14)
 # ============================================================
-# 提取自你的输出日志，末尾的 1000 是实际删除的向量数
+# Extracted from output logs. The trailing 1000 is the actual count of deleted vectors.
+# Format: (mv, sl, b, add_qps, del_qps, add_sec, del_sec)
 rows = [
-    # mv,   sl,   b,     add_qps,      del_qps,      add_sec,    del_sec
     (1.10, 1.00, 1024,  2712883.37,   1077536.30,   0.003686,   0.000928),
     (1.10, 1.00, 8192,  2884060.18,   1584778.52,   0.003467,   0.000631),
     (1.10, 1.30, 1024,  2907062.97,   1630217.79,   0.003440,   0.000613),
@@ -26,10 +38,11 @@ del_qps = np.array([r[4] for r in rows]) / 1e6
 add_ms  = np.array([r[5] for r in rows]) * 1000.0
 del_ms  = np.array([r[6] for r in rows]) * 1000.0
 
+# Construct X-axis labels: mv (MaxVec Factor), sl (Slab Factor), b (Batch Size)
 x_labels = [f"mv:{m:.1f}\nsl:{s:.1f}\nb:{b}" for m, s, b in zip(mv_vals, sl_vals, b_vals)]
 
 # ============================================================
-# 2. 绘图设置
+# 2. Plotting Configuration
 # ============================================================
 plt.rcParams['pdf.fonttype'] = 42
 plt.rcParams['ps.fonttype'] = 42
@@ -45,6 +58,7 @@ color_insert = '#4c72b0'
 color_delete = '#c44e52' 
 
 def annotate_bar(ax, bars, fmt, color='#333333'):
+    """Helper to add value annotations on top of bars."""
     for bar in bars:
         height = bar.get_height()
         ax.text(bar.get_x() + bar.get_width()/2., height * 1.05,
@@ -52,12 +66,13 @@ def annotate_bar(ax, bars, fmt, color='#333333'):
                 fontsize=8.5, fontweight='bold', color=color, clip_on=False)
 
 def plot_sensitivity(y1, y2, ylabel, title1, title2, out_name, fmt):
+    """Generates a side-by-side bar chart for Insertion (a) vs Deletion (b)."""
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 4.2))
     plt.subplots_adjust(wspace=0.2, bottom=0.22)
     
     x = np.arange(len(x_labels))
     
-    # 子图 (a): Insertion
+    # Subplot (a): Insertion
     bars1 = ax1.bar(x, y1, color=color_insert, edgecolor='black', linewidth=0.8, alpha=0.9)
     ax1.set_ylabel(ylabel, fontweight='bold')
     ax1.set_title(title1, fontweight='bold', pad=15)
@@ -67,7 +82,7 @@ def plot_sensitivity(y1, y2, ylabel, title1, title2, out_name, fmt):
     ax1.grid(axis='y', linestyle='--', alpha=0.4)
     annotate_bar(ax1, bars1, fmt, color_insert)
 
-    # 子图 (b): Deletion (刻度放右面)
+    # Subplot (b): Deletion (Y-axis on the right)
     bars2 = ax2.bar(x, y2, color=color_delete, edgecolor='black', linewidth=0.8, alpha=0.9)
     ax2.yaxis.tick_right()
     ax2.yaxis.set_label_position("right")
@@ -85,14 +100,15 @@ def plot_sensitivity(y1, y2, ylabel, title1, title2, out_name, fmt):
     plt.show()
 
 # ============================================================
-# 3. 执行绘图
+# 3. Execution
 # ============================================================
-# 吞吐量对比 (去掉数字后的 M)
+
+# Throughput Comparison
 plot_sensitivity(add_qps, del_qps, "Throughput (M vec/s)", 
                  "(a) Insertion Throughput", "(b) Deletion Throughput",
                  "sivf_sensitivity_qps", "{:.2f}")
 
-# 延迟对比
+# Latency Comparison
 plot_sensitivity(add_ms, del_ms, "Latency (ms)", 
                  "(a) Insertion Latency", "(b) Deletion Latency",
                  "sivf_sensitivity_latency", "{:.2f}")

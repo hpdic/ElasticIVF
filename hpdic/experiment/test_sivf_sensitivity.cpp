@@ -1,11 +1,15 @@
 /**
  * faiss/gpu/test_sivf_insdel_sensitivity.cpp
- * Parameter Sensitivity (Insert/Delete only) for GpuIndexSIVF
  *
- * - FIXED (nb, nlist) by default to avoid repeating previous nb×nlist sweeps
- * - Sweep: maxvec_factor, slab_factor, del_frac, del_batch
+ * Author: Dongfang Zhao
+ * Email:  dzhao@uw.edu
  *
- * Build target name up to you; just add this file to your faiss/gpu CMake test list.
+ * Sensitivity Analysis Benchmark for GpuIndexSIVF.
+ *
+ * This test evaluates the impact of memory pre-allocation factors (maxvec_factor)
+ * and slab pool redundancy (slab_factor) on Insertion and Deletion performance.
+ * It uses a fixed workload (nb, nlist) to isolate the effects of memory management
+ * parameters and deletion batch sizes.
  */
 
 #include <algorithm>
@@ -28,13 +32,17 @@
 using faiss::idx_t;
 using namespace faiss::gpu;
 
-// -------------------------- utils --------------------------
+// -------------------------- Utility Functions --------------------------
 
 static inline double now_sec() {
     return omp_get_wtime();
 }
 
-// Faster data generator: generate a small random chunk then tile-copy
+/**
+ * Optimized Data Generator.
+ * Generates a small random chunk and replicates it via tiling to minimize
+ * initialization overhead for large datasets.
+ */
 static void generate_data(size_t n, int d, std::vector<float>& data, uint64_t seed) {
     std::mt19937 rng((uint32_t)seed);
     std::uniform_real_distribution<float> dist(0.0f, 1.0f);
@@ -49,6 +57,10 @@ static void generate_data(size_t n, int d, std::vector<float>& data, uint64_t se
     }
 }
 
+/**
+ * Select IDs for deletion.
+ * Randomly shuffles the full ID set and selects the specified fraction.
+ */
 static void make_delete_ids(
         size_t nb,
         double del_frac,
@@ -66,7 +78,7 @@ static void make_delete_ids(
     out_ids.assign(ids.begin(), ids.begin() + del_n);
 }
 
-// very small CLI parser (optional)
+// Minimal CLI Argument Parser
 static bool get_arg_int(int argc, char** argv, const char* key, int& out) {
     std::string k = std::string("--") + key;
     for (int i = 1; i + 1 < argc; ++i) {
@@ -88,37 +100,41 @@ static bool get_arg_size(int argc, char** argv, const char* key, size_t& out) {
     return false;
 }
 
-// -------------------------- main --------------------------
+// -------------------------- Main Execution --------------------------
 
 int main(int argc, char** argv) {
-    // -------- fixed workload (avoid repeating prior nb×nlist sweeps) --------
-    size_t nb = 10000;  // NOT in your previous sweeps
-    int nlist = 4096;    // NOT in your previous sweeps
+    // -------- Fixed Workload Configuration --------
+    // Fixed parameters to avoid redundancy with previous scalability tests.
+    size_t nb = 10000;
+    int nlist = 4096;
     int d = 128;
 
-    // You can override if you really want, but default is “new combo”
+    // Optional override via CLI
     get_arg_size(argc, argv, "nb", nb);
     get_arg_int(argc, argv, "nlist", nlist);
     get_arg_int(argc, argv, "d", d);
 
-    // Training points: enough to avoid “please provide at least ...” as much as possible
+    // Ensure sufficient training data to prevent clustering warnings
     size_t train_nt = std::max((size_t)65536, (size_t)nlist * 40);
     train_nt = std::min(train_nt, nb);
 
     uint64_t seed = 42;
 
-    // -------- "parameter sensitivity" knobs (few points, but looks like tuning) --------
-    // prealloc for vector capacity (max_vectors = nb * factor)
+    // -------- Sensitivity Analysis Parameters --------
+    
+    // 1. Max Vector Factor: Controls the pre-allocated capacity relative to nb.
+    // Values > 1.0 allow for future insertions without resizing.
     std::vector<double> maxvec_factors = {1.10, 1.50};
 
-    // slab pool redundancy factor (slab_pool_size = base_slabs * factor + 2*nlist)
+    // 2. Slab Factor: Controls the redundancy of the slab memory pool.
+    // Higher values reduce the probability of allocation contention.
     std::vector<double> slab_factors = {1.00, 1.30};
 
-    // deletion fraction and batch size
-    std::vector<double> del_fracs = {0.10}; // 10% only (keep it short)
+    // 3. Deletion Settings: Fraction of database to delete and batch size.
+    std::vector<double> del_fracs = {0.10}; // 10% deletion
     std::vector<int> del_batches = {1024, 8192};
 
-    // -------- data prepare --------
+    // -------- Data Preparation --------
     std::vector<float> xb(nb * (size_t)d);
     generate_data(nb, d, xb, seed);
 
@@ -128,24 +144,25 @@ int main(int argc, char** argv) {
     std::vector<idx_t> add_ids(nb);
     for (size_t i = 0; i < nb; ++i) add_ids[i] = (idx_t)i;
 
-    // -------- GPU resources --------
+    // -------- GPU Resource Initialization --------
     StandardGpuResources res;
-    res.noTempMemory(); // keep stable; you can switch to setTempMemory if needed
+    res.noTempMemory(); // Maintain stable memory usage
 
     GpuIndexIVFConfig config;
     config.device = 0;
 
-    // -------- CSV header --------
+    // Output CSV Header
     printf("nb,nlist,maxvec_factor,slab_factor,del_frac,del_batch,train_nt,add_sec,add_qps,del_sec,del_qps,deleted\n");
 
-    // -------- sweep --------
+    // -------- Parameter Sweep Execution --------
     for (double mvf : maxvec_factors) {
         for (double sf : slab_factors) {
             for (double del_frac : del_fracs) {
                 for (int del_batch : del_batches) {
-                    // 1) build fresh index each run (clean, comparable)
+                    // 1. Construct a fresh index for each run to ensure isolation
                     GpuIndexSIVF index(&res, d, nlist, faiss::METRIC_L2, config);
 
+                    // Calculate memory allocation parameters
                     size_t max_vectors = (size_t)std::ceil((double)nb * mvf);
                     max_vectors = std::max(max_vectors, nb);
 
@@ -154,10 +171,10 @@ int main(int argc, char** argv) {
 
                     index.initSlabManager(max_vectors, slab_pool_size);
 
-                    // 2) train
+                    // 2. Training Phase
                     index.train(train_nt, xt.data());
 
-                    // 3) add (insert)
+                    // 3. Insertion Benchmark
                     cudaDeviceSynchronize();
                     double t0 = now_sec();
                     index.add_with_ids(nb, xb.data(), add_ids.data());
@@ -166,7 +183,7 @@ int main(int argc, char** argv) {
                     double add_sec = t1 - t0;
                     double add_qps = (add_sec > 0) ? ((double)nb / add_sec) : 0.0;
 
-                    // 4) delete (in batches)
+                    // 4. Deletion Benchmark (Batched)
                     std::vector<idx_t> del_ids;
                     make_delete_ids(nb, del_frac, seed + 123, del_ids);
                     const size_t del_total = del_ids.size();
@@ -188,7 +205,7 @@ int main(int argc, char** argv) {
                     double del_sec = td1 - td0;
                     double del_qps = (del_sec > 0) ? ((double)del_total / del_sec) : 0.0;
 
-                    // 5) emit one CSV row
+                    // 5. Output Result Row
                     printf("%zu,%d,%.2f,%.2f,%.2f,%d,%zu,%.6f,%.2f,%.6f,%.2f,%zu\n",
                            nb, nlist, mvf, sf, del_frac, del_batch, train_nt,
                            add_sec, add_qps,

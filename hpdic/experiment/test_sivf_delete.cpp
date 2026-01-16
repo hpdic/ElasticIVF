@@ -1,3 +1,16 @@
+/**
+ * faiss/hpdic/experiment/test_sivf_delete.cpp
+ *
+ * Author: Dongfang Zhao
+ * Email:  dzhao@uw.edu
+ *
+ * Benchmark: SIVF Deletion Performance
+ *
+ * This test measures the latency of batch deletion operations in SIVF and
+ * compares it against a hardcoded Baseline (Vanilla Faiss) value to report
+ * the speedup factor.
+ */
+
 #include <algorithm>
 #include <chrono>
 #include <iostream>
@@ -10,7 +23,7 @@
 #include <faiss/gpu/utils/DeviceUtils.h>
 #include <faiss/impl/IDSelector.h>
 
-// 辅助函数：生成随机向量
+// Helper function: Generate random vectors
 void generate_data(size_t n, int d, std::vector<float>& data) {
     for (size_t i = 0; i < n * d; ++i) {
         data[i] = (float)rand() / (float)RAND_MAX;
@@ -19,39 +32,42 @@ void generate_data(size_t n, int d, std::vector<float>& data) {
 
 int main() {
     // ==========================================
-    // 核心参数配置
+    // Core Parameter Configuration
     // ==========================================
     int d = 128;
     int nlist = 4096;
-    size_t nb = 1000000; // 1M 底库
+    size_t nb = 1000000; // 1M Database vectors
 
-    // [修改] 这里改成 10000，跟你的 Baseline 对齐
+    // [Modification] Set to 10000 to align with Baseline configuration
     size_t n_delete = 10000;
 
-    // Baseline 数据 (用于直接计算加速比)
+    // Baseline data (used for direct speedup calculation)
+    // Value derived from standard Faiss GPU IVFFlat deletion benchmark
     double baseline_time_ms = 202.2;
 
     // ==========================================
 
-    // 1. 准备数据
+    // 1. Prepare Data
     std::vector<float> xb(nb * d);
     std::cout << "Generating " << nb << " vectors..." << std::endl;
     generate_data(nb, d, xb);
 
     std::vector<faiss::idx_t> ids(nb);
     for (size_t i = 0; i < nb; ++i)
-        ids[i] = i;
+        ids[i] = (faiss::idx_t)i;
 
-    // 2. 初始化 SIVF
+    // 2. Initialize SIVF
     faiss::gpu::StandardGpuResources res;
     faiss::gpu::GpuIndexSIVF index(&res, d, nlist, faiss::METRIC_L2);
 
-    // 预分配显存池
+    // Pre allocate memory pool
     size_t max_vecs = (size_t)(nb * 1.5);
+    // Allocate extra buffer for metadata
     index.initSlabManager(max_vecs, max_vecs / 32 + 20000);
 
-    // 3. 训练与插入
+    // 3. Train and Insert
     std::cout << "Training..." << std::endl;
+    // Use a subset for training
     index.train(50000, xb.data());
 
     std::cout << "Adding " << nb << " vectors..." << std::endl;
@@ -59,7 +75,7 @@ int main() {
 
     cudaDeviceSynchronize();
 
-    // 4. 准备删除列表 (删除前 10000 个)
+    // 4. Prepare deletion list (delete first n_delete vectors)
     std::vector<faiss::idx_t> ids_to_delete;
     ids_to_delete.reserve(n_delete);
     for (size_t i = 0; i < n_delete; ++i) {
@@ -68,16 +84,16 @@ int main() {
 
     faiss::IDSelectorBatch selector(n_delete, ids_to_delete.data());
 
-    // 5. Benchmark: 执行删除
+    // 5. Benchmark: Execute Deletion
     std::cout << "Benchmark: Removing " << n_delete << " vectors..."
               << std::endl;
 
-    // 预热 GPU (可选)
+    // GPU Warmup (Optional)
     // cudaDeviceSynchronize();
 
     auto start = std::chrono::high_resolution_clock::now();
 
-    // 核心调用
+    // Core invocation
     size_t removed_count = index.remove_ids(selector);
 
     cudaDeviceSynchronize();
@@ -85,7 +101,7 @@ int main() {
 
     double ms = std::chrono::duration<double, std::milli>(end - start).count();
 
-    // 6. 打印结果对比
+    // 6. Print Performance Report
     std::cout << "\n================ PERFORMANCE REPORT ================"
               << std::endl;
     std::cout << "Workload:        Delete " << n_delete << " vectors"

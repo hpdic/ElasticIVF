@@ -1,3 +1,14 @@
+"""
+plot_sivf_search.py
+
+Author: Dongfang Zhao
+Email:  dzhao@uw.edu
+
+Visualization script for SIVF search performance benchmark.
+Generates a composite figure analyzing the trade-off between mutability and
+search throughput compared to the static Vanilla Faiss baseline.
+"""
+
 import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
@@ -5,7 +16,7 @@ import numpy as np
 import os
 
 # ==========================================
-# 1. Enter Latest Measured Data (From 2026-01-13 Log)
+# 1. Input Benchmark Data (2026-01-13: 100k/200k/500k)
 # ==========================================
 data = [
     # NB, nlist, System, QPS
@@ -44,17 +55,18 @@ relative_df = (pivot_sivf / pivot_vanilla).reset_index()
 relative_df.rename(columns={'QPS': 'Relative'}, inplace=True)
 
 # ==========================================
-# 2. Plot Settings (Optimized for Paper)
+# 2. Plotting Configuration (Optimized for Paper)
 # ==========================================
 sns.set_theme(style="whitegrid", font_scale=1.1)
 plt.rcParams['font.family'] = 'sans-serif'
 plt.rcParams['pdf.fonttype'] = 42
 
-# Create 1 row x 3 cols canvas
+# Create a 1x3 subplot layout
 fig, axes = plt.subplots(1, 3, figsize=(18, 5), constrained_layout=True)
 
 # -------------------------------------------------------
-# Subplot 1: Scalability (nlist=4096 is the most stable case)
+# Subplot 1: Scalability (Throughput vs Database Size)
+# nlist=4096 is chosen as the representative configuration
 # -------------------------------------------------------
 subset_nb = df[df['nlist'] == 4096]
 sns.lineplot(
@@ -67,7 +79,7 @@ sns.lineplot(
     dashes=False, 
     linewidth=3,
     markersize=10,
-    palette=['#d7191c', '#2b83ba'], # Red vs Blue
+    palette=['#d7191c', '#2b83ba'], # Red(SIVF) vs Blue(Vanilla)
     ax=axes[0]
 )
 axes[0].set_title('(a) Search Scalability (nlist=4096)', fontsize=14, weight='bold', pad=12)
@@ -75,11 +87,12 @@ axes[0].set_xlabel('Database Size (Vectors)', fontsize=12)
 axes[0].set_ylabel('Search Throughput (10^3 QPS)', fontsize=12)
 axes[0].set_xticks([100000, 200000, 500000])
 axes[0].set_xticklabels(['100k', '200k', '500k'])
-axes[0].set_ylim(0, 600) # Max is ~560k
+axes[0].set_ylim(0, 600) # Peak is approx 560k
 axes[0].legend(title=None, loc='upper right', frameon=True)
 
 # -------------------------------------------------------
-# Subplot 2: Impact of Granularity (500k Vectors)
+# Subplot 2: Impact of Granularity (Throughput vs nlist)
+# Fixed at NB=500k
 # -------------------------------------------------------
 subset_nlist = df[df['NB'] == 500000]
 sns.barplot(
@@ -104,6 +117,7 @@ axes[1].legend(title=None, loc='upper left')
 
 # -------------------------------------------------------
 # Subplot 3: Efficiency Ratio Heatmap
+# Visualizes the performance gap (SIVF / Vanilla)
 # -------------------------------------------------------
 heatmap_data = relative_df.pivot(index="nlist", columns="NB", values="Relative")
 annot_labels = heatmap_data.applymap(lambda v: f"{v:.2f}x")

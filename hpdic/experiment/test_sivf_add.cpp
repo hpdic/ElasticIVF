@@ -1,7 +1,14 @@
 /**
  * faiss/hpdic/experiment/test_sivf_add.cpp
- * Comprehensive Benchmark: ElasticIVF vs Vanilla Faiss
+ *
+ * Author: Dongfang Zhao
+ * Email:  dzhao@uw.edu
+ *
+ * Comprehensive Benchmark: SIVF vs Vanilla Faiss (IVFFlat)
  * Parameter Sweep: nb (Database Size) x nlist (Cluster Count)
+ *
+ * This test evaluates the ingestion throughput (QPS) of the Slab-based
+ * architecture against the standard contiguous memory implementation.
  */
 
 #include <sys/time.h>
@@ -10,6 +17,7 @@
 #include <iostream>
 #include <random>
 #include <vector>
+#include <cstring> // For memcpy
 
 #include <faiss/gpu/GpuIndexIVFFlat.h>
 #include <faiss/gpu/GpuIndexSIVF.h>
@@ -19,19 +27,25 @@
 using namespace faiss;
 using namespace faiss::gpu;
 
+// High precision timer
 double elapsed() {
     struct timeval tv;
     gettimeofday(&tv, nullptr);
     return tv.tv_sec + tv.tv_usec * 1e-6;
 }
 
-// 快速随机数生成 (避免 huge loop 耗时太久)
+// Fast random data generation
+// Replicates a small chunk of random data to avoid the high overhead of 
+// calling RNG for millions of vectors.
 void generate_data(size_t n, int d, std::vector<float>& data) {
-    // 只生成前 1000 个随机数，后面循环拷贝，加快 benchmark 准备时间
     size_t chunk = std::min(n, (size_t)10000);
+    
+    // Generate the seed chunk
     for (size_t i = 0; i < chunk * d; ++i) {
         data[i] = (float)drand48();
     }
+    
+    // Replicate the chunk
     for (size_t i = chunk; i < n; ++i) {
         memcpy(data.data() + i * d,
                data.data() + (i % chunk) * d,
@@ -41,20 +55,20 @@ void generate_data(size_t n, int d, std::vector<float>& data) {
 
 int main() {
     // ==========================================
-    // 实验参数配置 (Parameter Sweep)
+    // Experiment Configuration (Parameter Sweep)
     // ==========================================
     int d = 128;
 
-    // 遍历不同的 nlist (聚类中心数)
+    // Sweep: Cluster Counts (nlist)
     std::vector<int> nlist_list = {1024, 2048, 4096};
 
-    // 遍历不同的数据库大小 (从 100万 到 1000万)
-    // 注意：10M * 128 * 4B = 5GB 显存，RTX 6000 轻松吃下
+    // Sweep: Database Sizes (1M to 4M vectors)
+    // Note: 10M * 128 * 4B equals approx 5GB VRAM, fitting easily on RTX 6000
     std::vector<size_t> nb_list = {1000000, 2000000, 4000000};
 
-    // 最大的 nb，用于预先生成数据
+    // Max capacity for pre allocation
     size_t max_nb = 10000000;
-    size_t max_nt = 256 * 1024; // 足够大的训练集
+    size_t max_nt = 256 * 1024; // Sufficient training set size
 
     printf("Preparing Data (Max NB=%ld, Max NT=%ld)...\n", max_nb, max_nt);
     std::vector<float> all_xb(max_nb * d);
@@ -65,7 +79,7 @@ int main() {
 
     std::vector<idx_t> all_ids(max_nb);
     for (size_t i = 0; i < max_nb; ++i)
-        all_ids[i] = i;
+        all_ids[i] = (idx_t)i;
 
     StandardGpuResources res;
     res.setTempMemory(1024 * 1024 * 1024); // 1GB Temp Memory
@@ -73,7 +87,7 @@ int main() {
     GpuIndexIVFConfig config;
     config.device = 0;
 
-    // 输出表头
+    // Print Table Header
     printf("\n| %-10s | %-10s | %-15s | %-10s | %-15s | %-10s |\n",
            "NB",
            "nlist",
@@ -84,11 +98,11 @@ int main() {
     printf("|------------|------------|-----------------|------------|-----------------|------------|\n");
 
     // ==========================================
-    // Loop
+    // Execution Loop
     // ==========================================
     for (size_t nb : nb_list) {
         for (int nlist : nlist_list) {
-            // 动态计算需要的训练数据量 (39 * nlist 是 Faiss 推荐值)
+            // Dynamically calculate training size (Faiss recommends ~39 * nlist)
             size_t nt = std::max((size_t)65536, (size_t)nlist * 40);
             if (nt > max_nt)
                 nt = max_nt;
@@ -98,9 +112,10 @@ int main() {
 
             // --- Round 1: SIVF ---
             {
+                // Pre define capacity with safety margin
                 size_t max_vectors = nb * 2;
-                size_t slab_pool_size =
-                        max_vectors / 32 + (nlist * 2); // 稍微多给点 redundant
+                // SIVF_SLAB_CAPACITY is 32. Add extra slabs for list heads.
+                size_t slab_pool_size = max_vectors / 32 + (nlist * 2);
 
                 GpuIndexSIVF index(&res, d, nlist, METRIC_L2, config);
                 index.initSlabManager(max_vectors, slab_pool_size);
@@ -108,10 +123,13 @@ int main() {
                 // Train
                 index.train(nt, all_xt.data());
 
-                // Add
+                // Benchmark Addition
                 cudaDeviceSynchronize();
                 double t0 = elapsed();
+                
+                // SIVF supports add_with_ids directly via inheritance
                 index.add_with_ids(nb, all_xb.data(), all_ids.data());
+                
                 cudaDeviceSynchronize();
                 double t1 = elapsed();
 
@@ -127,7 +145,7 @@ int main() {
                        "-");
             }
 
-            // --- Round 2: Vanilla ---
+            // --- Round 2: Vanilla Faiss (IVFFlat) ---
             {
                 GpuIndexIVFFlatConfig flatConfig;
                 flatConfig.device = 0;
@@ -137,10 +155,12 @@ int main() {
                 // Train
                 index.train(nt, all_xt.data());
 
-                // Add
+                // Benchmark Addition
                 cudaDeviceSynchronize();
                 double t0 = elapsed();
+                
                 index.add_with_ids(nb, all_xb.data(), all_ids.data());
+                
                 cudaDeviceSynchronize();
                 double t1 = elapsed();
 
@@ -155,7 +175,7 @@ int main() {
                        vanilla_qps,
                        sivf_qps / vanilla_qps);
             }
-            // 分隔线
+            // Separator
             printf("|------------|------------|-----------------|------------|-----------------|------------|\n");
         }
     }

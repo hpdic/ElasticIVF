@@ -1,3 +1,16 @@
+/**
+ * faiss/hpdic/experiment/test_sivf_search.cpp
+ *
+ * Author: Dongfang Zhao
+ * Email:  dzhao@uw.edu
+ *
+ * Comprehensive Search Benchmark: SIVF vs Vanilla Faiss (IVFFlat)
+ * Parameter Sweep: nb (Database Size) x nlist (Cluster Count) x nprobe
+ *
+ * This test evaluates the search throughput (QPS) and Recall@10 of the
+ * Slab-based architecture against the standard contiguous memory implementation.
+ */
+
 #include <omp.h>
 #include <sys/time.h>
 #include <algorithm>
@@ -17,14 +30,14 @@
 using namespace faiss;
 using namespace faiss::gpu;
 
-// 简单的随机数生成
+// Simple random number generation wrapper
 float rand_float() {
     return (float)drand48();
 }
 
 int main() {
     // ==========================================
-    // 1. 参数配置区
+    // 1. Parameter Configuration
     // ==========================================
     std::vector<int> nb_list = {100000, 200000, 500000};
     std::vector<int> nlist_list = {1024, 4096, 16384};
@@ -47,7 +60,7 @@ int main() {
     StandardGpuResources res;
     res.noTempMemory();
 
-    // [修正] SIVF 使用基础 Config
+    // [Fix] SIVF uses the basic GpuIndexIVFConfig
     GpuIndexIVFConfig sivf_config;
     sivf_config.device = 0;
 
@@ -63,6 +76,7 @@ int main() {
                 xb[i * d + j] = rand_float();
         }
 
+        // Generate queries by sampling from the base set
         for (int i = 0; i < nq; ++i) {
             int target = lrand48() % nb;
             for (int j = 0; j < d; ++j)
@@ -78,25 +92,27 @@ int main() {
                     size_t max_vectors = nb * 2L;
                     size_t slab_pool_size = nb * 2L;
 
-                    // SIVF 构造函数接受 GpuIndexIVFConfig
+                    // SIVF constructor accepts GpuIndexIVFConfig
                     GpuIndexSIVF sivf_index(
                             &res, d, nlist, METRIC_L2, sivf_config);
                     sivf_index.initSlabManager(max_vectors, slab_pool_size);
                     sivf_index.nprobe = nprobe;
 
+                    // Train with a subset if nb is large
                     sivf_index.train(std::min((long)nb, 65536L), xb.data());
 
                     double t0 = omp_get_wtime();
                     sivf_index.add_with_ids(nb, xb.data(), ids.data());
                     double t_add = omp_get_wtime() - t0;
 
-                    // Warmup
+                    // Warmup Search
                     {
                         std::vector<float> D(nq * k);
                         std::vector<long> I(nq * k);
                         sivf_index.search(nq, xq.data(), k, D.data(), I.data());
                     }
 
+                    // Benchmark Search
                     std::vector<float> D(nq * k);
                     std::vector<long> I(nq * k);
 
@@ -105,9 +121,10 @@ int main() {
                     double t_search = omp_get_wtime() - t0;
                     double qps = nq / t_search;
 
+                    // Calculate Recall@K
                     int correct = 0;
                     for (int i = 0; i < nq; ++i)
-                        if (D[i * k] < 1e-4)
+                        if (D[i * k] < 1e-4) // Assuming exact match distance ~ 0
                             correct++;
                     float recall = 100.0f * correct / nq;
 
@@ -125,33 +142,35 @@ int main() {
                 // Round B: Vanilla Faiss (Baseline)
                 // -------------------------------------------------
                 {
-                    // 1. CPU Train
+                    // 1. CPU Train (Standard Faiss workflow)
                     IndexFlatL2 cpu_quantizer(d);
                     IndexIVFFlat cpu_index(&cpu_quantizer, d, nlist, METRIC_L2);
                     cpu_index.train(std::min((long)nb, 65536L), xb.data());
 
-                    // [修正] 这里必须使用 GpuIndexIVFFlatConfig
+                    // [Fix] Must use GpuIndexIVFFlatConfig specifically
                     GpuIndexIVFFlatConfig flat_config;
                     flat_config.device = 0;
 
-                    // 2. GPU Index Construction
+                    // 2. GPU Index Construction (Load from CPU index)
                     GpuIndexIVFFlat gpu_index(
                             &res, d, nlist, METRIC_L2, flat_config);
                     gpu_index.copyFrom(&cpu_index);
 
-                    // 3. Set Params
+                    // 3. Set Parameters
                     gpu_index.nprobe = nprobe;
 
                     double t0 = omp_get_wtime();
                     gpu_index.add_with_ids(nb, xb.data(), ids.data());
                     double t_add = omp_get_wtime() - t0;
 
+                    // Warmup
                     {
                         std::vector<float> D(nq * k);
                         std::vector<long> I(nq * k);
                         gpu_index.search(nq, xq.data(), k, D.data(), I.data());
                     }
 
+                    // Benchmark Search
                     std::vector<float> D(nq * k);
                     std::vector<long> I(nq * k);
 
@@ -175,7 +194,7 @@ int main() {
                            qps,
                            recall);
 
-                } // gpu_index 自动析构
+                } // gpu_index is automatically destructed here, freeing VRAM
 
                 fflush(stdout);
             }

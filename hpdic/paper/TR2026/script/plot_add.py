@@ -1,3 +1,14 @@
+"""
+plot_sivf_add.py
+
+Author: Dongfang Zhao
+Email:  dzhao@uw.edu
+
+Visualization script for SIVF ingestion throughput benchmark.
+Generates a composite figure comparing SIVF vs. Vanilla Faiss across
+different database sizes and cluster configurations.
+"""
+
 import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
@@ -5,7 +16,7 @@ import numpy as np
 import os
 
 # ==========================================
-# 1. 录入最新数据 (2026-01-13 Benchmark: 1M/2M/4M)
+# 1. Input Benchmark Data (2026-01-13: 1M/2M/4M)
 # ==========================================
 data = [
     # NB, nlist, System, QPS
@@ -37,25 +48,25 @@ data = [
 df = pd.DataFrame(data, columns=['NB', 'nlist', 'System', 'QPS'])
 df['QPS_Millions'] = df['QPS'] / 1e6
 
-# 计算 Speedup 用于热力图
+# Calculate Speedup for Heatmap
 pivot_sivf = df[df['System'] == 'SIVF'].set_index(['NB', 'nlist'])['QPS']
 pivot_vanilla = df[df['System'] == 'Vanilla'].set_index(['NB', 'nlist'])['QPS']
 speedup_df = (pivot_sivf / pivot_vanilla).reset_index()
 speedup_df.rename(columns={'QPS': 'Speedup'}, inplace=True)
 
 # ==========================================
-# 2. 绘图设置 (Wide Layout)
+# 2. Plotting Configuration (Wide Layout)
 # ==========================================
 sns.set_theme(style="whitegrid", font_scale=1.1)
 plt.rcParams['font.family'] = 'sans-serif' 
 plt.rcParams['pdf.fonttype'] = 42 
 
-# 创建 1行3列 的画布
+# Create a 1x3 subplot layout
 fig, axes = plt.subplots(1, 3, figsize=(18, 5), constrained_layout=True)
 
 # -------------------------------------------------------
 # Subplot 1: Scalability (Throughput vs Database Size)
-# 固定 nlist=4096 (最稳定、最具代表性的一组)
+# Fix nlist=4096 (Most stable and representative configuration)
 # -------------------------------------------------------
 subset_nb = df[df['nlist'] == 4096]
 sns.lineplot(
@@ -68,22 +79,22 @@ sns.lineplot(
     dashes=False, 
     linewidth=3,
     markersize=10,
-    palette=['#d7191c', '#2b83ba'], # 红(SIVF) vs 蓝(Vanilla)
+    palette=['#d7191c', '#2b83ba'], # Red(SIVF) vs Blue(Vanilla)
     ax=axes[0]
 )
 axes[0].set_title('(a) Scalability with Data Size (nlist=4096)', fontsize=14, weight='bold', pad=12)
 axes[0].set_xlabel('Database Size (Vectors)', fontsize=12)
 axes[0].set_ylabel('Throughput (Million vec/s)', fontsize=12)
 
-# 更新刻度为 1M, 2M, 4M
+# Update ticks to 1M, 2M, 4M
 axes[0].set_xticks([1000000, 2000000, 4000000])
 axes[0].set_xticklabels(['1M', '2M', '4M'])
-axes[0].set_ylim(0, 7) # SIVF最高接近6.1M，给到7比较好看
+axes[0].set_ylim(0, 7) # SIVF peaks around 6.1M, setting limit to 7 for aesthetics
 axes[0].legend(title=None, loc='center right', frameon=True)
 
 # -------------------------------------------------------
 # Subplot 2: Impact of Clustering (Throughput vs nlist)
-# 固定 NB=4M (最大压力测试)
+# Fix NB=4M (Max stress test)
 # -------------------------------------------------------
 subset_nlist = df[df['NB'] == 4000000]
 bar_plot = sns.barplot(
@@ -111,7 +122,7 @@ axes[1].legend(title=None, loc='upper right')
 # -------------------------------------------------------
 heatmap_data = speedup_df.pivot(index="nlist", columns="NB", values="Speedup")
 
-# 手动创建一个字符串矩阵
+# Manually create an annotation string matrix
 annot_labels = heatmap_data.applymap(lambda v: f"{v:.2f}x")
 
 sns.heatmap(
@@ -134,5 +145,5 @@ axes[2].set_yticklabels(heatmap_data.index, rotation=0)
 # ==========================================
 # Save
 # ==========================================
-# 自动保存图片，您可以直接下载
+# Save figure to file
 plt.savefig(os.path.expanduser('~/ElasticIVF/hpdic/paper/TR2026/figures/performance_add.pdf'), format='pdf', dpi=300, bbox_inches='tight')
