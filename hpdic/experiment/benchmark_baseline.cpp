@@ -1,8 +1,15 @@
 /**
- * Benchmark for Add and Remove operations on Faiss GPU IndexIVFFlat
- * 
- * Author: Dongfang Zhao (dzhao@uw.edu)
- * Date: January 11, 2026
+ * benchmark_baseline.cpp
+ *
+ * Author: Dongfang Zhao
+ * Email:  dzhao@uw.edu
+ *
+ * Benchmark for Add and Remove operations on Faiss GPU IndexIVFFlat.
+ * * This script simulates a sliding window workload:
+ * 1. Adds a new batch of vectors.
+ * 2. Removes the oldest batch of vectors.
+ * * Since standard Faiss GPU indices do not support native removal, this benchmark
+ * captures the cost of the "CPU Roundtrip" workaround (GPU -> CPU -> Remove -> GPU).
  */
 
 #include <cstdio>
@@ -20,7 +27,10 @@
 using namespace std;
 using namespace std::chrono;
 
-// Simulate fvecs file reading (read data part only)
+/**
+ * Helper: Read fvecs file format.
+ * Format: [dim][v1...][dim][v2...]
+ */
 float* fvecs_read(const char* fname, size_t& d, size_t& n) {
     FILE* f = fopen(fname, "rb");
     if (!f) {
@@ -79,7 +89,9 @@ float* fvecs_read(const char* fname, size_t& d, size_t& n) {
 }
 
 int main() {
-    // 配置参数
+    // ==========================================
+    // Configuration Parameters
+    // ==========================================
     const char* base_file = "/home/cc/ElasticIVF/hpdic/data/sift/sift_base.fvecs";
     const char* learn_file = "/home/cc/ElasticIVF/hpdic/data/sift/sift_learn.fvecs";
     int nlist = 1024;
@@ -87,29 +99,29 @@ int main() {
     int batch_size = 10000;
     int device_id = 0;
 
-    // 1. 加载数据
+    // 1. Load Data
     size_t d, nb, nt;
     float* xb = fvecs_read(base_file, d, nb);
     float* xt = fvecs_read(learn_file, d, nt);
     printf("Data loaded. Dim: %zu, Base: %zu\n", d, nb);
 
-    // 2. 初始化 GPU 资源
+    // 2. Initialize GPU Resources
     faiss::gpu::StandardGpuResources res;
 
-    // 3. 构建并训练索引
+    // 3. Build and Train Index (on CPU first)
     faiss::IndexFlatL2 quantizer(d);
     faiss::IndexIVFFlat cpu_index(&quantizer, d, nlist, faiss::METRIC_L2);
     
     printf("Training index...\n");
     cpu_index.train(nt, xt);
 
-    // 4. 搬运到 GPU
+    // 4. Move Index to GPU
     printf("Moving index to GPU...\n");
     faiss::gpu::GpuIndexIVFFlatConfig config;
     config.device = device_id;
     faiss::gpu::GpuIndexIVFFlat gpu_index(&res, &cpu_index, config);
 
-    // 5. 预填充窗口
+    // 5. Pre-fill Window
     printf("Pre-filling window with %d vectors...\n", window_size);
     gpu_index.add(window_size, xb);
 
@@ -122,39 +134,40 @@ int main() {
         size_t start_idx = window_size + step * batch_size;
         float* new_data = xb + start_idx * d;
 
-        // 准备待删除的 ID
+        // Prepare IDs to remove (simulating FIFO queue)
         vector<faiss::idx_t> ids_to_remove(batch_size);
         iota(ids_to_remove.begin(), ids_to_remove.end(), current_min_id);
 
-        // A. 测试 Add
+        // A. Benchmark Add
         auto t0 = high_resolution_clock::now();
         gpu_index.add(batch_size, new_data);
         auto t1 = high_resolution_clock::now();
         double add_time = duration<double, milli>(t1 - t0).count();
 
-        // B. 测试 Remove
+        // B. Benchmark Remove
         auto t2 = high_resolution_clock::now();
         string method_name = "Direct";
         
         try {
+            // Attempt direct GPU removal (Expected to fail on Standard Faiss)
             faiss::IDSelectorBatch selector(batch_size, ids_to_remove.data());
             gpu_index.remove_ids(selector);
         } catch (const exception& e) {
-            // 如果 GPU 直接删除失败（Faiss 默认不支持），进入 Roundtrip 模拟
+            // Fallback: Simulate "CPU Roundtrip" overhead
             method_name = "CPU_Roundtrip";
             
-            // 1. GPU to CPU
+            // 1. Download: GPU to CPU
             faiss::IndexIVFFlat* tmp_cpu_index = dynamic_cast<faiss::IndexIVFFlat*>(
                 faiss::gpu::index_gpu_to_cpu(&gpu_index)
             );
             
-            // 2. CPU Remove
+            // 2. Modify: CPU Remove
             faiss::IDSelectorBatch selector(batch_size, ids_to_remove.data());
             tmp_cpu_index->remove_ids(selector);
             
-            // 3. CPU to GPU (这里我们重建 GPU 索引来模拟完整开销)
-            gpu_index.~GpuIndexIVFFlat(); // 销毁旧索引
-            new (&gpu_index) faiss::gpu::GpuIndexIVFFlat(&res, tmp_cpu_index, config);
+            // 3. Upload: CPU to GPU (Reconstruct GPU index to simulate full overhead)
+            gpu_index.~GpuIndexIVFFlat(); // Explicitly destroy old GPU index
+            new (&gpu_index) faiss::gpu::GpuIndexIVFFlat(&res, tmp_cpu_index, config); // Placement new
             
             delete tmp_cpu_index;
         }
@@ -174,13 +187,14 @@ int main() {
 }
 
 /**
-g++ -O3 -std=c++17 -fopenmp benchmark_baseline.cpp -o benchmark_baseline.bin \
-    -I/home/cc/ElasticIVF \
-    -I/usr/local/cuda/include \
-    -L/home/cc/ElasticIVF/build/faiss \
-    -L/usr/local/cuda/lib64 \
-    -lfaiss \
-    -lopenblas \
-    -lcudart \
-    -lcublas
-*/
+ * Compilation Command:
+ * * g++ -O3 -std=c++17 -fopenmp benchmark_baseline.cpp -o benchmark_baseline.bin \
+ * -I/home/cc/ElasticIVF \
+ * -I/usr/local/cuda/include \
+ * -L/home/cc/ElasticIVF/build/faiss \
+ * -L/usr/local/cuda/lib64 \
+ * -lfaiss \
+ * -lopenblas \
+ * -lcudart \
+ * -lcublas
+ */
