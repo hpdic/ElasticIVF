@@ -170,3 +170,12 @@ target_link_libraries(test_sivf_sliding
     CUDA::cudart 
     CUDA::cublas
 )
+
+# --- Memory Usage ---
+add_executable(test_sivf_memory hpdic/experiment/test_sivf_memory.cpp)
+target_link_libraries(test_sivf_memory 
+    faiss 
+    OpenMP::OpenMP_CXX 
+    CUDA::cudart 
+    CUDA::cublas
+)

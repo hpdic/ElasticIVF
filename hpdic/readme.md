@@ -57,6 +57,12 @@ cd ~/ElasticIVF/build
 make -j test_sivf_sliding
 ./test_sivf_sliding # default is SIFT
 ./test_sivf_sliding gist
+
+# Memory usage:
+cd ~/ElasticIVF/build
+make -j test_sivf_memory
+./test_sivf_memory # default is SIFT
+./test_sivf_memory gist
 ```
 
 ## Benchmarks
