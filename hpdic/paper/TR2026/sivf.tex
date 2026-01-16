@@ -143,12 +143,12 @@ This paper makes three technical contributions to the field of high-performance 
     \item Orders-of-Magnitude Performance Gains: We evaluate SIVF against state-of-the-art baselines on SIFT1M and GIST1M. Experimental results demonstrate that SIVF reduces deletion latency by up to $13,300\times$ (from 11.8s to 0.89ms) and improves ingestion throughput by $36\times$ to $105\times$. Furthermore, in end-to-end sliding window scenarios, SIVF achieves a $161\times$ to $266\times$ speedup while maintaining negligible memory overhead (<0.8\%), effectively closing the gap between static and streaming vector search performance on GPUs.
 \end{itemize}
 
-\paragraph{Paper Organization}
-The remainder of this paper is organized as follows. 
-Section~\ref{sec:related_work} reviews the existing landscape of ANN search, distinguishing between CPU-based dynamic methods and static GPU-accelerated indices. 
-Section~\ref{sec:design_implementation} details the architectural design of SIVF, elaborating on the slab-based memory allocator, the validity bitmap mechanism, and the GPU-resident address translation table. 
-Section~\ref{sec:evaluation} presents our experimental methodology and a comprehensive evaluation of SIVF against state-of-the-art baselines. 
-Finally, Section~\ref{sec:conclusion} concludes the paper and outlines directions for future research.
+% \paragraph{Paper Organization}
+% The remainder of this paper is organized as follows. 
+% Section~\ref{sec:related_work} reviews the existing landscape of ANN search, distinguishing between CPU-based dynamic methods and static GPU-accelerated indices. 
+% Section~\ref{sec:design_implementation} details the architectural design of SIVF, elaborating on the slab-based memory allocator, the validity bitmap mechanism, and the GPU-resident address translation table. 
+% Section~\ref{sec:evaluation} presents our experimental methodology and a comprehensive evaluation of SIVF against state-of-the-art baselines. 
+% Finally, Section~\ref{sec:conclusion} concludes the paper and outlines directions for future research.
 
 \section{Related Work}
 \label{sec:related_work}
@@ -536,7 +536,7 @@ Implementing SIVF required substantial modifications to the Faiss GPU backend an
 \subsection{Experimental Setup}
 \label{sec:exp_setup}
 
-All experiments were conducted on a bare-metal node from the Chameleon Cloud testbed~\cite{keahey2020lessons} (CHI@UC site). The platform is equipped with dual-socket Intel Xeon Gold 6126 CPUs (Skylake microarchitecture), providing a total of 24 physical cores (48 threads with Hyper-Threading) clocked at 2.60 GHz. The host memory consists of 192 GiB of RAM. 
+We specifically verify against Faiss GPU IVF to isolate the performance gains attributable to our architectural innovations (memory management), excluding confounding factors from differing algorithmic paradigms (e.g., graph-based indices). All experiments were conducted on a bare-metal node from the Chameleon Cloud testbed~\cite{keahey2020lessons} (CHI@UC site). The platform is equipped with dual-socket Intel Xeon Gold 6126 CPUs (Skylake microarchitecture), providing a total of 24 physical cores (48 threads with Hyper-Threading) clocked at 2.60 GHz. The host memory consists of 192 GiB of RAM. 
 For acceleration, the node features an NVIDIA Quadro RTX 6000 GPU with 24 GB of GDDR6 memory. The system runs on a Ubuntu 24.04 environment with the CUDA toolkit installed. 
 % Network connectivity is provided by an Intel X710 10-Gigabit Ethernet (10GbE) controller.
 
@@ -626,6 +626,8 @@ Figure~\ref{fig:deletion_perf} illustrates the performance comparison between th
 \label{sec:eval_real_world}
 
 To evaluate SIVF under realistic conditions, we utilized two standard large-scale benchmarks: SIFT1M~\cite{jegou2011product} (128 dimensions) and GIST1M~\cite{jegou2011product} (960 dimensions). SIFT1M is a standard computer vision dataset using Euclidean distance; GIST1M is a high-dimensional dataset representing global image features, which is particularly challenging for index structures due to the sparsity of the space and the high intrinsic dimensionality. These datasets allow us to assess system performance across varying dimensionalities, directly testing the scalability of our slab-based memory management against the contiguous memory model of the baseline (Faiss).
+
+It is important to note that while SIFT1M and GIST1M are standard benchmarks for in-memory indices, their size (1 million vectors) is bounded by the available VRAM of a single GPU. However, for streaming applications, the critical metric is not the total historical volume but the \textit{active window size} that fits in high-speed memory. Our \textit{Sliding Window} benchmark (Section~\ref{sec:eval_streaming}) explicitly stresses the system by processing a continuous stream of updates far exceeding the static capacity, thereby verifying SIVF's architectural stability under high-churn workloads typical of billion-scale production streams.
 
 \begin{figure*}[t]
     \centering
@@ -755,10 +757,19 @@ Furthermore, we verified the efficacy of our memory reclamation strategy. In a s
 \label{sec:conclusion}
 
 In this work, we addressed the fundamental mismatch between the static design of existing GPU-accelerated ANN indices and the dynamic requirements of real-time streaming applications. Through rigorous benchmarking, we identified the roundtrip bottleneck, i.e., the necessity of transferring index data across the PCIe bus for modification, as the primary inhibitor of low-latency eviction. To overcome this limitation, we proposed a new index architecture, namely SIVF, that relocates memory management responsibilities entirely onto the GPU. 
-% SIVF enables high-throughput and in-place mutability directly in VRAM. By implementing a slab-based memory allocator, a lock-free validity bitmap, and a GPU-resident address translation table, SIVF decouples index maintenance from the host CPU.
+SIVF enables high-throughput and in-place mutability directly in VRAM. By implementing a slab-based memory allocator, a lock-free validity bitmap, and a GPU-resident address translation table, SIVF decouples index maintenance from the host CPU.
 Our comprehensive evaluation on the SIFT1M and GIST1M datasets demonstrates that SIVF transforms the landscape of streaming vector search. It accelerates data deletion by up to $13,300\times$ (sub-millisecond latency) and improves ingestion throughput by $36\times$ to $105\times$ compared to the industry-standard Faiss library. Notably, in end-to-end sliding window scenarios, SIVF eliminates system freezes, achieving a $161\times$ to $266\times$ speedup while maintaining negligible memory overhead ($<0.8\%$). These results confirm that moving memory management responsibilities from the CPU to the GPU is not only feasible but essential for the next generation of real-time neural search systems.
 
-Several avenues remain for further optimization and expansion. To address the search performance trade-off observed in high-dimensional datasets like GIST1M, we plan to explore adaptive slab sizing and page-aligned super-slabs to restore memory coalescing efficiency for vectors where their dimension is larger than 1K. Furthermore, we aim to extend the architecture to support multi-GPU sharding via NVLink and leverage unified memory techniques, enabling SIVF to scale to extreme-scale datasets that exceed single-card VRAM capacity. Finally, we intend to integrate metadata-filtered search directly into the slab structure, allowing for thread-level pre-filtering and more complex query processing without incurring additional memory lookup overhead.
+\subsection{Limitations and Future Directions}
+\label{sec:limitations}
+
+Despite the orders-of-magnitude improvement in mutation latency, our current SIVF design entails specific trade-offs. 
+
+First, the \textit{pointer-chasing overhead} inherent in the linked-slab architecture reduces memory coalescing efficiency for those high-dimensional vectors. As observed in the GIST1M ($d=960$) evaluation, this results in a $2.7\times$ reduction in raw search QPS compared to contiguous static indices. While acceptable for write-heavy streaming scenarios, future work will address this by exploring \textit{adaptive super-slabs} that enforce page-aligned storage to restore memory bandwidth utilization.
+
+Second, the current implementation operates on a single GPU, bounding the maximum active window size to the available VRAM (e.g., approx. 20M 128-dim vectors on a 24 GB card). While our sliding window experiments demonstrate stability under infinite streams, scaling the \textit{simultaneous} index capacity to billion-scale datasets will require extending SIVF with \textit{multi-GPU sharding} via NVLink and Unified Memory prefetching techniques.
+
+Finally, our consistency model prioritizes throughput over strict linearizability. While sufficient for the probabilistic nature of ANN search, future work will investigate lightweight snapshot isolation mechanisms to support transactional semantics without compromising the lock-free ingestion speed.
 
 \section*{Acknowledgment}
 Results presented in this paper were obtained using the Chameleon testbed supported by the National Science Foundation.
