@@ -136,7 +136,7 @@ sns.heatmap(
     annot_kws={"size": 13, "weight": "bold"},
     ax=axes[2]
 )
-axes[2].set_title('(c) Speedup Factor (ElasticIVF vs Vanilla)', fontsize=14, weight='bold', pad=12)
+axes[2].set_title('(c) Speedup Factor (SIVF vs Vanilla)', fontsize=14, weight='bold', pad=12)
 axes[2].set_xlabel('Database Size (NB)', fontsize=12)
 axes[2].set_ylabel('Number of Clusters (nlist)', fontsize=12)
 axes[2].set_xticklabels(['1M', '2M', '4M'])
