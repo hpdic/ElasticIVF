@@ -540,7 +540,7 @@ Unless explicitly stated (as in Section~\ref{sec:eval_real_world}), our experime
 \subsection{Microbenchmark: Ingestion}
 \label{sec:eval_add_performance}
 
-We evaluate ingestion throughput against the standard Faiss GPU IVFFlat baseline, varying database size ($N_B$: 1M--4M) and cluster count ($n_{list}$: 1024--16384). As shown in Figure~\ref{fig:add_perf}, SIVF achieves consistent performance advantages with up to 2.88$\times$ speedup.
+We evaluate ingestion throughput against the standard Faiss GPU IVFFlat baseline, varying database size ($N_B$: 1M--4M) and cluster count ($n_{list}$: 1024--4096). As shown in Figure~\ref{fig:add_perf}, SIVF achieves consistent performance advantages with up to 2.88$\times$ speedup.
 
 \begin{figure*}[t]
     \centering
@@ -554,7 +554,7 @@ We evaluate ingestion throughput against the standard Faiss GPU IVFFlat baseline
 SIVF maintains a stable throughput of $\approx$4.2M vec/s as $N_B$ increases, significantly outperforming the baseline ($\approx$1.7M vec/s). This stability validates our lock-free SlabManager, which ensures $O(1)$ insertion cost independent of index occupancy, thereby avoiding the contiguous memory resizing overheads inherent to the baseline.
 
 \paragraph{Granularity Impact (Fig.~\ref{fig:add_perf}b)}
-Performance correlates with clustering granularity. At low $n_{list}=1024$, localized memory writes allow SIVF to peak at $\approx$6.1M vec/s (2.88$\times$ speedup). At high $n_{list}=16384$, scattered write patterns reduce throughput for both systems; however, SIVF's linked-slab architecture proves more resilient than the baseline, maintaining a 2.0$\times$--2.4$\times$ advantage even under high fragmentation.
+Performance correlates with clustering granularity. At low $n_{list}=1024$, localized memory writes allow SIVF to peak at $\approx$6.1M vec/s (2.88$\times$ speedup). At high $n_{list}=4096$, scattered write patterns reduce throughput for both systems; however, SIVF's linked-slab architecture proves more resilient than the baseline, maintaining a 2.0$\times$--2.4$\times$ advantage even under high fragmentation.
 
 \paragraph{Overall Speedup (Fig.~\ref{fig:add_perf}c)}
 SIVF outperforms the baseline across all configurations, with speedups typically ranging from 2.4$\times$ to 2.9$\times$. Even under maximum contention (4M vectors, $n_{list}=1024$), SIVF retains a 1.79$\times$ advantage, confirming the efficiency of the non-blocking, slab-based pipeline for streaming scenarios.
@@ -573,10 +573,10 @@ We evaluate query performance against the Vanilla Faiss GPU baseline. While SIVF
 \end{figure*}
 
 \paragraph{Scalability (Fig.~\ref{fig:search_perf}a)}
-SIVF throughput scales predictably from $\approx$383k to 118k QPS as database size grows (100k--500k, $n_{list}=4096$). The trend closely mirrors the baseline, validating the stability of our slab traversal logic under increasing load.
+SIVF throughput scales predictably from $\approx$383k to 118k QPS as database size grows (100K--500K, $n_{list}=4096$). The trend closely mirrors the baseline, validating the stability of our slab traversal logic under increasing load.
 
 \paragraph{Granularity Impact (Fig.~\ref{fig:search_perf}b)}
-Performance improves with finer clustering. Increasing $n_{list}$ from 1024 to 4096 boosts SIVF throughput from 70k to 118k QPS (500k vectors). This reduction in per-probe distance computations ensures robust throughput across settings.
+Performance improves with finer clustering. Increasing $n_{list}$ from 1024 to 4096 boosts SIVF throughput from 70K to 118K QPS (500K vectors). This reduction in per-probe distance computations ensures robust throughput across settings.
 
 \paragraph{Query Efficiency (Fig.~\ref{fig:search_perf}c)}
 The efficiency ratio, which is defined as ($QPS_{SIVF} / QPS_{Vanilla}$), highlights the effectiveness of warp-level optimizations. In sparse scenarios ($n_{list}=16384$, 100k vectors), SIVF achieves 0.91$\times$ efficiency, nearly matching contiguous arrays. As lists lengthen (500k vectors), the ratio stabilizes between 0.40$\times$ and 0.52$\times$, reflecting the necessary physical trade-off of pointer chasing for dynamic memory support.
@@ -640,7 +640,7 @@ We benchmark SIVF using three standard datasets representing diverse modalities:
 As shown in Figure~\ref{fig:eval_ingestion}, SIVF dominates ingestion scalability. On SIFT1M, it achieves 3.78M vec/s ($105\times$ speedup). On T2I-1B, typical of RAG workloads, SIVF sustains 2.91M vec/s ($84\times$ speedup vs. 34.6K vec/s). Even on GIST1M, SIVF maintains 850K vec/s ($36\times$ speedup), confirming that our pre-allocated slab architecture effectively saturates GPU bandwidth by eliminating dynamic resizing overhead.
 
 \paragraph{Low-Latency Deletion}
-Figure~\ref{fig:eval_deletion} highlights the critical performance divergence. Baseline latency scales poorly due to CPU-GPU roundtrips, spiking to 11.8s for GIST1M. In contrast, SIVF's in-place bitmap updates decouple latency from dimension, maintaining sub-millisecond performance ($\approx$0.9 ms) across all datasets. On T2I-1B, this yields a $2,770\times$ improvement (2.4s $\to$ 0.87 ms), validating SIVF's feasibility for real-time streams.
+Figure~\ref{fig:eval_deletion} highlights the critical performance divergence. Baseline latency scales poorly due to CPU-GPU roundtrips, spiking to 11.8s for GIST1M. In contrast, SIVF's in-place bitmap updates decouple latency from dimension, maintaining sub-millisecond performance ($\approx$0.9 ms) across all datasets. On T2I-1B, this yields a $2,770\times$ improvement (2.4 s $\to$ 0.87 ms), validating SIVF's feasibility for real-time streams.
 
 \paragraph{Search Performance and Trade-offs}
 Figure~\ref{fig:eval_search} compares query throughput (QPS). SIVF outperforms the baseline on SIFT1M ($1.5\times$) and retains 95.5\% of performance on T2I-1B (17.8K vs 18.6K QPS), proving negligible overhead for moderate dimensions. On high-dimensional GIST1M, SIVF achieves 37\% of baseline QPS. This trade-off results from reduced memory coalescing efficiency when traversing non-contiguous slabs with large vectors—a necessary compromise to enable instant, lock-free mutability.
