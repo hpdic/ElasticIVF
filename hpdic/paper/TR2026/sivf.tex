@@ -2,6 +2,8 @@
 
 \setlength{\marginparwidth}{2cm}
 
+\usepackage{multirow}   
+
 \usepackage{placeins}
 \usepackage{lipsum}
 \usepackage{amsmath}
@@ -57,7 +59,7 @@
 
 \begin{document}
 
-\title{GPU-Resident Inverted File Index for Streaming Vector Databases}
+\title{SIVF: GPU-Resident IVF Index for Streaming Vector Search}
 
 \author{Dongfang Zhao}
 \email{dzhao@cs.washington.edu}
@@ -167,6 +169,7 @@ Recent advancements in Approximate Nearest Neighbor (ANN) search have primarily 
 \subsection{Optimization of Graph-Based Indices}
 
 Graph-based indices remain the state-of-the-art for high-recall retrieval. To address performance bottlenecks in production, general frameworks like VSAG~\cite{10.14778/3750601.3750624} optimize memory access patterns and parameter tuning, while SOAR~\cite{DBLP:conf/nips/SunSDGK23} improves indexing structures. 
+Of note, CAGRA~\cite{10597683} establishes a new state-of-the-art for static graph construction and search throughput on GPUs; however, it is fundamentally designed for write-once-read-many workloads and lacks native support for the efficient, fine-grained in-place deletions required by streaming applications.
 Navigational efficiency is a key optimization target; SHG~\cite{10.14778/3748191.3748212} introduces a hierarchical graph with shortcuts to bypass redundant levels, and probabilistic routing methods~\cite{lu2024probabilistic} have been proposed to enhance traversal. 
 Several works focus on distance metric optimizations: ADA-NNS~\cite{10.1145/3696410.3714870} utilizes angular distance guidance to filter irrelevant neighbors, DADE~\cite{10.14778/3712221.3712244} accelerates comparisons via data-aware distance estimation in lower dimensions, and HSCG~\cite{10.1145/3769786} adapts the Monotonic Relative Neighbor Graph for cosine similarity using hemi-sphere centroids.
 
@@ -391,7 +394,7 @@ Algorithm~\ref{alg:sivf_ingestion} summarizes the per-thread ingestion protocol 
 \end{algorithmic}
 \end{algorithm}
 
-\subsection{High-Performance Search Kernel}
+\subsection{Coalesced Search on Non-Contiguous Slabs}
 \label{sec:methods_search_kernel}
 
 SIVF replaces contiguous inverted lists with linked slabs, which introduces pointer chasing during traversal. To retain high throughput on GPUs, we design a warp-cooperative search kernel that maps the slab capacity to the warp width. The kernel is optimized for the execution model in which one warp collaboratively processes one query and evaluates one slab per traversal step.
@@ -767,7 +770,32 @@ Furthermore, we verified the efficacy of our memory reclamation strategy. In a s
 \subsection{SIVF vs. Non-IVF Streaming}
 \label{sec:eval_non_ivf}
 
-\don{TODO: Compare with more baseline indexes, such as IndexFlatL2 and HNSW.}
+To position SIVF within the broader indexing landscape, we benchmarked it against four representative non-IVF architectures: (1) Faiss GPU Flat (brute-force baseline, i.e., no index), (2) HNSW~\cite{malkov2018efficient} (dynamic graphs), (3) LSH~\cite{10.1145/997817.997857} (legacy hash-based approaches), and (4) NSG~\cite{10.14778/3303753.3303754} (static graphs).
+
+\begin{table}[t]
+\caption{Comparison of ingestion throughput (K vec/s) and deletion latency (ms) across different datasets.}
+\label{tab:landscape_full}
+\centering
+\resizebox{\linewidth}{!}{
+\begin{tabular}{l|rr|rr|rr}
+\toprule
+\multirow{2}{*}{\textbf{Method}} & \multicolumn{2}{c|}{\textbf{SIFT1M}} & \multicolumn{2}{c|}{\textbf{T2I-1B}} & \multicolumn{2}{c}{\textbf{GIST1M}} \\
+ & Add & Del & Add & Del & Add & Del \\
+\midrule
+Flat (no index) & 9,169 & 835.8 & 6,020 & 1,160 & 1,230 & 1,143 \\
+HNSW & 25.5 & N/A & 25.7 & N/A & 0.6 & N/A \\
+NSG & 3.7 & N/A & 3.2 & N/A & 0.7 & N/A \\
+LSH & 787.1 & 14.6 & 427.6 & 16.3 & 36.6 & 9.2 \\
+\textbf{SIVF} & \textbf{1,714} & \textbf{0.9} & \textbf{1,853} & \textbf{1.6} & \textbf{427.7} & \textbf{1.4} \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+Table~\ref{tab:landscape_full} reports the results of both vector ingestion and deletion in a streaming context on three datasets.
+CPU-based graph indices (HNSW, NSG) suffer catastrophic performance degradation on high-dimensional data, dropping to merely $\sim$600 vec/s on GIST1M due to cache thrashing, and fail to support native deletion ("N/A"). 
+While GPU Flat achieve the highest ingestion throughput because they perform brute-force search without indexing overhead, they incur prohibitive deletion latencies ($>$1s) due to CPU-GPU roundtrips.
+SIVF emerges as the only architecture enabling holistic stream processing: it sustains GPU-class ingestion rates (e.g., 427K vec/s on GIST1M, $>$700$\times$ faster than CPU graphs) while providing sub-millisecond native deletion, effectively bridging the gap between static high-throughput search and dynamic mutability.
 
 \section{Conclusion}
 \label{sec:conclusion}
@@ -790,8 +818,8 @@ Our comprehensive evaluation against the industry-standard Faiss library demonst
 
 % Finally, our consistency model prioritizes throughput over strict linearizability. While sufficient for the probabilistic nature of ANN search, future work will investigate lightweight snapshot isolation mechanisms to support transactional semantics without compromising the lock-free ingestion speed.
 
-\section*{Acknowledgment}
-Results presented in this paper were obtained using the Chameleon testbed supported by the National Science Foundation.
+% \section*{Acknowledgment}
+% Results presented in this paper were obtained using the Chameleon testbed supported by the National Science Foundation.
 
 \bibliography{ref,ann,gpu}
 \bibliographystyle{acm}
