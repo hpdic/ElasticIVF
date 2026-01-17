@@ -644,7 +644,7 @@ It is important to note that while these are standard benchmarks for in-memory i
         \caption{Ingestion throughput. 
         % SIVF achieves up to $105\times$ speedup by eliminating memory reallocation.
         }
-        \Description{Bar graph comparing ingestion throughput between SIVF and Vanilla Faiss on SIFT1M, T2I-1M, and GIST1M datasets.}
+        \Description{Bar graph comparing ingestion throughput between SIVF and Vanilla Faiss on SIFT1M, T2I-1B, and GIST1M datasets.}
         \label{fig:eval_ingestion}
     \end{minipage}
     \hfill 
@@ -653,9 +653,9 @@ It is important to note that while these are standard benchmarks for in-memory i
         \centering
         \includegraphics[width=\linewidth]{figures/eval_deletion.pdf}
         \caption{Deletion latency. 
-        % SIVF reduces latency by over $2,700\times$ on T2I-1M via in-place bitmap updates.
+        % SIVF reduces latency by over $2,700\times$ on T2I-1B via in-place bitmap updates.
         }
-        \Description{Bar graph comparing deletion latency between SIVF and Vanilla Faiss on SIFT1M, T2I-1M, and GIST1M datasets.}
+        \Description{Bar graph comparing deletion latency between SIVF and Vanilla Faiss on SIFT1M, T2I-1B, and GIST1M datasets.}
         \label{fig:eval_deletion}
     \end{minipage}
     \hfill 
@@ -664,9 +664,9 @@ It is important to note that while these are standard benchmarks for in-memory i
         \centering
         \includegraphics[width=\linewidth]{figures/eval_search.pdf}
         \caption{Search performance (QPS). 
-        % T2I-1M retains 95.5% of baseline search speed, confirming high efficiency for RAG workloads.
+        % T2I-1B retains 95.5% of baseline search speed, confirming high efficiency for RAG workloads.
         }
-        \Description{Bar graph comparing search performance (QPS) between SIVF and Vanilla Faiss on SIFT1M, T2I-1M, and GIST1M datasets.}
+        \Description{Bar graph comparing search performance (QPS) between SIVF and Vanilla Faiss on SIFT1M, T2I-1B, and GIST1M datasets.}
         \label{fig:eval_search}
     \end{minipage}
 \end{figure*}
@@ -674,18 +674,18 @@ It is important to note that while these are standard benchmarks for in-memory i
 \paragraph{High-Throughput Ingestion}
 
 As illustrated in Figure~\ref{fig:eval_ingestion}, SIVF demonstrates superior ingestion scalability across all dimensions. On the SIFT1M dataset, SIVF achieves an ingestion rate of approximately 3.78M vec/s, representing a $105\times$ speedup over the baseline.
-Notably, on the T2I-1G dataset ($d=200$), which mirrors real-world RAG applications, SIVF sustains a throughput of 2.91M vec/s, delivering an $84\times$ speedup over the baseline (34.6K vec/s).
+Notably, on the T2I-1B dataset ($d=200$), which mirrors real-world RAG applications, SIVF sustains a throughput of 2.91M vec/s, delivering an $84\times$ speedup over the baseline (34.6K vec/s).
 This advantage persists even with the high-dimensional GIST1M dataset, where SIVF sustains over 850K vec/s ($36\times$ speedup). These results confirm that our pre-allocated slab architecture effectively mitigates the overhead of dynamic resizing, allowing the system to near-saturate GPU memory bandwidth even under heavy write loads.
 
 \paragraph{Low-Latency Deletion}
 
-The most significant performance divergence is observed in deletion latency, shown in Figure~\ref{fig:eval_deletion}. Since the baseline requires a full CPU-GPU roundtrip to reorganize the index, its latency scales poorly with dimension. Consequently, deleting a batch of 10K vectors takes 1.6s for SIFT1M and spikes to 2.4s for T2I-1G and 11.8s for GIST1M.
-In contrast, SIVF performs deletion in-place via a GPU-native validity bitmap, decoupling latency from index size and dimensionality. SIVF maintains sub-millisecond latency ($\approx 0.86$--$0.89$ ms) across all datasets. Notably on T2I-1G, this represents a $2,770\times$ improvement (from 2.4s to 0.87 ms). This result validates SIVF as a feasible solution for real-time streaming scenarios where data freshness is critical.
+The most significant performance divergence is observed in deletion latency, shown in Figure~\ref{fig:eval_deletion}. Since the baseline requires a full CPU-GPU roundtrip to reorganize the index, its latency scales poorly with dimension. Consequently, deleting a batch of 10K vectors takes 1.6s for SIFT1M and spikes to 2.4s for T2I-1B and 11.8s for GIST1M.
+In contrast, SIVF performs deletion in-place via a GPU-native validity bitmap, decoupling latency from index size and dimensionality. SIVF maintains sub-millisecond latency ($\approx 0.86$--$0.89$ ms) across all datasets. Notably on T2I-1B, this represents a $2,770\times$ improvement (from 2.4s to 0.87 ms). This result validates SIVF as a feasible solution for real-time streaming scenarios where data freshness is critical.
 
 \paragraph{Search Performance and Trade-offs}
     
 Figure~\ref{fig:eval_search} presents query performance (in QPS) at comparable recall levels. On SIFT1M, SIVF achieves a $1.5\times$ higher throughput than the baseline.
-On T2I-1G, SIVF demonstrates an optimal balance: it achieves 17.8K QPS compared to the baseline's 18.6K QPS, retaining 95.5\% of the search performance. This confirms that for moderate-dimensional embeddings, the overhead of the linked-slab architecture is negligible.
+On T2I-1B, SIVF demonstrates an optimal balance: it achieves 17.8K QPS compared to the baseline's 18.6K QPS, retaining 95.5\% of the search performance. This confirms that for moderate-dimensional embeddings, the overhead of the linked-slab architecture is negligible.
 However, on the high-dimensional GIST1M dataset ($d=960$), we observe a performance trade-off where SIVF achieves approximately 37\% of the baseline's query throughput. This reduction is attributed to reduced memory coalescing efficiency when fetching large vectors from non-contiguous slabs. Therefore, how to reduce the dimensionality of high-dimensional embedding vectors without sacrificing accuracy, in our humble opinion, would be the most promising future research direction.
 
 \subsection{Parameter Sensitivity}
