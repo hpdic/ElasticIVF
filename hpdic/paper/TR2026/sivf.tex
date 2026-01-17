@@ -11,13 +11,12 @@
 \usepackage{algorithm}
 \usepackage{algpseudocode}
 
-\usepackage{graphicx}      % 用于插入图片
-% \usepackage{subcaption}    % 关键！用于 \begin{subfigure}
-\usepackage{booktabs}      % 关键！用于表格里的 \toprule, \midrule
-% \usepackage{amsmath}       % 用于数学公式
-\usepackage{xcolor}        % 颜色支持
+\usepackage{graphicx}      
+% \usepackage{subcaption}  
+\usepackage{booktabs}     
+% \usepackage{amsmath}    
+\usepackage{xcolor}       
 
-% if you use cleveref..
 \usepackage[capitalize,noabbrev]{cleveref}
 
 \newcommand{\don}[1]{\textcolor{blue}{[Dongfang: #1]}}
@@ -108,7 +107,6 @@ Real-world vector search applications, ranging from real-time recommendation eng
     \centering
     \includegraphics[width=0.7\linewidth]{figures/motivation_bar_chart_comparison.pdf}
     \caption{The asymmetry between insertion and deletion latency on GPU indices. 
-    % While insertion benefits from GPU parallelism, standard deletion triggers a costly CPU-GPU roundtrip, resulting in multi-second latencies for batch evictions (e.g., $\sim$1.6s for 10k vectors). This creates a prohibitive bottleneck for streaming applications.
     }
     \Description{A bar chart comparing insertion and deletion latency on GPU indices. The insertion bar is significantly shorter than the deletion bar, illustrating the performance asymmetry.}
     \label{fig:motivation}
@@ -536,7 +534,6 @@ Finally, the kernel writes the invalid sentinel back to $\mathcal{T}[u]$ to prev
 \end{algorithmic}
 \end{algorithm}
 
-
 \section{Evaluation}
 \label{sec:evaluation}
 
@@ -549,7 +546,6 @@ Implementing SIVF required substantial modifications to the Faiss GPU backend an
 
 We specifically verify against Faiss GPU IVF to isolate the performance gains attributable to our architectural innovations (memory management), excluding confounding factors from differing algorithmic paradigms (e.g., graph-based indices). All experiments were conducted on a bare-metal node from the Chameleon Cloud testbed~\cite{keahey2020lessons} (CHI@UC site). The platform is equipped with dual-socket Intel Xeon Gold 6126 CPUs (Skylake microarchitecture), providing a total of 24 physical cores (48 threads with Hyper-Threading) clocked at 2.60 GHz. The host memory consists of 192 GiB of RAM. 
 For acceleration, the node features an NVIDIA Quadro RTX 6000 GPU with 24 GB of GDDR6 memory. The system runs on a Ubuntu 24.04 environment with the CUDA toolkit installed. 
-% Network connectivity is provided by an Intel X710 10-Gigabit Ethernet (10GbE) controller.
 
 To ensure statistical reliability, each reported data point represents the average of at least three independent executions. Error bars are omitted in figures where the standard deviation is negligible to maintain visual clarity. 
 Unless explicitly stated (as in Section~\ref{sec:eval_real_world}), our experiments utilize synthetic datasets consisting of random vectors generated from a uniform distribution. We employ this configuration as a neutral baseline to isolate system-level overheads (e.g., memory allocation, PCIe transfer) from data distribution effects. Note that because uniform data lacks the clustering structure inherent in real-world applications, the performance advantages of SIVF in microbenchmarks are primarily architectural and appear more conservative than those observed on real-world datasets.
@@ -656,7 +652,7 @@ It is important to note that while these are standard benchmarks for in-memory i
         \Description{Bar graph comparing ingestion throughput between SIVF and Vanilla Faiss on SIFT1M, T2I-1M, and GIST1M datasets.}
         \label{fig:eval_ingestion}
     \end{minipage}
-    \hfill % 弹性间距
+    \hfill 
     % --- Figure 2: Deletion ---
     \begin{minipage}{0.32\textwidth}
         \centering
@@ -667,7 +663,7 @@ It is important to note that while these are standard benchmarks for in-memory i
         \Description{Bar graph comparing deletion latency between SIVF and Vanilla Faiss on SIFT1M, T2I-1M, and GIST1M datasets.}
         \label{fig:eval_deletion}
     \end{minipage}
-    \hfill % 弹性间距
+    \hfill 
     % --- Figure 3: Search ---
     \begin{minipage}{0.32\textwidth}
         \centering
