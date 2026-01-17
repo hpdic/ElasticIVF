@@ -52,6 +52,13 @@ make test_sivf_gist_add test_sivf_gist_search test_sivf_gist_delete -j
 ./test_sivf_gist_search
 ./test_sivf_gist_delete
 
+# Dataset T2I:
+cd ~/ElasticIVF/build
+make test_sivf_t2i_add test_sivf_t2i_search test_sivf_t2i_delete -j
+./test_sivf_t2i_add
+./test_sivf_t2i_search
+./test_sivf_t2i_delete
+
 # Sliding window:
 cd ~/ElasticIVF/build
 make -j test_sivf_sliding

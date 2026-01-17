@@ -636,11 +636,13 @@ Figure~\ref{fig:deletion_perf} illustrates the performance comparison between th
 \subsection{Real-world Datasets}
 \label{sec:eval_real_world}
 
-\don{TODO: Add more data sets, e.g., Deep1B, T2I}
+To evaluate SIVF under realistic conditions, we utilized three standard large-scale real-world datasets representing diverse vector modalities: SIFT1M~\cite{jegou2011product} (128 dimensions), T2I-1B~\cite{simhadri2025results} (200 dimensions), and GIST1M~\cite{jegou2011product} (960 dimensions). 
+SIFT1M is a classic computer vision dataset using Euclidean distance. 
+T2I-1B consists of text-to-image embeddings typical of modern multimodal and Retrieval-Augmented Generation (RAG) workloads.
+GIST1M is a high-dimensional dataset representing global image features, which challenges index structures with its sparsity and high memory bandwidth requirements. 
+These datasets allow us to assess system performance across a spectrum of dimensionalities, directly testing the scalability of our slab-based memory management against the contiguous memory model of the baseline (Faiss).
 
-To evaluate SIVF under realistic conditions, we utilized two standard large-scale benchmarks: SIFT1M~\cite{jegou2011product} (128 dimensions) and GIST1M~\cite{jegou2011product} (960 dimensions). SIFT1M is a standard computer vision dataset using Euclidean distance; GIST1M is a high-dimensional dataset representing global image features, which is particularly challenging for index structures due to the sparsity of the space and the high intrinsic dimensionality. These datasets allow us to assess system performance across varying dimensionalities, directly testing the scalability of our slab-based memory management against the contiguous memory model of the baseline (Faiss).
-
-It is important to note that while SIFT1M and GIST1M are standard benchmarks for in-memory indices, their size (1 million vectors) is bounded by the available VRAM of a single GPU. However, for streaming applications, the critical metric is not the total historical volume but the \textit{active window size} that fits in high-speed memory. Our \textit{Sliding Window} benchmark (Section~\ref{sec:eval_streaming}) explicitly stresses the system by processing a continuous stream of updates far exceeding the static capacity, thereby verifying SIVF's architectural stability under high-churn workloads typical of billion-scale production streams.
+It is important to note that while these are standard benchmarks for in-memory indices, their size (1 million vectors) is bounded by the available VRAM of a single GPU. However, for streaming applications, the critical metric is not the total historical volume but the \textit{active window size} that fits in high-speed memory. Our \textit{Sliding Window} benchmark (Section~\ref{sec:eval_streaming}) will explicitly stress the system by processing a continuous stream of updates far exceeding the static capacity, thereby verifying SIVF's architectural stability under high-churn workloads typical of billion-scale production streams.
 
 \begin{figure*}[t]
     \centering
@@ -651,7 +653,7 @@ It is important to note that while SIFT1M and GIST1M are standard benchmarks for
         \caption{Ingestion throughput. 
         % SIVF achieves up to $105\times$ speedup by eliminating memory reallocation.
         }
-        \Description{Bar graph comparing ingestion throughput between SIVF and Vanilla Faiss on SIFT1M and GIST1M datasets, highlighting the significant speedup achieved by SIVF.}
+        \Description{Bar graph comparing ingestion throughput between SIVF and Vanilla Faiss on SIFT1M, T2I-1M, and GIST1M datasets.}
         \label{fig:eval_ingestion}
     \end{minipage}
     \hfill % 弹性间距
@@ -660,9 +662,9 @@ It is important to note that while SIFT1M and GIST1M are standard benchmarks for
         \centering
         \includegraphics[width=\linewidth]{figures/eval_deletion.pdf}
         \caption{Deletion latency. 
-        % SIVF reduces latency by over $13,000\times$ on GIST1M via in-place bitmap updates.
+        % SIVF reduces latency by over $2,700\times$ on T2I-1M via in-place bitmap updates.
         }
-        \Description{Bar graph comparing deletion latency between SIVF and Vanilla Faiss on SIFT1M and GIST1M datasets, highlighting the significant speedup achieved by SIVF.}
+        \Description{Bar graph comparing deletion latency between SIVF and Vanilla Faiss on SIFT1M, T2I-1M, and GIST1M datasets.}
         \label{fig:eval_deletion}
     \end{minipage}
     \hfill % 弹性间距
@@ -671,29 +673,34 @@ It is important to note that while SIFT1M and GIST1M are standard benchmarks for
         \centering
         \includegraphics[width=\linewidth]{figures/eval_search.pdf}
         \caption{Search performance (QPS). 
-        % While faster on SIFT1M, SIVF shows a trade-off on GIST1M due to non-contiguous memory access.
+        % T2I-1M retains 95.5% of baseline search speed, confirming high efficiency for RAG workloads.
         }
-        \Description{Bar graph comparing search performance (QPS) between SIVF and Vanilla Faiss on SIFT1M and GIST1M datasets, highlighting the trade-offs in performance.}
+        \Description{Bar graph comparing search performance (QPS) between SIVF and Vanilla Faiss on SIFT1M, T2I-1M, and GIST1M datasets.}
         \label{fig:eval_search}
     \end{minipage}
 \end{figure*}
 
-\subsubsection{High-Throughput Ingestion}
+\paragraph{High-Throughput Ingestion}
 
-As illustrated in Figure~\ref{fig:eval_ingestion}, SIVF demonstrates superior ingestion scalability. On the SIFT1M dataset, SIVF achieves an ingestion rate of approximately 3.78M vec/s, representing a $105\times$ speedup over the baseline (35.9K vec/s).
-This advantage persists even with the high-dimensional GIST1M dataset. While the baseline performance drops to 23K vec/s due to the increased cost of memory reallocation and fragmentation management for large vectors, SIVF sustains a throughput of over 850K vec/s. This $36\times$ speedup on GIST1M confirms that our pre-allocated slab architecture effectively mitigates the overhead of dynamic resizing, allowing the system to near-saturate the GPU memory bandwidth even under heavy write loads.
+As illustrated in Figure~\ref{fig:eval_ingestion}, SIVF demonstrates superior ingestion scalability across all dimensions. On the SIFT1M dataset, SIVF achieves an ingestion rate of approximately 3.78M vec/s, representing a $105\times$ speedup over the baseline.
+Notably, on the T2I-1G dataset ($d=200$), which mirrors real-world RAG applications, SIVF sustains a throughput of 2.91M vec/s, delivering an $84\times$ speedup over the baseline (34.6K vec/s).
+This advantage persists even with the high-dimensional GIST1M dataset, where SIVF sustains over 850K vec/s ($36\times$ speedup). These results confirm that our pre-allocated slab architecture effectively mitigates the overhead of dynamic resizing, allowing the system to near-saturate GPU memory bandwidth even under heavy write loads.
 
-\subsubsection{Low-Latency Deletion}
+\paragraph{Low-Latency Deletion}
 
-The most significant performance divergence is observed in deletion latency, shown in Figure~\ref{fig:eval_deletion}. Since the baseline requires a full CPU-GPU roundtrip to reorganize the index, its latency is bound by PCIe bandwidth and index size. Consequently, deleting a batch of 10K vectors takes 1.6 seconds for SIFT1M and a prohibitive 11.8 seconds for GIST1M.
+The most significant performance divergence is observed in deletion latency, shown in Figure~\ref{fig:eval_deletion}. Since the baseline requires a full CPU-GPU roundtrip to reorganize the index, its latency scales poorly with dimension. Consequently, deleting a batch of 10K vectors takes 1.6s for SIFT1M and spikes to 2.4s for T2I-1G and 11.8s for GIST1M.
+In contrast, SIVF performs deletion in-place via a GPU-native validity bitmap, decoupling latency from index size and dimensionality. SIVF maintains sub-millisecond latency ($\approx 0.86$--$0.89$ ms) across all datasets. Notably on T2I-1G, this represents a $2,770\times$ improvement (from 2.4s to 0.87 ms). This result validates SIVF as a feasible solution for real-time streaming scenarios where data freshness is critical.
 
-In contrast, SIVF performs deletion in-place via a GPU-native validity bitmap. This decouples deletion latency from both the index size and vector dimensionality. SIVF maintains a sub-millisecond latency ($\approx 0.89$ ms) across both datasets, achieving a $1,900\times$ improvement on SIFT1M and a staggering $13,300\times$ improvement on GIST1M. This result validates SIVF as a viable solution for real-time streaming scenarios where data freshness is critical.
-
-\subsubsection{Search Performance and Trade-offs}
+\paragraph{Search Performance and Trade-offs}
     
-Figure~\ref{fig:eval_search} presents the query performance (QPS) at comparable recall levels (Recall@10 $\approx 90\%$). On SIFT1M, SIVF achieves a $1.5\times$ higher throughput than the baseline (40.9K vs. 26.7K QPS), benefiting from efficient warp-level parallelism and balanced cluster assignment.
+Figure~\ref{fig:eval_search} presents query performance (in QPS) at comparable recall levels. On SIFT1M, SIVF achieves a $1.5\times$ higher throughput than the baseline.
+On T2I-1G, SIVF demonstrates an optimal balance: it achieves 17.8K QPS compared to the baseline's 18.6K QPS, retaining 95.5\% of the search performance. This confirms that for moderate-dimensional embeddings, the overhead of the linked-slab architecture is negligible.
+However, on the high-dimensional GIST1M dataset ($d=960$), we observe a performance trade-off where SIVF achieves approximately 37\% of the baseline's query throughput. This reduction is attributed to reduced memory coalescing efficiency when fetching large vectors from non-contiguous slabs. Therefore, how to reduce the dimensionality of high-dimensional embedding vectors without sacrificing accuracy, in our humble opinion, would be the most promising future research direction.
 
-However, on the high-dimensional GIST1M dataset, we observe a performance trade-off. SIVF achieves approximately 37\% of the baseline's query throughput (1.3K vs. 3.6K QPS). This reduction is attributed to the non-contiguous memory access pattern inherent in the linked-slab design, which reduces memory coalescing efficiency when fetching large 960-dimensional vectors. We argue that this is an acceptable compromise for streaming systems, where the orders-of-magnitude improvements in mutability (ingestion and deletion) outweigh the moderate cost in raw search throughput.
+\subsection{Parameter Sensitivity}
+\label{sec:eval_param_sensitivity}
+
+We evaluate the robustness of SIVF by sweeping three key system parameters that directly affect capacity headroom and update efficiency: (i) the vector capacity factor ($maxvec\_factor$), (ii) the slab pool redundancy ($slab\_factor$), and (iii) the deletion batch size. Intuitively, $maxvec\_factor$ controls the logical headroom of the index (i.e., how aggressively the system provisions capacity relative to the target active set), while $slab\_factor$ determines the amount of pre-allocated slab memory available for absorbing bursty insertions and transient fragmentation. The deletion batch size reflects an application-level knob that trades off amortization efficiency versus the freshness of deletions. Figure~\ref{fig:sivf_sensitivity_qps} and Figure~\ref{fig:sivf_sensitivity_lat} summarize the impact of these parameters on insertion throughput and deletion latency, respectively.
 
 \begin{figure*}[t]
     \centering
@@ -711,11 +718,6 @@ However, on the high-dimensional GIST1M dataset, we observe a performance trade-
         \label{fig:sivf_sensitivity_lat}
     \end{minipage}
 \end{figure*}
-
-\subsection{Parameter Sensitivity}
-\label{sec:eval_param_sensitivity}
-
-We evaluate the robustness of SIVF by sweeping three key system parameters that directly affect capacity headroom and update efficiency: (i) the vector capacity factor ($maxvec\_factor$), (ii) the slab pool redundancy ($slab\_factor$), and (iii) the deletion batch size. Intuitively, $maxvec\_factor$ controls the logical headroom of the index (i.e., how aggressively the system provisions capacity relative to the target active set), while $slab\_factor$ determines the amount of pre-allocated slab memory available for absorbing bursty insertions and transient fragmentation. The deletion batch size reflects an application-level knob that trades off amortization efficiency versus the freshness of deletions. Figure~\ref{fig:sivf_sensitivity_qps} and Figure~\ref{fig:sivf_sensitivity_lat} summarize the impact of these parameters on insertion throughput and deletion latency, respectively.
 
 \paragraph{Impact of Slab Management.}
 As shown in Figure~\ref{fig:sivf_sensitivity_qps}, SIVF maintains a consistent insertion throughput of approximately 2.7M to 3.2M vec/s across a broad range of configurations. Increasing $slab\_factor$ from 1.0 to 1.3 generally improves performance under high-velocity streams. We attribute this to two effects: (1) a larger slab pool reduces the likelihood of exhausting readily available slabs during bursts, avoiding disruptive on-the-fly allocations or refill paths; and (2) it mitigates contention in slab acquisition by increasing the pool of free slabs, thereby reducing retries in atomic operations on shared allocator metadata.
@@ -766,7 +768,7 @@ Figure~\ref{fig:eval_memory} illustrates the memory growth trends for both SIFT1
 
 Furthermore, we verified the efficacy of our memory reclamation strategy. In a stress test involving the deletion of 50\% of the dataset followed by immediate re-insertion, SIVF maintained a constant memory footprint without triggering OS-level deallocation. The deletion operation completed in sub-millisecond time per batch (e.g., 4.04~ms for 100K GIST vectors), confirming that memory slots are logically reclaimed via bitmap toggling and immediately available for reuse. This ``zero-cost'' reclamation ensures that SIVF can sustain long-running streaming workloads without suffering from memory leaks or fragmentation-induced bloat.
 
-\subsection{Non-IVF Indexes}
+\subsection{SIVF vs. Non-IVF Indexes}
 \label{sec:eval_non_ivf}
 
 \don{TODO: Compare with more baseline indexes, such as IndexFlatL2 and HNSW.}
@@ -797,82 +799,6 @@ Results presented in this paper were obtained using the Chameleon testbed suppor
 
 \bibliography{ref,ann,gpu}
 \bibliographystyle{acm}
-
-\newpage
-\appendix
-
-\section{Appendix}
-
-\subsection{Codebase Implementation and Modifications}
-\label{app:codebase}
-
-Our implementation is built upon the Faiss library. To integrate the SIVF architecture, we introduced significant modifications to the GPU module and developed a comprehensive benchmarking suite. Table~\ref{tab:file_structure} summarizes the key source files added or modified in the repository based on our development history.
-
-The SIVF implementation entails a non-trivial engineering effort. Based on Git history statistics, the project introduces approximately 9,000 lines of code changes (insertions and deletions) spanning over 45 source files. Specifically, more than 3,000 lines are devoted to the core GPU index logic, including new CUDA kernels for lock-free insertion, bitmap-based deletion, and collaborative search, alongside a custom slab-based memory allocator (\texttt{SlabManager}). A substantial portion of the codebase (over 5,000 lines) is dedicated to the experimental ecosystem. This includes granular micro-benchmarks for specific operations (addition, deletion, search), complex end-to-end scenarios (sliding window streaming, memory fragmentation stress tests), and hyperparameter sensitivity analysis. The remaining code comprises build configurations (CMake), dataset loaders for SIFT1M and GIST1M, and Python scripts for automated result visualization, ensuring reproducibility and ease of integration.
-
-\begin{table*}[t]
-    \centering
-    \caption{Summary of Source Files and Modifications in SIVF Project}
-    \label{tab:file_structure}
-    \begin{tabular}{l|p{10.5cm}}
-    \hline
-    \textit{File Path} & \textit{Description} \\
-    \hline
-    \multicolumn{2}{c}{\textit{Core SIVF Architecture \& Memory Management}} \\
-    \hline
-    \texttt{faiss/gpu/GpuIndexSIVF.h} & Header definition for the SIVF index class, inheriting from \texttt{GpuIndex}. \\
-    \texttt{faiss/gpu/GpuIndexSIVF.cu} & Manages host-device synchronization and overrides standard operations. \\
-    \texttt{faiss/gpu/impl/SlabManager.cuh} & Defines the device-side slab structures, arena pointers, and metadata layout. \\
-    \texttt{faiss/gpu/impl/SlabManager.cu} & Slab-based Dynamic Memory Allocator (SDMA) and memory pool management. \\
-    \texttt{faiss/gpu/impl/SIVFStructs.cuh} & Shared data structures and metadata definitions used across host and device code. \\
-    \hline
-    \multicolumn{2}{c}{\textit{CUDA Kernels (Ingestion, Search, Deletion)}} \\
-    \hline
-    \texttt{faiss/gpu/impl/SIVFAppend.cuh} & Device function templates for the ingestion logic. \\
-    \texttt{faiss/gpu/impl/SIVFAppend.cu} & Lock-free insertion kernel, atomic slot reservation, and slab expansion logic. \\
-    \texttt{faiss/gpu/impl/SIVFSearch.cuh} & Warp-Level Collaborative Search (WLCS) and shared memory reduction. \\
-    \texttt{faiss/gpu/impl/SIVFSearch.cu} & Search kernel, including distance computation and heap aggregation. \\
-    \texttt{faiss/gpu/SIVFDeletion.cu} & Bitmap-based lazy eviction and deletion kernels. \\
-    \hline
-    \multicolumn{2}{c}{\textit{Experimental Benchmarks (C++)}} \\
-    \hline
-    \texttt{hpdic/experiment/test\_sivf\_sift\_add.cpp} & Throughput benchmark for SIFT1M vector ingestion. \\
-    \texttt{hpdic/experiment/test\_sivf\_gist\_add.cpp} & Throughput benchmark for GIST1M vector ingestion. \\
-    \texttt{hpdic/experiment/test\_sivf\_sift\_search.cpp} & Latency and recall benchmark for SIFT1M queries. \\
-    \texttt{hpdic/experiment/test\_sivf\_gist\_search.cpp} & Latency and recall benchmark for GIST1M queries. \\
-    \texttt{hpdic/experiment/test\_sivf\_sift\_delete.cpp} & Deletion throughput and stability test for SIFT1M. \\
-    \texttt{hpdic/experiment/test\_sivf\_gist\_delete.cpp} & Deletion throughput and stability test for GIST1M. \\
-    \texttt{hpdic/experiment/test\_sivf\_sliding.cpp} & End-to-End Streaming Benchmark simulating a sliding window workload. \\
-    \texttt{hpdic/experiment/test\_sivf\_memory.cpp} & Memory Scalability Benchmark quantifying VRAM overhead and reuse. \\
-    \texttt{hpdic/experiment/test\_sivf\_sensitivity.cpp} & Parameter Study evaluating performance sensitivity to batch/slab settings. \\
-    \texttt{hpdic/experiment/benchmark\_baseline.cpp} & Comparison baseline implementing CPU-GPU roundtrip logic for standard IVF. \\
-    \hline
-    \multicolumn{2}{c}{\textit{Data Utilities \& Visualization}} \\
-    \hline
-    \texttt{hpdic/experiment/sift/sift\_loader.h} & Optimized raw vector loader for SIFT1M dataset. \\
-    \texttt{hpdic/experiment/gist/gist\_loader.h} & Optimized raw vector loader for GIST1M dataset. \\
-    \texttt{hpdic/experiment/plot\_add.py} & Python script for generating ingestion throughput figures. \\
-    \texttt{hpdic/experiment/plot\_search.py} & Python script for generating QPS vs. Recall trade-off figures. \\
-    \texttt{hpdic/experiment/plot\_delete.py} & Python script for generating deletion latency figures. \\
-    \texttt{hpdic/experiment/plot\_sliding.py} & Python script for generating sliding window streaming performance figures. \\
-    \texttt{hpdic/experiment/plot\_memory.py} & Python script for generating memory scalability and overhead figures. \\
-    \texttt{hpdic/experiment/plot\_sensitivity.py} & Python script for generating parameter sensitivity heatmaps or curves. \\
-    \hline
-    \end{tabular}
-\end{table*}
-
-\subsection{Lessons Learned}
-\label{app:lessons_learned}
-
-Developing a fully dynamic, GPU-resident index presented several unique engineering challenges. We summarize the key lessons learned during the development of SIVF:
-
-\begin{itemize}
-    \item \textit{Implicit Synchronization Risks.} In the early stages of development, we encountered non-deterministic data corruption during high-concurrency ingestion. We traced this to the GPU's relaxed memory consistency model. Writes to a new slab were sometimes not visible to other streaming multiprocessors before the slab was linked to the list. We learned that explicit \texttt{\_\_threadfence()} instructions are non-negotiable when implementing lock-free data structures on GPUs, even within the same kernel launch.
-    
-    \item \textit{Register Pressure vs. Occupancy.} Our initial search kernel utilized complex template meta-programming to handle various metric types, which bloated the register usage per thread and limited occupancy. We found that manually unrolling loops and using simpler, distinct kernels for Inner Product and L2 distance significantly reduced register pressure, allowing more warps to be active simultaneously and hiding global memory latency more effectively.
-    
-    \item \textit{The Cost of Allocators.} We initially attempted to use the built-in CUDA \texttt{malloc} for dynamic node creation. This proved disastrous for performance due to internal locking within the driver. This failure motivated the design of the custom \texttt{SlabManager}. The lesson is that for high-throughput system code, general-purpose memory allocators on the device are rarely sufficient; domain-specific, arena-based allocators are essential for performance.
-\end{itemize}
 
 \end{document}
 \endinput
