@@ -6,7 +6,7 @@ Email:  dzhao@uw.edu
 
 Visualization script for the Overall Evaluation Summary.
 Generates three high-contrast bar charts comparing SIVF against the Faiss Baseline
-across three standard datasets (SIFT1M, T2I-1M, GIST1M).
+across three standard datasets (SIFT1M, T2I-1B, GIST1M).
 """
 
 import matplotlib.pyplot as plt
@@ -40,7 +40,7 @@ COLOR_SIVF = '#ff7f0e'
 # ==========================================
 # 2. Data Preparation
 # ==========================================
-datasets = ['SIFT1M\n(128D)', 'T2I-1M\n(200D)', 'GIST1M\n(960D)']
+datasets = ['SIFT1M\n(128D)', 'T2I-1B\n(200D)', 'GIST1M\n(960D)']
 
 # Ingestion Throughput (Vectors/sec)
 add_base = [35901, 34596, 23492]
@@ -64,7 +64,7 @@ def draw_bar_chart(ylabel, data_base, data_sivf, filename_suffix, log_scale=Fals
 
     # CHANGED: figsize (8, 9) 
     # 这是一个平衡点：比 (10,8) 稍微高一点，但比 (6,10) 宽很多，看起来最自然。
-    fig, ax = plt.subplots(figsize=(8, 8))
+    fig, ax = plt.subplots(figsize=(10, 8))
     
     rects1 = ax.bar(x - width/2, data_base, width, label='Faiss Baseline', 
                     color=COLOR_BASE, alpha=0.7, edgecolor='black', hatch='//')
@@ -141,7 +141,7 @@ def draw_bar_chart(ylabel, data_base, data_sivf, filename_suffix, log_scale=Fals
 # ==========================================
 
 draw_bar_chart(
-    ylabel='Throughput (vecs/s)', 
+    ylabel='Throughput (vec/s)', 
     data_base=add_base,
     data_sivf=add_sivf,
     filename_suffix='eval_ingestion',
