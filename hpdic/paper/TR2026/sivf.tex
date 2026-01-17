@@ -74,7 +74,7 @@
 }
 
 \begin{abstract}
-GPU-accelerated Inverted File (IVF) index is one of industry standards for large-scale vector search but rely on static memory layouts that hinder real-time mutability. Our benchmark and analysis reveal that existing designs necessitate expensive CPU-GPU data transfers for index updates, causing system latency to spike from milliseconds to seconds in streaming scenarios. We propose SIVF (Streaming Inverted File), a GPU-native architecture that enables high-velocity, in-place mutation via slab-based memory allocation and lock-free validity bitmaps. Evaluation against state-of-the-art vector search baselines (GPU IVF, GPU Flat, HNSW, NSG, LSH) with multiple real-world datasets (SIFT, T2I, GIST) demonstrates that SIVF reduces deletion latency to sub-millisecond levels, outperforming baselines by orders of magnitude. Moreover, SIVF achieves up to $105\times$ higher ingestion throughput and $266\times$ end-to-end sliding window speedup with negligible memory overhead (<0.8\%).
+GPU-accelerated Inverted File (IVF) index is one of industry standards for large-scale vector search but rely on static memory layouts that hinder real-time mutability. Our benchmark and analysis reveal that existing designs necessitate expensive CPU-GPU data transfers for index updates, causing system latency to spike from milliseconds to seconds in streaming scenarios. We propose SIVF (Streaming Inverted File), a GPU-native architecture that enables high-velocity, in-place mutation via slab-based memory allocation and lock-free validity bitmaps. SIVF has been implemented within the state-of-the-art vector search library Faiss. Evaluation against five baselines (GPU IVF, GPU Flat, HNSW, NSG, LSH) with three real-world datasets (SIFT, T2I, GIST) demonstrates that SIVF reduces deletion latency to sub-millisecond levels, outperforming baselines by orders of magnitude. Moreover, SIVF achieves up to $105\times$ higher ingestion throughput and $266\times$ end-to-end sliding window speedup with negligible memory overhead (< 0.8\%). Therefore, SIVF removes the performance bottleneck of  GPU indices for streaming vectors, transforming vector search from a static retrieval task into a dynamic, real-time data management capability.
 \end{abstract}
 \maketitle
 
@@ -814,8 +814,8 @@ We believe SIVF represents a significant step towards enabling real-time, mutabl
 
 % Finally, our consistency model prioritizes throughput over strict linearizability. While sufficient for the probabilistic nature of ANN search, future work will investigate lightweight snapshot isolation mechanisms to support transactional semantics without compromising the lock-free ingestion speed.
 
-% \section*{Acknowledgment}
-% Results presented in this paper were obtained using the Chameleon testbed supported by the National Science Foundation.
+\section*{Acknowledgment}
+Results presented in this paper were obtained using the Chameleon testbed supported by the National Science Foundation.
 
 \bibliography{ref,ann,gpu}
 \bibliographystyle{acm}
