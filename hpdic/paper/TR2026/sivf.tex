@@ -540,8 +540,6 @@ Finally, the kernel writes the invalid sentinel back to $\mathcal{T}[u]$ to prev
 \section{Evaluation}
 \label{sec:evaluation}
 
-\don{TODO: (1) Add more data sets, e.g., GloVe, Deep1B, T2I; (2) Loop datasets 1000 times as a ``long stream''}
-
 We implement SIVF by extending the GPU components of the widely-adopted Faiss library~\cite{douze2024faiss}, integrating our proposed slab-based memory management and lock-free update mechanisms into its core indexing architecture. Our evaluation benchmarks SIVF directly against the native Faiss GPU implementations, specifically targeting ingestion throughput and deletion latency under high-concurrency streaming workloads. We have open-sourced our complete implementation and evaluation scripts on GitHub.
 
 Implementing SIVF required substantial modifications to the Faiss GPU backend and associated experimental infrastructure. In total, the implementation involves approximately 9,000 lines of code changes across more than 45 source files. Core system changes are concentrated in the GPU index implementation, incorporating new GPU-native insertion, deletion, and search operators (e.g., \texttt{GpuIndexSIVF}, \texttt{SIVFAppend}, \texttt{SIVFSearch}), alongside a custom slab-based memory manager (\texttt{SlabManager}) and lock-free metadata structures. Furthermore, we developed a comprehensive benchmarking suite that extends beyond standard metric testing to include end-to-end streaming simulations, memory scalability analysis, and automated visualization scripts, ensuring a rigorous and reproducible evaluation.
@@ -637,6 +635,8 @@ Figure~\ref{fig:deletion_perf} illustrates the performance comparison between th
 
 \subsection{Real-world Datasets}
 \label{sec:eval_real_world}
+
+\don{TODO: Add more data sets, e.g., Deep1B, T2I}
 
 To evaluate SIVF under realistic conditions, we utilized two standard large-scale benchmarks: SIFT1M~\cite{jegou2011product} (128 dimensions) and GIST1M~\cite{jegou2011product} (960 dimensions). SIFT1M is a standard computer vision dataset using Euclidean distance; GIST1M is a high-dimensional dataset representing global image features, which is particularly challenging for index structures due to the sparsity of the space and the high intrinsic dimensionality. These datasets allow us to assess system performance across varying dimensionalities, directly testing the scalability of our slab-based memory management against the contiguous memory model of the baseline (Faiss).
 
@@ -765,6 +765,11 @@ Figure~\ref{fig:eval_memory} illustrates the memory growth trends for both SIFT1
 \end{figure}
 
 Furthermore, we verified the efficacy of our memory reclamation strategy. In a stress test involving the deletion of 50\% of the dataset followed by immediate re-insertion, SIVF maintained a constant memory footprint without triggering OS-level deallocation. The deletion operation completed in sub-millisecond time per batch (e.g., 4.04~ms for 100K GIST vectors), confirming that memory slots are logically reclaimed via bitmap toggling and immediately available for reuse. This ``zero-cost'' reclamation ensures that SIVF can sustain long-running streaming workloads without suffering from memory leaks or fragmentation-induced bloat.
+
+\subsection{Non-IVF Indexes}
+\label{sec:eval_non_ivf}
+
+\don{TODO: Compare with more baseline indexes, such as IndexFlatL2 and HNSW.}
 
 \section{Conclusion}
 \label{sec:conclusion}
