@@ -187,3 +187,12 @@ target_link_libraries(test_sivf_memory
     CUDA::cudart 
     CUDA::cublas
 )
+
+# --- Non-IVF ---
+add_executable(test_sivf_nonivf hpdic/experiment/test_sivf_noivf.cpp)
+target_link_libraries(test_sivf_nonivf 
+    faiss 
+    OpenMP::OpenMP_CXX 
+    CUDA::cudart 
+    CUDA::cublas
+)

@@ -62,8 +62,6 @@ def draw_bar_chart(ylabel, data_base, data_sivf, filename_suffix, log_scale=Fals
     x = np.arange(len(datasets))
     width = 0.35  
 
-    # CHANGED: figsize (8, 9) 
-    # 这是一个平衡点：比 (10,8) 稍微高一点，但比 (6,10) 宽很多，看起来最自然。
     fig, ax = plt.subplots(figsize=(10, 8))
     
     rects1 = ax.bar(x - width/2, data_base, width, label='Faiss Baseline', 
@@ -81,7 +79,6 @@ def draw_bar_chart(ylabel, data_base, data_sivf, filename_suffix, log_scale=Fals
     # Adjust Y-axis limits
     if log_scale:
         ax.set_yscale('log')
-        # 保持这个超大倍数 (2000倍)，确保 "13.3k x" 绝对不会被挡住
         ax.set_ylim(top=max(max(data_base), max(data_sivf)) * 2000)
     else:
         ax.set_ylim(top=max(max(data_base), max(data_sivf)) * 1.6)
@@ -117,7 +114,6 @@ def draw_bar_chart(ylabel, data_base, data_sivf, filename_suffix, log_scale=Fals
                     if speedup < 1: txt = f"{speedup:.2f}x"
                     else: txt = f"{speedup:.0f}x"
 
-                # 保持偏移量，防止文字和柱子重叠
                 offset = 45 if log_scale else 45
                 
                 ax.annotate(txt,

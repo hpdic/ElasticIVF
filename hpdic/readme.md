@@ -70,6 +70,11 @@ cd ~/ElasticIVF/build
 make -j test_sivf_memory
 ./test_sivf_memory # default is SIFT
 ./test_sivf_memory gist
+
+# SIVF vs. Non-IVF:
+cd ~/ElasticIVF/build
+make -j test_sivf_nonivf
+./test_sivf_nonivf
 ```
 
 ## Benchmarks

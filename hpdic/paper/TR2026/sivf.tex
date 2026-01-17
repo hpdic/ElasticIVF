@@ -106,7 +106,7 @@ Real-world vector search applications, ranging from real-time recommendation eng
 
 \begin{figure}[!h]
     \centering
-    \includegraphics[width=\linewidth]{figures/motivation_bar_chart_comparison.pdf}
+    \includegraphics[width=0.7\linewidth]{figures/motivation_bar_chart_comparison.pdf}
     \caption{The asymmetry between insertion and deletion latency on GPU indices. 
     % While insertion benefits from GPU parallelism, standard deletion triggers a costly CPU-GPU roundtrip, resulting in multi-second latencies for batch evictions (e.g., $\sim$1.6s for 10k vectors). This creates a prohibitive bottleneck for streaming applications.
     }
@@ -768,7 +768,7 @@ Figure~\ref{fig:eval_memory} illustrates the memory growth trends for both SIFT1
 
 Furthermore, we verified the efficacy of our memory reclamation strategy. In a stress test involving the deletion of 50\% of the dataset followed by immediate re-insertion, SIVF maintained a constant memory footprint without triggering OS-level deallocation. The deletion operation completed in sub-millisecond time per batch (e.g., 4.04~ms for 100K GIST vectors), confirming that memory slots are logically reclaimed via bitmap toggling and immediately available for reuse. This ``zero-cost'' reclamation ensures that SIVF can sustain long-running streaming workloads without suffering from memory leaks or fragmentation-induced bloat.
 
-\subsection{SIVF vs. Non-IVF Indexes}
+\subsection{SIVF vs. Non-IVF Streaming}
 \label{sec:eval_non_ivf}
 
 \don{TODO: Compare with more baseline indexes, such as IndexFlatL2 and HNSW.}
