@@ -1,5 +1,5 @@
-% \documentclass[sigconf,nonacm]{acmart}
-\documentclass[sigconf,anonymous]{acmart}
+\documentclass[sigconf,nonacm]{acmart}
+% \documentclass[sigconf,anonymous]{acmart}
 
 \setlength{\marginparwidth}{2cm}
 
@@ -74,7 +74,7 @@
 }
 
 \begin{abstract}
-GPU-accelerated Inverted File (IVF) index is one of industry standards for large-scale vector search but rely on static VRAM layouts that hinder real-time mutability. Our benchmark and analysis reveal that existing designs of GPU IVF necessitate expensive CPU-GPU data transfers for index updates, causing system latency to spike from milliseconds to seconds in streaming scenarios. We propose SIVF (Streaming IVF), a GPU-native architecture that enables high-velocity, in-place mutation via slab-based VRAM allocation and lock-free validity bitmaps. SIVF has been implemented and integrated into the state-of-the-art vector search library Faiss. Evaluation against five baselines (IVF, Flat, HNSW, NSG, LSH) with three real-world vector datasets (SIFT, T2I, GIST) demonstrates that SIVF reduces deletion latency to sub-millisecond levels, outperforming baselines by orders of magnitude. Moreover, SIVF achieves up to $105\times$ higher ingestion throughput and $262\times$ end-to-end sliding window speedup with negligible memory overhead (< 0.77\%). These results suggest that SIVF effectively removes the deletion bottleneck of GPU indices for streaming vectors, therefore transforming vector search from a static retrieval task into a dynamic, real-time data management capability.
+GPU-accelerated Inverted File (IVF) index is one of industry standards for large-scale vector search but rely on static memory layouts that hinder real-time mutability. Our benchmark and analysis reveal that existing designs necessitate expensive CPU-GPU data transfers for index updates, causing system latency to spike from milliseconds to seconds in streaming scenarios. We propose SIVF (Streaming Inverted File), a GPU-native architecture that enables high-velocity, in-place mutation via slab-based memory allocation and lock-free validity bitmaps. SIVF has been implemented within the state-of-the-art vector search library Faiss. Evaluation against five baselines (GPU IVF, GPU Flat, HNSW, NSG, LSH) with three real-world datasets (SIFT, T2I, GIST) demonstrates that SIVF reduces deletion latency to sub-millisecond levels, outperforming baselines by orders of magnitude. Moreover, SIVF achieves up to $105\times$ higher ingestion throughput and $266\times$ end-to-end sliding window speedup with negligible memory overhead (< 0.8\%). Therefore, SIVF removes the performance bottleneck of  GPU indices for streaming vectors, transforming vector search from a static retrieval task into a dynamic, real-time data management capability.
 \end{abstract}
 \maketitle
 
@@ -97,9 +97,9 @@ GPU-accelerated Inverted File (IVF) index is one of industry standards for large
 % Approximate Nearest Neighbor (ANN) search has become a foundational primitive for modern AI, powering everything from Retrieval-Augmented Generation (RAG) to real-time Large Language Model (LLM) serving. While GPU acceleration has successfully scaled static vector search to billions of items, the architecture of existing GPU indices remains fundamentally immutable, optimized almost exclusively for ``write-once, read-many'' workloads. This static design creates a critical bottleneck for emerging streaming applications, such as fraud detection and continuously updated memory systems, where data freshness is paramount and high-velocity deletion is as critical as ingestion. In this paper, we identify the \textit{CPU-GPU Roundtrip} phenomenon as the root cause of this limitation, where simple deletion requests trigger a prohibitive full-index rebuild on the host. We introduce SIVF (Streaming Inverted File), a new GPU-native architecture that eliminates this bottleneck through slab-based memory management and atomic lazy eviction. By moving index maintenance entirely to the device, SIVF transforms vector search from a static retrieval task into a dynamic, real-time data management capability, achieving orders-of-magnitude improvements in mutation latency.
 
 % \subsection{Observation: The Deletion Bottleneck}
-% \don{TODO}
-Real-world vector search applications, ranging from search engines to dynamic retrieval-augmented generation (RAG) of large language models (LLMs), increasingly operate on streaming data where timeliness is critical. These systems necessitate a sliding window model where expired vectors must be invalidated promptly as new vectors arrive to maintain bounded memory usage. However, existing GPU-accelerated approximate nearest neighbor (ANN) indices are predominantly optimized for static, write-once-read-many workloads.
-To quantify the gap between insertion and eviction performance, we conducted benchmarks using the industry-standard Faiss library~\cite{johnson2019billion} on an NVIDIA RTX 6000 GPU~\cite{keahey2020lessons}. We utilized the SIFT1M dataset~\cite{jegou2011product} (128-dimensional) to simulate a realistic sliding window scenario. Specifically, we initialized a standard \texttt{IVF1024} index pre-populated with 100,000 vectors and measured the wall-clock latency of ingesting a batch of 10,000 new vectors and subsequently evicting the oldest 10,000 vectors. 
+
+Real-world vector search applications, ranging from real-time recommendation engines to fraud detection systems, increasingly operate on streaming data where timeliness is critical. These systems necessitate a sliding window model where expired vectors must be invalidated promptly as new vectors arrive to maintain bounded memory usage. However, existing GPU-accelerated approximate nearest neighbor (ANN) indices are predominantly optimized for static, write-once-read-many workloads.
+To quantify the gap between insertion and eviction performance, we conducted benchmarks using the industry-standard Faiss library~\cite{johnson2019billion} on an NVIDIA RTX 6000 GPU~\cite{keahey2020lessons}. We utilized the SIFT1M dataset~\cite{jegou2011product} (128-dimensional) to simulate a realistic sliding window scenario. Specifically, we initialized a standard \texttt{IVF1024} index pre-populated with 100,000 vectors and measured the wall-clock latency of ingesting a batch of 10,000 new vectors and subsequently evicting the oldest 10,000 IDs. 
 
 \begin{figure}[!h]
     \centering
@@ -109,7 +109,7 @@ To quantify the gap between insertion and eviction performance, we conducted ben
     \Description{A bar chart comparing insertion and deletion latency on GPU indices. The insertion bar is significantly shorter than the deletion bar, illustrating the performance asymmetry.}
     \label{fig:motivation}
 \end{figure}
-\don{TODO}
+
 As illustrated in Figure~\ref{fig:motivation}, we observe a drastic performance asymmetry. While GPU parallelism accelerates the insertion of the 10K-vector batch to approximately 28.6 ms, the eviction process for the same batch size is significantly slower, spiking the latency to 202.2 ms.
 This high latency is observed in the native C++ implementation, which performs nearly identically to the Python wrapper (213.4 ms). The negligible difference between the compiled C++ core and the interpreted Python binding suggests that the bottleneck is not an implementation detail: If the issue were merely inefficient code, the C++ implementation would be expected to significantly outperform Python. The lack of such divergence indicates that both are bound by the same architectural limitation: the absence of a GPU-resident deletion operator, which forces expensive CPU-GPU roundtrips for every eviction operation.
 
@@ -142,54 +142,62 @@ In summary, this paper makes three technical contributions:
 % \noindent
 % \textbf{The complete implementation and evaluation scripts are available on GitHub: \url{https://github.com/hpdic/ElasticIVF}.}
 
-\paragraph{Paper Organization}
-The remainder of this paper is organized as follows. 
-Section~\ref{sec:related_work} reviews the existing landscape of ANN search, distinguishing between CPU-based dynamic methods and static GPU-accelerated indices. 
-Section~\ref{sec:design_implementation} details the architectural design of SIVF, elaborating on the slab-based memory allocator, the validity bitmap mechanism, and the GPU-resident address translation table. 
-Section~\ref{sec:evaluation} presents our experimental methodology and a comprehensive evaluation of SIVF against state-of-the-art baselines. 
-Finally, Section~\ref{sec:conclusion} concludes the paper and outlines directions for future research.
+% \paragraph{Paper Organization}
+% The remainder of this paper is organized as follows. 
+% Section~\ref{sec:related_work} reviews the existing landscape of ANN search, distinguishing between CPU-based dynamic methods and static GPU-accelerated indices. 
+% Section~\ref{sec:design_implementation} details the architectural design of SIVF, elaborating on the slab-based memory allocator, the validity bitmap mechanism, and the GPU-resident address translation table. 
+% Section~\ref{sec:evaluation} presents our experimental methodology and a comprehensive evaluation of SIVF against state-of-the-art baselines. 
+% Finally, Section~\ref{sec:conclusion} concludes the paper and outlines directions for future research.
 
 \section{Related Work}
 \label{sec:related_work}
 
 % Recent advancements in Approximate Nearest Neighbor (ANN) search have primarily focused on refining graph-based indexing structures, integrating attribute filtering for hybrid queries, and enhancing system scalability through quantization and hardware acceleration. In parallel, GPU-oriented techniques provide reusable patterns, such as warp-aligned work partitioning, coalesced accesses, and low-overhead synchronization, that can inform the design of GPU-resident ANN systems.
 
-\paragraph{Optimization of Graph-Based Indices}
-Graph-based indices remain the state-of-the-art for high-recall retrieval. To address performance bottlenecks in production, frameworks like VSAG~\cite{10.14778/3750601.3750624} optimize memory access patterns and parameter tuning, while SOAR~\cite{DBLP:conf/nips/SunSDGK23} improves indexing structures. 
+\subsection{Optimization of Graph-Based Indices}
+
+Graph-based indices remain the state-of-the-art for high-recall retrieval. To address performance bottlenecks in production, general frameworks like VSAG~\cite{10.14778/3750601.3750624} optimize memory access patterns and parameter tuning, while SOAR~\cite{DBLP:conf/nips/SunSDGK23} improves indexing structures. 
 Of note, CAGRA~\cite{10597683} establishes a new state-of-the-art for static graph construction and search throughput on GPUs; however, it is fundamentally designed for write-once-read-many workloads and lacks native support for the efficient, fine-grained in-place deletions required by streaming applications.
 Navigational efficiency is a key optimization target; SHG~\cite{10.14778/3748191.3748212} introduces a hierarchical graph with shortcuts to bypass redundant levels, and probabilistic routing methods~\cite{lu2024probabilistic} have been proposed to enhance traversal. 
 Several works focus on distance metric optimizations: ADA-NNS~\cite{10.1145/3696410.3714870} utilizes angular distance guidance to filter irrelevant neighbors, DADE~\cite{10.14778/3712221.3712244} accelerates comparisons via data-aware distance estimation in lower dimensions, and HSCG~\cite{10.1145/3769786} adapts the Monotonic Relative Neighbor Graph for cosine similarity using hemi-sphere centroids.
+
 Efforts to improve graph construction and maintenance include LIGS~\cite{10.1145/3726302.3730028}, which employs locality-sensitive hashing (LSH) to simulate proximity graphs for faster updates, and CSPG~\cite{DBLP:conf/nips/YangCZ24}, which crosses sparse proximity graphs. 
 Addressing robustness, Hua et al.~\cite{10.1145/3769783} propose dynamically detecting and fixing graph hardness for out-of-distribution queries. MIRAGE-ANNS~\cite{10.1145/3725325} attempts to bridge the gap between incremental and refinement-based construction. 
 Furthermore, theoretical frameworks like Subspace Collision~\cite{10.1145/3709729} provide guarantees on result quality using clustering-based indexing.
 
-\paragraph{Attribute-Filtered and Hybrid Search}
+\subsection{Attribute-Filtered and Hybrid Search}
+
 The integration of structured constraints with vector search has led to a surge in Filtered ANN research. Li et al.~\cite{10.1145/3769763} provide a comprehensive taxonomy and benchmark of these methods. 
 A primary focus is handling dynamic updates and specific filter types such as ranges or windows. 
 For range filtering, UNIFY~\cite{10.14778/3717755.3717770} introduces a segmented inclusive graph to support pre-, post-, and hybrid filtering strategies. 
 Dynamic environments are addressed by DIGRA~\cite{10.1145/3725399}, which uses a multi-way tree structure for dynamic graph indexing, and RangePQ~\cite{10.1145/3725401}, which offers a linear-space indexing scheme for range-filtered updates. 
 Peng et al.~\cite{10.14778/3748191.3748193} propose dynamic segment graphs to handle mixed streams of data and queries.
+
 Regarding specific constraints, Wang et al.~\cite{DBLP:conf/nips/WangLX0YN23} present a robust framework for general attribute constraints. 
 Engels et al.~\cite{engels2024approximate} focus on window filters, while WoW~\cite{10.1145/3769843} develops a window-graph based index to handle window-to-window incremental construction.
 
-\paragraph{Quantization and Scalability}
+\subsection{Quantization and Scalability}
+
 To manage high-dimensional data at scale, quantization and system-level optimizations are critical. 
 RaBitQ~\cite{10.1145/3654970} and its extended version~\cite{10.1145/3725413} provide theoretical error bounds for bitwise quantization with flexible compression rates. 
 SymphonyQG~\cite{10.1145/3709730} integrates quantization codes directly with graph structures to reduce memory access overhead, while LoRANN~\cite{DBLP:conf/nips/JaasaariHR24} utilizes low-rank matrix factorization for compression.
+
 In terms of system architecture, Tagore~\cite{10.1145/3769825} leverages GPUs for accelerating graph index construction. 
 For distributed environments, HARMONY~\cite{10.1145/3749167} employs a multi-granularity partition strategy to balance load. 
 WebANNS~\cite{10.1145/3726302.3730115} enables efficient search within web browsers via WebAssembly. 
 From a theoretical perspective, Indyk and Xu~\cite{DBLP:conf/nips/IndykX23} analyze the worst-case performance limits of popular implementations. 
 Finally, DARTH~\cite{10.1145/3749160} introduces declarative recall targets through adaptive early termination to balance performance and result quality.
 
-\paragraph{GPU Systems and Optimizations}
+\subsection{GPU Systems and Optimizations}
+
 Recent HPC work highlights how careful kernel and data-layout design can unlock GPU performance across data-intensive workloads. FZ-GPU demonstrates a fully parallel compression pipeline with both warp-aware bitwise operations and shared-memory efficiency~\cite{10.1145/3588195.3592994}. For sparse linear algebra, SpMV designs reduce preprocessing overhead while improving load balance and memory access locality~\cite{10.1145/3588195.3593002}, and GPU-aware preconditioning further emphasizes locality and coalescence as first-order concerns on modern GPU architectures~\cite{10.1145/3625549.3658683}. Beyond compute kernels, GPU-enabled asynchronous checkpoint caching and prefetching treat GPU memory as a first-class tier to improve end-to-end throughput for I/O-heavy workflows~\cite{10.1145/3588195.3592987}. Format choices and composition are also critical for irregular workloads, as shown by automatic sparse format composition for SpMM that avoids expensive autotuning while delivering strong performance~\cite{10.1145/3731545.3731574}.
+
 Another line of work focuses on reliability, debugging, and cluster-scale GPU management, which together shape how GPU-centric systems are built and operated. GPU-FPX provides low-overhead floating-point exception tracking for NVIDIA GPUs~\cite{10.1145/3588195.3592991}, FPBOXer improves scalable input generation for triggering floating-point exceptions in GPU programs~\cite{10.1145/3625549.3658660}, and FloatGuard extends whole-program exception detection to AMD GPUs and highlights cross-vendor portability concerns~\cite{10.1145/3731545.3731586}. At the application and cluster level, SIMCoV-GPU studies multi-node, multi-GPU acceleration for irregular agent-based simulations~\cite{10.1145/3625549.3658692}, FASOP automates fast search for near-optimal transformer parallelization on heterogeneous GPU clusters~\cite{10.1145/3625549.3658687}, and serverless platforms motivate GPU sharing and scheduling mechanisms such as ESG and FluidFaaS~\cite{10.1145/3625549.3658657,10.1145/3731545.3731580}. These works reinforce the importance of aligning work granularity with warps, minimizing synchronization overhead, and designing memory layouts that preserve locality, which are relevant to GPU-resident indexing under dynamic updates.
 
 \section{Design and Implementation of SIVF}
 \label{sec:design_implementation}
 
-% In this section, we detail the architecture of SIVF, designed to enable high-concurrency mutability on GPUs. We begin by introducing the Slab-based Dynamic Memory Allocator (Section~\ref{sec:slab_memory_management}), which replaces rigid contiguous arrays with a flexible pool of fixed-size blocks to mitigate fragmentation. Building on this storage layer, we describe the Lock-free Parallel Ingestion protocol (Section~\ref{sec:lock_free_ingestion}) that allows conflict-free streaming updates via atomic slot reservation. To ensure retrieval efficiency despite the non-contiguous memory layout, we present a specialized High-Performance Search Kernel (Section~\ref{sec:methods_search_kernel}) utilizing warp-level collaboration. Finally, we detail the Bitmap-based Lazy Eviction mechanism (Section~\ref{sec:bitmap_lazy_eviction}), which achieves $O(1)$ deletion complexity through a GPU-resident address translation table.
+In this section, we detail the architecture of SIVF, designed to enable high-concurrency mutability on GPUs. We begin by introducing the Slab-based Dynamic Memory Allocator (Section~\ref{sec:slab_memory_management}), which replaces rigid contiguous arrays with a flexible pool of fixed-size blocks to mitigate fragmentation. Building on this storage layer, we describe the Lock-free Parallel Ingestion protocol (Section~\ref{sec:lock_free_ingestion}) that allows conflict-free streaming updates via atomic slot reservation. To ensure retrieval efficiency despite the non-contiguous memory layout, we present a specialized High-Performance Search Kernel (Section~\ref{sec:methods_search_kernel}) utilizing warp-level collaboration. Finally, we detail the Bitmap-based Lazy Eviction mechanism (Section~\ref{sec:bitmap_lazy_eviction}), which achieves $O(1)$ deletion complexity through a GPU-resident address translation table.
 
 \subsection{Slab-based Memory Management}
 \label{sec:slab_memory_management}
@@ -540,46 +548,61 @@ Unless explicitly stated (as in Section~\ref{sec:eval_real_world}), our experime
 \subsection{Microbenchmark: Ingestion}
 \label{sec:eval_add_performance}
 
-We evaluate ingestion throughput against the standard Faiss GPU IVFFlat baseline, varying database size ($N_B$: 1M--4M) and cluster count ($n_{list}$: 1024--16384). As shown in Figure~\ref{fig:add_perf}, SIVF achieves consistent performance advantages with up to 2.88$\times$ speedup.
+We evaluate the ingestion throughput of SIVF against the baseline method, the standard Faiss GPU IVFFlat implementation. We measure the insertion throughput (vectors per second, vec/s) while varying two key parameters: the database size ($N_B$) from 1M to 4M vectors, and the number of clusters ($n_{list}$) from 1024 to 16384.
+The results are summarized in Figure~\ref{fig:add_perf}. SIVF demonstrates consistent performance advantages across all configurations, achieving up to a 2.88$\times$ speedup over the baseline.
 
 \begin{figure*}[t]
     \centering
     \includegraphics[width=\linewidth]{./figures/performance_add.pdf}
-    \caption{Performance evaluation of vector ingestion.}
+    \caption{Performance evaluation of vector ingestion. 
+    % (a) Scalability: Throughput remains remarkably stable around 4.2 million vec/s as dataset size increases from 1M to 4M ($n_{list}=4096$), indicating effective handling of memory fragmentation. (b) Granularity Impact: While finer clustering granularities ($n_{list}=16384$) introduce scattered write patterns, SIVF maintains a 2.1$\times$--2.5$\times$ speedup over the baseline. (c) Speedup: A heatmap showing the relative speedup of SIVF over Vanilla Faiss, consistently ranging between 1.8$\times$ and 2.9$\times$.
+    }
     \label{fig:add_perf}
-    \Description{Three performance graphs comparing SIVF and Vanilla Faiss.}
+    \Description{Three performance graphs comparing SIVF and Vanilla Faiss: scalability with dataset size, impact of clustering granularity on ingestion throughput, and speedup heatmap.}
 \end{figure*}
 
-\paragraph{Scalability (Fig.~\ref{fig:add_perf}a)}
-SIVF maintains a stable throughput of $\approx$4.2M vec/s as $N_B$ increases, significantly outperforming the baseline ($\approx$1.7M vec/s). This stability validates our lock-free SlabManager, which ensures $O(1)$ insertion cost independent of index occupancy, thereby avoiding the contiguous memory resizing overheads inherent to the baseline.
+\paragraph{Scalability and Stability (Fig.~\ref{fig:add_perf}a)}
+As the database size grows from 1 million to 4 million vectors (with $n_{list}=4096$), SIVF maintains a robust throughput of approximately 4.2 million vec/s. This stability verifies the efficiency of our adaptive SlabManager: despite the increasing memory footprint, the lock-free append mechanism ensures that insertion cost remains $O(1)$ and effectively decoupled from the current index occupancy. In contrast, the baseline operates at a significantly lower tier ($\approx$1.7M vec/s) due to contiguous memory maintenance overheads.
 
-\paragraph{Granularity Impact (Fig.~\ref{fig:add_perf}b)}
-Performance correlates with clustering granularity. At low $n_{list}=1024$, localized memory writes allow SIVF to peak at $\approx$6.1M vec/s (2.88$\times$ speedup). At high $n_{list}=4096$, scattered write patterns reduce throughput for both systems; however, SIVF's linked-slab architecture proves more resilient than the baseline, maintaining a 2.0$\times$--2.4$\times$ advantage even under high fragmentation.
+\paragraph{Impact of Clustering Granularity (Fig.~\ref{fig:add_perf}b)}
+We observe that ingestion throughput is sensitive to the number of clusters $n_{list}$:
+\begin{itemize}
+    \item Peak Performance at Low $n_{list}$: SIVF achieves its highest throughput ($\approx$ 6.1M vec/s) at $n_{list}=1024$ with 2M vectors. In this setup, the memory write patterns are more localized, reducing cache misses and maximizing the efficiency of our append kernels. SIVF is 2.88$\times$ faster than the baseline ($\approx$2.1M vec/s).
+    \item Degradation at High $n_{list}$: As $n_{list}$ increases to 16384, the insertion pattern becomes highly scattered across thousands of memory slabs. Consequently, throughput for both systems decreases. However, the baseline suffers more severely from this fragmentation. SIVF maintains a throughput of $\approx$1.3M--1.6M vec/s, achieving a 2.0$\times$ to 2.4$\times$ speedup even in this challenging high-granularity scenario. This demonstrates the resilience of the linked-slab architecture compared to the baseline's array resizing overhead.
+\end{itemize}
 
 \paragraph{Overall Speedup (Fig.~\ref{fig:add_perf}c)}
-SIVF outperforms the baseline across all configurations, with speedups typically ranging from 2.4$\times$ to 2.9$\times$. Even under maximum contention (4M vectors, $n_{list}=1024$), SIVF retains a 1.79$\times$ advantage, confirming the efficiency of the non-blocking, slab-based pipeline for streaming scenarios.
+The heatmap confirms that SIVF outperforms the baseline in every tested configuration. The speedup is robust, typically ranging from 2.4$\times$ to 2.9$\times$ for most configurations. Even under the highest load (4M vectors with $n_{list}=1024$), where contention for slab heads is maximized, SIVF maintains a 1.79$\times$ advantage. This performance gap highlights the efficiency of our non-blocking, slab-based ingestion pipeline, making it well-suited for high-throughput streaming scenarios.
 
 \subsection{Microbenchmark: Search}
 \label{sec:eval_search_performance}
 
-We evaluate query performance against the Vanilla Faiss GPU baseline. While SIVF trades memory contiguity for mutability, Figure~\ref{fig:search_perf} confirms competitive efficiency, reaching up to 91\% of baseline performance in optimized configurations.
+In this section, we evaluate the query performance of SIVF against the Vanilla Faiss GPU implementation. Theoretically, SIVF is expected to exhibit a slight degradation in search throughput compared to the baseline, as its linked-slab architecture sacrifices memory contiguity (and thus perfect memory coalescing) to enable highly efficient, fine-grained updates. Our objective is to verify that this structural overhead remains within an acceptable range that does not compromise overall system utility. As summarized in Figure~\ref{fig:search_perf}, the results confirm that SIVF maintains competitive search efficiency, reaching up to 91\% of the baseline performance in optimized configurations, demonstrating that the cost of supporting instant mutability is reasonable.
 
 \begin{figure*}[t]
     \centering
+    % Ensure this matches your saved python plot filename
     \includegraphics[width=\linewidth]{./figures/performance_search.pdf}
-    \caption{Performance evaluation of vector search.}
+    \caption{Performance evaluation of vector search. 
+    % (a) Search Scalability: Both systems exhibit similar throughput degradation patterns as the database size grows from 100k to 500k ($n_{list}=4096$). (b) Search Granularity: Finer clustering improves QPS by reducing the search space per probe; SIVF peaks at $\approx$118k QPS with $n_{list}=4096$ (500k vectors). (c) Efficiency Ratio: Heatmap showing SIVF's query throughput relative to Vanilla Faiss, with peak efficiency reaching 0.91$\times$.
+    }
+    \Description{Three performance graphs comparing SIVF and Vanilla Faiss: search scalability with database size, impact of clustering granularity on QPS, and efficiency ratio heatmap.}
     \label{fig:search_perf}
-    \Description{Three performance graphs comparing SIVF and Vanilla Faiss.}
 \end{figure*}
+% \FloatBarrier
 
-\paragraph{Scalability (Fig.~\ref{fig:search_perf}a)}
-SIVF throughput scales predictably from $\approx$383K to 118K QPS as database size grows (100K--500K, $n_{list}=4096$). The trend closely mirrors the baseline, validating the stability of our slab traversal logic under increasing load.
+\paragraph{Search Scalability (Fig.~\ref{fig:search_perf}a)}
+As the database size increases from 100,000 to 500,000 vectors (with $n_{list}=4096$), SIVF throughput transitions from approximately 383k QPS to 118k QPS. The performance curve closely mirrors the baseline, confirming that our slab traversal logic maintains predictable scaling characteristics. Even at the 500k scale, SIVF provides sufficient throughput for high-concurrency production environments.
 
-\paragraph{Granularity Impact (Fig.~\ref{fig:search_perf}b)}
-Performance improves with finer clustering. Increasing $n_{list}$ from 1024 to 4096 boosts SIVF throughput from 70K to 118K QPS (500K vectors). This reduction in per-probe distance computations ensures robust throughput across settings.
+\paragraph{Impact of Granularity (Fig.~\ref{fig:search_perf}b)}
+At the 500k scale, increasing $n_{list}$ from 1024 to 4096 significantly enhances SIVF performance from 70k to 118k QPS. This result is consistent with the principle that higher granularity reduces the average number of vectors per inverted list, thereby decreasing the total distance computations per probe. The throughput remains robust across all settings.
 
-\paragraph{Query Efficiency (Fig.~\ref{fig:search_perf}c)}
-The efficiency ratio, which is defined as ($QPS_{SIVF} / QPS_{Vanilla}$), highlights the effectiveness of warp-level optimizations. In sparse scenarios ($n_{list}=16384$, 100K vectors), SIVF achieves 0.91$\times$ efficiency, nearly matching contiguous arrays. As lists lengthen (500K vectors), the ratio stabilizes between 0.40$\times$ and 0.52$\times$, reflecting the necessary physical trade-off of pointer chasing for dynamic memory support.
+\paragraph{Query Efficiency Analysis (Fig.~\ref{fig:search_perf}c)}
+The efficiency ratio, defined as $QPS_{SIVF} / QPS_{Vanilla}$, reveals the effectiveness of our warp-level optimization:
+\begin{itemize}
+    \item Near-Native Efficiency: At 100k vectors and $n_{list}=16384$, SIVF achieves an efficiency ratio of 0.91$\times$ (295k vs. 322k QPS), nearly matching the performance of the contiguous-array-based baseline. This demonstrates that our warp-parallel search kernel effectively hides the latency associated with linked-slab traversal in sparse, high-granularity scenarios where lists are short.
+    \item Impact of List Length: As the database size increases and inverted lists grow longer (e.g., at 500k vectors), the ratio stabilizes between 0.40$\times$ and 0.52$\times$. This expected overhead is primarily due to increased pointer chasing between slabs, which is the physical trade-off required to enable the index's dynamic mutability.
+\end{itemize}
 
 \subsection{Microbenchmark: Deletion}
 \label{sec:eval_deletion_performance}
@@ -604,7 +627,13 @@ Figure~\ref{fig:deletion_perf} illustrates the performance comparison between th
 \subsection{Real-world Datasets}
 \label{sec:eval_real_world}
 
-We benchmark SIVF using three standard datasets representing diverse modalities: SIFT1M~\cite{jegou2011product} (128 dimensions, vision), T2I-1B~\cite{simhadri2025results} (200 dimensions, multimodal/RAG), and GIST1M~\cite{jegou2011product} (960 dimensions, high-dim features). While the total dataset size (1M vectors) is VRAM-bound, these experiments validate performance within the \textit{active window} of streaming applications. Section~\ref{sec:eval_streaming} will report SIVF's stability under high-churn workloads.
+To evaluate SIVF under realistic conditions, we utilized three standard large-scale real-world datasets representing diverse vector modalities: SIFT1M~\cite{jegou2011product} (128 dimensions), T2I-1B~\cite{simhadri2025results} (200 dimensions), and GIST1M~\cite{jegou2011product} (960 dimensions). 
+SIFT1M is a classic computer vision dataset using Euclidean distance. 
+T2I-1B consists of text-to-image embeddings typical of modern multimodal and Retrieval-Augmented Generation (RAG) workloads.
+GIST1M is a high-dimensional dataset representing global image features, which challenges index structures with its sparsity and high memory bandwidth requirements. 
+These datasets allow us to assess system performance across a spectrum of dimensionalities, directly testing the scalability of our slab-based memory management against the contiguous memory model of the baseline (Faiss).
+
+It is important to note that while these are standard benchmarks for in-memory indices, their size (1 million vectors) is bounded by the available VRAM of a single GPU. However, for streaming applications, the critical metric is not the total historical volume but the \textit{active window size} that fits in high-speed memory. Our \textit{Sliding Window} benchmark (Section~\ref{sec:eval_streaming}) will explicitly stress the system by processing a continuous stream of updates far exceeding the static capacity, thereby verifying SIVF's architectural stability under high-churn workloads typical of billion-scale production streams.
 
 \begin{figure*}[t]
     \centering
@@ -612,8 +641,10 @@ We benchmark SIVF using three standard datasets representing diverse modalities:
     \begin{minipage}{0.32\textwidth}
         \centering
         \includegraphics[width=\linewidth]{figures/eval_ingestion.pdf}
-        \caption{Ingestion throughput.}
-        \Description{Bar graph comparing ingestion throughput between SIVF and Vanilla Faiss.}
+        \caption{Ingestion throughput. 
+        % SIVF achieves up to $105\times$ speedup by eliminating memory reallocation.
+        }
+        \Description{Bar graph comparing ingestion throughput between SIVF and Vanilla Faiss on SIFT1M, T2I-1B, and GIST1M datasets.}
         \label{fig:eval_ingestion}
     \end{minipage}
     \hfill 
@@ -621,8 +652,10 @@ We benchmark SIVF using three standard datasets representing diverse modalities:
     \begin{minipage}{0.32\textwidth}
         \centering
         \includegraphics[width=\linewidth]{figures/eval_deletion.pdf}
-        \caption{Deletion latency.}
-        \Description{Bar graph comparing deletion latency between SIVF and Vanilla Faiss.}
+        \caption{Deletion latency. 
+        % SIVF reduces latency by over $2,700\times$ on T2I-1B via in-place bitmap updates.
+        }
+        \Description{Bar graph comparing deletion latency between SIVF and Vanilla Faiss on SIFT1M, T2I-1B, and GIST1M datasets.}
         \label{fig:eval_deletion}
     \end{minipage}
     \hfill 
@@ -630,66 +663,83 @@ We benchmark SIVF using three standard datasets representing diverse modalities:
     \begin{minipage}{0.32\textwidth}
         \centering
         \includegraphics[width=\linewidth]{figures/eval_search.pdf}
-        \caption{Search performance (QPS).}
-        \Description{Bar graph comparing search performance (QPS) between SIVF and Vanilla Faiss.}
+        \caption{Search performance (QPS). 
+        % T2I-1B retains 95.5% of baseline search speed, confirming high efficiency for RAG workloads.
+        }
+        \Description{Bar graph comparing search performance (QPS) between SIVF and Vanilla Faiss on SIFT1M, T2I-1B, and GIST1M datasets.}
         \label{fig:eval_search}
     \end{minipage}
 \end{figure*}
 
 \paragraph{High-Throughput Ingestion}
-As shown in Figure~\ref{fig:eval_ingestion}, SIVF dominates ingestion scalability. On SIFT1M, it achieves 3.78M vec/s ($105\times$ speedup). On T2I-1B, typical of RAG workloads, SIVF sustains 2.91M vec/s ($84\times$ speedup vs. 34.6K vec/s). Even on GIST1M, SIVF maintains 850K vec/s ($36\times$ speedup), confirming that our pre-allocated slab architecture effectively saturates GPU bandwidth by eliminating dynamic resizing overhead.
+
+As illustrated in Figure~\ref{fig:eval_ingestion}, SIVF demonstrates superior ingestion scalability across all dimensions. On the SIFT1M dataset, SIVF achieves an ingestion rate of approximately 3.78M vec/s, representing a $105\times$ speedup over the baseline.
+Notably, on the T2I-1B dataset ($d=200$), which mirrors real-world RAG applications, SIVF sustains a throughput of 2.91M vec/s, delivering an $84\times$ speedup over the baseline (34.6K vec/s).
+This advantage persists even with the high-dimensional GIST1M dataset, where SIVF sustains over 850K vec/s ($36\times$ speedup). These results confirm that our pre-allocated slab architecture effectively mitigates the overhead of dynamic resizing, allowing the system to near-saturate GPU memory bandwidth even under heavy write loads.
 
 \paragraph{Low-Latency Deletion}
-Figure~\ref{fig:eval_deletion} highlights the critical performance divergence. Baseline latency scales poorly due to CPU-GPU roundtrips, spiking to 11.8s for GIST1M. In contrast, SIVF's in-place bitmap updates decouple latency from dimension, maintaining sub-millisecond performance ($\approx$ 0.9 ms) across all datasets. On T2I-1B, this yields a $2,770\times$ improvement (2.4 s $\to$ 0.87 ms), validating SIVF's feasibility for real-time streams.
+
+The most significant performance divergence is observed in deletion latency, shown in Figure~\ref{fig:eval_deletion}. Since the baseline requires a full CPU-GPU roundtrip to reorganize the index, its latency scales poorly with dimension. Consequently, deleting a batch of 10K vectors takes 1.6s for SIFT1M and spikes to 2.4s for T2I-1B and 11.8s for GIST1M.
+In contrast, SIVF performs deletion in-place via a GPU-native validity bitmap, decoupling latency from index size and dimensionality. SIVF maintains sub-millisecond latency ($\approx 0.86$--$0.89$ ms) across all datasets. Notably on T2I-1B, this represents a $2,770\times$ improvement (from 2.4s to 0.87 ms). This result validates SIVF as a feasible solution for real-time streaming scenarios where data freshness is critical.
 
 \paragraph{Search Performance and Trade-offs}
-Figure~\ref{fig:eval_search} compares query throughput (QPS). SIVF outperforms the baseline on SIFT1M ($1.5\times$) and retains 95.5\% of performance on T2I-1B (17.8K vs 18.6K QPS), proving negligible overhead for moderate dimensions. On high-dimensional GIST1M, SIVF achieves 37\% of baseline QPS. This trade-off results from reduced memory coalescing efficiency when traversing non-contiguous slabs with large vectors—a necessary compromise to enable instant, lock-free mutability.
+    
+Figure~\ref{fig:eval_search} presents query performance (in QPS) at comparable recall levels. On SIFT1M, SIVF achieves a $1.5\times$ higher throughput than the baseline.
+On T2I-1B, SIVF demonstrates an optimal balance: it achieves 17.8K QPS compared to the baseline's 18.6K QPS, retaining 95.5\% of the search performance. This confirms that for moderate-dimensional embeddings, the overhead of the linked-slab architecture is negligible.
+However, on the high-dimensional GIST1M dataset ($d=960$), we observe a performance trade-off where SIVF achieves approximately 37\% of the baseline's query throughput. This reduction is attributed to reduced memory coalescing efficiency when fetching large vectors from non-contiguous slabs. Therefore, how to reduce the dimensionality of high-dimensional embedding vectors without sacrificing accuracy, in our humble opinion, would be the most promising future research direction.
 
 \subsection{Parameter Sensitivity}
 \label{sec:eval_param_sensitivity}
 
-We evaluate system robustness by sweeping three parameters: (i) vector capacity factor ($maxvec\_factor$), (ii) slab pool redundancy ($slab\_factor$), and (iii) deletion batch size. These control logical headroom, pre-allocated memory for bursts, and the trade-off between amortization and freshness. Figures~\ref{fig:sivf_sensitivity_qps} and \ref{fig:sivf_sensitivity_lat} summarize the results.
+We evaluate the robustness of SIVF by sweeping three key system parameters that directly affect capacity headroom and update efficiency: (i) the vector capacity factor ($maxvec\_factor$), (ii) the slab pool redundancy ($slab\_factor$), and (iii) the deletion batch size. Intuitively, $maxvec\_factor$ controls the logical headroom of the index (i.e., how aggressively the system provisions capacity relative to the target active set), while $slab\_factor$ determines the amount of pre-allocated slab memory available for absorbing bursty insertions and transient fragmentation. The deletion batch size reflects an application-level knob that trades off amortization efficiency versus the freshness of deletions. Figure~\ref{fig:sivf_sensitivity_qps} and Figure~\ref{fig:sivf_sensitivity_lat} summarize the impact of these parameters on insertion throughput and deletion latency, respectively.
 
 \begin{figure*}[t]
     \centering
     \begin{minipage}{0.48\textwidth}
         \centering
         \includegraphics[width=\linewidth]{figures/sivf_sensitivity_qps.pdf}
-        \caption{Throughput sensitivity analysis.}
+        \caption{Throughput sensitivity analysis across varying memory factors and batch sizes.}
         \label{fig:sivf_sensitivity_qps}
     \end{minipage}
     \hfill
     \begin{minipage}{0.48\textwidth}
         \centering
         \includegraphics[width=\linewidth]{figures/sivf_sensitivity_latency.pdf}
-        \caption{Latency sensitivity analysis.}
+        \caption{Latency sensitivity analysis demonstrating stable sub-millisecond performance.}
         \label{fig:sivf_sensitivity_lat}
     \end{minipage}
 \end{figure*}
 
-\paragraph{Impact of Slab Management}
-As shown in Figure~\ref{fig:sivf_sensitivity_qps}, SIVF maintains consistent insertion throughput (2.7M--3.2M vec/s) across configurations. Increasing $slab\_factor$ from 1.0 to 1.3 improves performance by expanding the pool of free slabs, which reduces allocation contention during bursts. Conversely, performance is insensitive to $maxvec\_factor$, confirming that the slab abstraction effectively decouples logical capacity from physical memory pressure. Insertion costs remain bounded by $O(1)$ operations (payload write, bitmap update, address mapping) provided the slab pool is sufficiently provisioned.
+\paragraph{Impact of Slab Management.}
+As shown in Figure~\ref{fig:sivf_sensitivity_qps}, SIVF maintains a consistent insertion throughput of approximately 2.7M to 3.2M vec/s across a broad range of configurations. Increasing $slab\_factor$ from 1.0 to 1.3 generally improves performance under high-velocity streams. We attribute this to two effects: (1) a larger slab pool reduces the likelihood of exhausting readily available slabs during bursts, avoiding disruptive on-the-fly allocations or refill paths; and (2) it mitigates contention in slab acquisition by increasing the pool of free slabs, thereby reducing retries in atomic operations on shared allocator metadata.
+In contrast, SIVF is relatively insensitive to $maxvec\_factor$, indicating that our slab abstraction effectively decouples logical capacity provisioning from immediate GPU memory pressure. Concretely, once slabs are pre-allocated, the dominant insertion costs are bounded by (i) writing the vector payload into a slab slot, (ii) updating lightweight metadata (e.g., validity bits), and (iii) inserting the ID-to-address mapping. These operations remain stable even when the logical capacity headroom changes, provided that the slab pool itself is sufficiently provisioned.
 
-\paragraph{Effect of Deletion Batch Size}
-Deletion performance is driven by amortization. Larger batches improve throughput by amortizing fixed kernel launch and lookup overheads, while smaller batches minimize staleness but expose these costs. This behavior aligns with SIVF's $O(1)$ logical deletion mechanism, where work is limited to an address lookup and atomic bit flip.
+\paragraph{Effect of Deletion Batch Size.}
+Deletion batch size primarily affects amortization rather than per-vector work. For small batches, fixed overheads (kernel launch, lookup setup, and address-table access) become more visible, whereas larger batches amortize these costs and improve effective throughput. This behavior is consistent with SIVF's O(1) logical deletion mechanism: each deletion performs an address-table lookup followed by a single atomic bit update in the slab validity bitmap, without triggering compaction or data movement. In practice, applications can select a batch size that balances deletion freshness and update efficiency: smaller batches minimize staleness (vectors remain searchable for less time after being marked for deletion), while larger batches maximize amortization when strict immediacy is not required.
 
-\paragraph{Stable Sub-Millisecond Deletion}
-Crucially, Figure~\ref{fig:sivf_sensitivity_lat} shows that deletion latency remains strictly sub-millisecond (0.58--0.93 ms) across all settings. Because deletions require no structural reorganization (e.g., compaction or CPU--GPU roundtrips), performance is independent of list occupancy. Even with 1,000-vector batches, SIVF sustains $>1.7$M vec/s throughput, validating its stability for high-churn workloads.
+\paragraph{Stable Sub-Millisecond Deletion.}
+The most critical observation from Figure~\ref{fig:sivf_sensitivity_lat} is that deletion latency remains strictly within the sub-millisecond range (0.58 ms to 0.93 ms) across all tested configurations. This robustness stems from the fact that deletions do not depend on the current occupancy of inverted lists, nor do they require structural reorganization (e.g., compaction, re-clustering, or CPU--GPU roundtrips). Even when processing a deletion batch of 1{,}000 vectors, the system achieves a peak throughput of over 1.7M vec/s, demonstrating that SIVF can sustain high-rate churn workloads with tight latency constraints.
 
-\subsection{End-to-End Streaming Performance}
+\subsection{End-to-End Streaming Performance of Sliding Windows}
 \label{sec:eval_streaming}
 
-We evaluate real-time applicability using a \textit{Sliding Window} benchmark that mimics production streams. The system maintains a fixed active window ($W$) by ingesting a new batch ($B$) and evicting the oldest batch ($B$) at each step. We test on SIFT1M ($W=200\text{K}, B=10\text{K}$) and GIST1M ($W=100\text{K}, B=5\text{K}$).
+While isolated insertion and deletion micro-benchmarks provide insights into atomic operation costs, they do not fully capture the dynamics of a continuous streaming system. To evaluate the practical applicability of SIVF in real-time scenarios, we designed a \textit{Sliding Window} benchmark that mimics a production environment. The system maintains a fixed window of active vectors (denoted as $W$) in the GPU memory. For every update step, a new batch of vectors ($B$) is ingested, and the oldest batch ($B$) is evicted to maintain the window size $W$.
+We evaluated two datasets: SIFT1M ($d=128$, $W=200\text{K}$, $B=10\text{K}$) and GIST1M ($d=960$, $W=100\text{K}$, $B=5\text{K}$). Figure~\ref{fig:eval_sliding} illustrates the latency per update step for both the Faiss baseline and SIVF.
 
 \begin{figure}[t]
     \centering
     \includegraphics[width=1.0\linewidth]{figures/eval_sliding.pdf}
-    \caption{End-to-End Streaming Performance.}
+    \caption{End-to-End Streaming Performance. 
+    % Comparison of per-step latency in a sliding window scenario on SIFT1M (left) and GIST1M (right). The baseline suffers from high latency due to the CPU-GPU roundtrip required for deletion. SIVF maintains single-digit millisecond latency via native in-place updates, achieving a speedup of 161$\times$ on SIFT1M and 266$\times$ on GIST1M.
+    }
     \label{fig:eval_sliding}
 \end{figure}
 
-As shown in Figure~\ref{fig:eval_sliding}, the standard Faiss baseline suffers from high latency due to the CPU-GPU roundtrip required for index reconstruction, causing system freezes of 355~ms (SIFT1M) and $>$ 1.1~s (GIST1M) per update.
-In contrast, SIVF executes updates strictly in VRAM via slab-based management, reducing per-step latency to $\approx$ 2.2~ms (SIFT1M) and 4.2~ms (GIST1M). This yields speedups of $163\times$ and $262\times$, respectively. Notably, the performance gap widens with dimensionality (GIST1M), where the baseline is bottlenecked by PCIe saturation. SIVF eliminates this bottleneck, maintaining single-digit millisecond latency and transforming the GPU IVF index into a real-time streaming engine.
+The results reveal a limitation in the standard static index architecture. For the Faiss baseline, every update step triggers a full reconstruction cycle where the GPU index must be copied to the CPU, modified, and re-uploaded. This roundtrip overhead results in substantial system freezes, averaging 355~ms for SIFT1M and over 1.1~s for GIST1M per update. Such latency renders the baseline unsuitable for latency-sensitive streaming applications, as the indexing pipeline becomes blocked for significant durations.
+
+In contrast, SIVF demonstrates superior stability and performance. By leveraging its slab-based memory management and native in-kernel deletion, SIVF executes the entire sliding window update strictly within the GPU. The total latency per step is reduced to approximately 2.2~ms for SIFT1M and 4.2~ms for GIST1M. This represents a speedup of 161$\times$ and 266$\times$, respectively.
+
+Notably, the performance gap widens as the data dimensionality increases. In the 960-dimensional GIST1M task, the baseline suffers from PCIe bandwidth saturation due to the massive data movement required for the roundtrip. SIVF avoids this bottleneck entirely, maintaining single-digit millisecond latency even under high-dimensional workloads. These results confirm that SIVF effectively transforms the GPU IVF index from a static search structure into a fully dynamic, real-time streaming engine.
 
 \subsection{Memory Efficiency and Scalability}
 \label{sec:eval_memory}
@@ -735,8 +785,8 @@ LSH~\cite{10.1145/997817.997857} & 787 & 14.6 & 428 & 16.3 & 36.6 & 9.2 \\
 \end{table}
 
 Table~\ref{tab:landscape_full} reports the results of both vector ingestion and deletion in a streaming context on three datasets.
-graph indices (HNSW, NSG) suffer catastrophic performance degradation on high-dimensional data, dropping to merely $\sim$ 600 vec/s on GIST1M due to cache thrashing, and fail to support native deletion (N/A). 
-While GPU Flat achieve the highest ingestion throughput because they perform brute-force search without indexing overhead, they incur prohibitive deletion latencies ($>$ 1s) due to CPU-GPU roundtrips.
+graph indices (HNSW, NSG) suffer catastrophic performance degradation on high-dimensional data, dropping to merely $\sim$600 vec/s on GIST1M due to cache thrashing, and fail to support native deletion (N/A). 
+While GPU Flat achieve the highest ingestion throughput because they perform brute-force search without indexing overhead, they incur prohibitive deletion latencies ($>$1s) due to CPU-GPU roundtrips.
 SIVF emerges as the only architecture enabling holistic stream processing: it sustains GPU-class ingestion rates (e.g., 853K vec/s on GIST1M, orders of magnitudes faster than graphs) while providing sub-millisecond native deletion, effectively bridging the gap between static high-throughput search and dynamic mutability.
 
 \section{Conclusion}
@@ -756,13 +806,13 @@ We believe SIVF represents a significant step towards enabling real-time, mutabl
 % \subsection{Limitations and Future Directions}
 % \label{sec:limitations}
 
-Despite the orders-of-magnitude improvement in mutation latency, our current SIVF design entails specific trade-offs. 
+% Despite the orders-of-magnitude improvement in mutation latency, our current SIVF design entails specific trade-offs. 
 
-First, the \textit{pointer-chasing overhead} inherent in the linked-slab architecture reduces memory coalescing efficiency for those high-dimensional vectors. As observed in the GIST1M ($d=960$) evaluation, this results in a $2.7\times$ reduction in raw search QPS compared to contiguous static indices. While acceptable for write-heavy streaming scenarios, future work will address this by exploring \textit{adaptive super-slabs} that enforce page-aligned storage to restore memory bandwidth utilization.
+% First, the \textit{pointer-chasing overhead} inherent in the linked-slab architecture reduces memory coalescing efficiency for those high-dimensional vectors. As observed in the GIST1M ($d=960$) evaluation, this results in a $2.7\times$ reduction in raw search QPS compared to contiguous static indices. While acceptable for write-heavy streaming scenarios, future work will address this by exploring \textit{adaptive super-slabs} that enforce page-aligned storage to restore memory bandwidth utilization.
 
-Second, the current implementation operates on a single GPU, bounding the maximum active window size to the available VRAM (e.g., approximately 20M 128-dim vectors on a 24-GB GPU card). While our sliding window experiments demonstrate stability under infinite streams, scaling the \textit{simultaneous} index capacity to billion-scale datasets will require extending SIVF with \textit{multi-GPU sharding} via NVLink and Unified Memory prefetching techniques.
+% Second, the current implementation operates on a single GPU, bounding the maximum active window size to the available VRAM (e.g., approx. 20M 128-dim vectors on a 24 GB card). While our sliding window experiments demonstrate stability under infinite streams, scaling the \textit{simultaneous} index capacity to billion-scale datasets will require extending SIVF with \textit{multi-GPU sharding} via NVLink and Unified Memory prefetching techniques.
 
-Finally, our consistency model prioritizes throughput over strict linearizability. While sufficient for the probabilistic nature of approximate nearest neighbor search, future work will investigate lightweight snapshot isolation mechanisms to support transactional semantics without compromising the lock-free ingestion speed.
+% Finally, our consistency model prioritizes throughput over strict linearizability. While sufficient for the probabilistic nature of ANN search, future work will investigate lightweight snapshot isolation mechanisms to support transactional semantics without compromising the lock-free ingestion speed.
 
 \section*{Acknowledgment}
 Results presented in this paper were obtained using the Chameleon testbed supported by the National Science Foundation.
