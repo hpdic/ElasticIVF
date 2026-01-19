@@ -129,6 +129,14 @@ if(BUILD_TESTING)
   endif()
 endif()
 
+# --- DEEP Benchmarks ---
+add_executable(test_sivf_deep_add hpdic/experiment/deep/test_sivf_deep_add.cpp)
+target_link_libraries(test_sivf_deep_add faiss OpenMP::OpenMP_CXX CUDA::cudart CUDA::cublas)
+add_executable(test_sivf_deep_search hpdic/experiment/deep/test_sivf_deep_search.cpp)
+target_link_libraries(test_sivf_deep_search faiss OpenMP::OpenMP_CXX CUDA::cudart CUDA::cublas)
+add_executable(test_sivf_deep_delete hpdic/experiment/deep/test_sivf_deep_delete.cpp)
+target_link_libraries(test_sivf_deep_delete faiss OpenMP::OpenMP_CXX CUDA::cudart CUDA::cublas)
+
 # --- SIFT Benchmark ---
 find_package(CUDAToolkit REQUIRED)
 find_package(OpenMP REQUIRED)

@@ -10,11 +10,10 @@ cmake -B build . \
     -DCMAKE_CUDA_COMPILER_LAUNCHER=ccache \
     -DFAISS_ENABLE_GPU=ON \
     -DFAISS_ENABLE_PYTHON=ON \
-    -DFAISS_ENABLE_RAFT=OFF \
     -DBUILD_TESTING=OFF \
     -DCMAKE_CUDA_ARCHITECTURES="75" \
     -DPython_EXECUTABLE=$(which python)
-make -C build -j $(nproc) faiss
+make -C build -j faiss
 
 # SIVF add benchmark:
 cd ~/ElasticIVF/build
@@ -35,6 +34,13 @@ make -j test_sivf_delete
 cd ~/ElasticIVF/build
 make -j test_sivf_sensitivity
 ./faiss/gpu/test_sivf_sensitivity
+
+# Dataset DEEP:
+cd ~/ElasticIVF/build
+make test_sivf_deep_add test_sivf_deep_search test_sivf_deep_delete -j
+./test_sivf_deep_add
+./test_sivf_deep_search
+./test_sivf_deep_delete
 
 # Dataset SIFT:
 cd ~/ElasticIVF/build
