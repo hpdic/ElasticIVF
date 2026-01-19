@@ -17,15 +17,18 @@ import os
 from matplotlib.patches import Patch
 
 # ================= 1. Data Preparation =================
+
 # Experimental Data: Python (Faiss)
 # Latency values from Steps 1-9 (Step 0 excluded as warmup)
-py_add_data = [27.65, 28.57, 27.91, 28.29, 27.86, 27.97, 28.13, 28.49, 28.55]
-py_del_data = [236.63, 211.60, 212.52, 212.11, 211.61, 207.90, 210.23, 208.46, 209.89]
+# Source: python3 ~/ElasticIVF/hpdic/script/benchmark_baseline.py
+py_add_data = [27.34, 28.70, 27.56, 27.52, 27.31, 28.37, 28.20, 27.98, 27.78]
+py_del_data = [235.01, 206.95, 204.71, 208.51, 205.22, 209.72, 207.42, 206.04, 205.68]
 
 # Experimental Data: C++ (Faiss)
 # Latency values from Steps 1-9 (Step 0 excluded as warmup)
-cpp_add_data = [29.86, 27.93, 27.22, 27.74, 30.99, 31.02, 27.87, 27.33, 27.09]
-cpp_del_data = [210.88, 194.75, 197.75, 206.64, 201.16, 214.34, 199.68, 198.89, 196.10]
+# Source: ./benchmark_baseline.bin
+cpp_add_data = [27.81, 27.68, 28.04, 28.06, 27.81, 27.83, 27.49, 27.85, 27.79]
+cpp_del_data = [197.57, 197.67, 197.37, 197.42, 197.78, 198.75, 197.95, 197.94, 198.92]
 
 # Calculate Mean Latency
 py_add_mean = np.mean(py_add_data)

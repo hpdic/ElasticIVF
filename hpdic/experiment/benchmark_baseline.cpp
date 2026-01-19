@@ -198,3 +198,26 @@ int main() {
  * -lcudart \
  * -lcublas
  */
+
+/** Example output:
+(myenv) cc@rtx6000:~/ElasticIVF/hpdic/experiment$ ./benchmark_baseline.bin
+Data loaded. Dim: 128, Base: 1000000
+Training index...
+Moving index to GPU...
+[HPDIC MOD] Faiss GPU initialized on device ID: 0
+Pre-filling window with 100000 vectors...
+
+Step  | Add(ms)    | Remove(ms)   | Method          | Total(ms) 
+-----------------------------------------------------------------
+0     | 9.80       | 228.28       | CPU_Roundtrip   | 238.08    
+1     | 27.81      | 197.57       | CPU_Roundtrip   | 225.38    
+2     | 27.68      | 197.67       | CPU_Roundtrip   | 225.34    
+3     | 28.04      | 197.37       | CPU_Roundtrip   | 225.41    
+4     | 28.06      | 197.42       | CPU_Roundtrip   | 225.48    
+5     | 27.81      | 197.78       | CPU_Roundtrip   | 225.59    
+6     | 27.83      | 198.75       | CPU_Roundtrip   | 226.58    
+7     | 27.49      | 197.95       | CPU_Roundtrip   | 225.44    
+8     | 27.85      | 197.94       | CPU_Roundtrip   | 225.79    
+9     | 27.79      | 198.92       | CPU_Roundtrip   | 226.71    
+(myenv) cc@rtx6000:~/ElasticIVF/hpdic/experiment$ 
+ */

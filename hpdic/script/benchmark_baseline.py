@@ -125,3 +125,31 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+#
+# Example Output:
+# (myenv) cc@rtx6000:~/ElasticIVF/hpdic/script$ LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libmkl_rt.so python3 ~/ElasticIVF/hpdic/script/benchmark_baseline.py
+# Loading data from /home/cc/ElasticIVF/hpdic/data/sift...
+# Data loaded. Base shape: (1000000, 128)
+# Initializing Faiss GPU resources...
+# Training IndexIVFFlat on CPU...
+# Moving index to GPU...
+# [HPDIC MOD] Faiss GPU initialized on device ID: 0
+# Pre filling window with 100000 vectors...
+
+# >>> Starting Streaming Benchmark <<<
+# Window: 100000, Batch: 10000
+# Step  | Add(ms)    | Remove(ms)   | Method          | Total(ms) 
+# =================================================================
+# 0     | 9.10       | 239.60       | CPU_Roundtrip   | 248.71    
+# 1     | 27.34      | 235.01       | CPU_Roundtrip   | 262.34    
+# 2     | 28.70      | 206.95       | CPU_Roundtrip   | 235.65    
+# 3     | 27.56      | 204.71       | CPU_Roundtrip   | 232.27    
+# 4     | 27.52      | 208.51       | CPU_Roundtrip   | 236.03    
+# 5     | 27.31      | 205.22       | CPU_Roundtrip   | 232.53    
+# 6     | 28.37      | 209.72       | CPU_Roundtrip   | 238.09    
+# 7     | 28.20      | 207.42       | CPU_Roundtrip   | 235.63    
+# 8     | 27.98      | 206.04       | CPU_Roundtrip   | 234.02    
+# 9     | 27.78      | 205.68       | CPU_Roundtrip   | 233.46    
+# (myenv) cc@rtx6000:~/ElasticIVF/hpdic/script$ 
+#
