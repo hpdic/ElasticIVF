@@ -1,5 +1,5 @@
 % \documentclass[sigconf,nonacm]{acmart}
-\documentclass[sigconf,anonymous]{acmart}
+\documentclass[sigconf,nonacm,anonymous]{acmart}
 
 \setlength{\marginparwidth}{2cm}
 
@@ -74,7 +74,7 @@
 }
 
 \begin{abstract}
-GPU-accelerated Inverted File (IVF) index is one of industry standards for large-scale vector analytics but relies on static VRAM layouts that hinder real-time mutability. Our benchmark and analysis reveal that existing designs of GPU IVF necessitate expensive CPU-GPU data transfers for index updates, causing system latency (at the granularity of 10,000 vectors) to spike from milliseconds to seconds in streaming scenarios. We propose SIVF (Streaming IVF), a GPU-native architecture that enables high-velocity, in-place mutation via slab-based VRAM allocation and lock-free validity bitmaps. SIVF has been implemented and integrated into the state-of-the-art vector analytics library Faiss. Evaluation against 5 baselines (GPU IVF, GPU Flat, HNSW, NSG, LSH) with 5 vector datasets (synthetic, Deep1B, SIFT1M, T2I-1B, GIST1M) demonstrates that SIVF reduces deletion latency to sub-millisecond levels, outperforming baselines by over 4 orders of magnitude. Moreover, SIVF achieves up to $120\times$ higher ingestion throughput and $262\times$ end-to-end sliding window speedup with negligible memory overhead (< 0.8\%). Notably, on lower-dimensional datasets like Deep1B, SIVF even accelerates search throughput by $2\times$ due to improved memory locality. These results suggest that SIVF effectively removes the I/O bottleneck of GPU indices for streaming vectors, therefore transforming vector search from a static retrieval task into an integral component of real-time data analytics.
+GPU-accelerated Inverted File (IVF) index is one of industry standards for large-scale vector analytics but relies on static VRAM layouts that hinder real-time mutability. Our benchmark and analysis reveal that existing designs of GPU IVF necessitate expensive CPU-GPU data transfers for index updates, causing system latency (at the granularity of 10,000 vectors) to spike from milliseconds to seconds in streaming scenarios. We propose SIVF (Streaming IVF), a GPU-native architecture that enables high-velocity, in-place mutation via slab-based VRAM allocation and lock-free validity bitmaps. SIVF has been implemented and integrated into the state-of-the-art vector analytics library Faiss. Evaluation against 5 baselines (GPU IVF, GPU Flat, HNSW, NSG, LSH) with 5 vector datasets (synthetic, Deep1B, SIFT1M, T2I-1B, GIST1M) suggests that SIVF effectively removes the I/O bottleneck of GPU indices for streaming vectors, therefore transforming vector search from a static retrieval task into an integral component of real-time data analytics.
 \end{abstract}
 \maketitle
 
@@ -164,6 +164,8 @@ Efforts to improve graph construction and maintenance include LIGS~\cite{10.1145
 Addressing robustness, Hua et al.~\cite{10.1145/3769783} propose dynamically detecting and fixing graph hardness for out-of-distribution queries. MIRAGE-ANNS~\cite{10.1145/3725325} attempts to bridge the gap between incremental and refinement-based construction. 
 Furthermore, theoretical frameworks like Subspace Collision~\cite{10.1145/3709729} provide guarantees on result quality using clustering-based indexing.
 
+Collectively, while these approaches maximize navigational efficiency for static data, they fundamentally rely on complex edge dependencies that are prohibitively expensive to maintain on GPUs. Unlike SIVF, they lack the architectural support for $O(1)$ lock-free mutation, rendering them unsuitable for high-churn streaming workloads where sub-millisecond update latency is critical.
+
 \paragraph{Attribute-Filtered and Hybrid Search}
 The integration of structured constraints with vector analytics has led to a surge in Filtered ANN research. Li et al.~\cite{10.1145/3769763} provide a comprehensive taxonomy and benchmark of these methods. 
 A primary focus is handling dynamic updates and specific filter types such as ranges or windows. 
@@ -172,6 +174,8 @@ Dynamic environments are addressed by DIGRA~\cite{10.1145/3725399}, which uses a
 Peng et al.~\cite{10.14778/3748191.3748193} propose dynamic segment graphs to handle mixed streams of data and queries.
 Regarding specific constraints, Wang et al.~\cite{DBLP:conf/nips/WangLX0YN23} present a robust framework for general attribute constraints. 
 Engels et al.~\cite{engels2024approximate} focus on window filters, while WoW~\cite{10.1145/3769843} develops a window-graph based index to handle window-to-window incremental construction.
+
+However, these contributions primarily optimize algorithmic filtering logic rather than the underlying storage architecture. They remain constrained by the static memory layouts of standard GPU indices, whereas SIVF fundamentally redesigns the VRAM management to enable the high-throughput, in-place mutability that is a prerequisite for such dynamic operations.
 
 \paragraph{Quantization and Scalability}
 To manage high-dimensional data at scale, quantization and system-level optimizations are critical. 
@@ -183,9 +187,13 @@ WebANNS~\cite{10.1145/3726302.3730115} enables efficient search within web brows
 From a theoretical perspective, Indyk and Xu~\cite{DBLP:conf/nips/IndykX23} analyze the worst-case performance limits of popular implementations. 
 Finally, DARTH~\cite{10.1145/3749160} introduces declarative recall targets through adaptive early termination to balance performance and result quality.
 
-\paragraph{GPU Systems and Optimizations}
+While these techniques effectively reduce storage footprints or distribute load, they predominantly operate on static memory layouts that are brittle under frequent updates. SIVF addresses a complementary challenge: it provides the dynamic memory substrate that allows these scalable architectures to support real-time streams without succumbing to VRAM fragmentation or locking overheads.
+
+\paragraph{GPU Acceleration Techniques}
 Recent HPC work highlights how careful kernel and data-layout design can unlock GPU performance across data-intensive workloads. FZ-GPU demonstrates a fully parallel compression pipeline with both warp-aware bitwise operations and shared-memory efficiency~\cite{10.1145/3588195.3592994}. For sparse linear algebra, SpMV designs reduce preprocessing overhead while improving load balance and memory access locality~\cite{10.1145/3588195.3593002}, and GPU-aware preconditioning further emphasizes locality and coalescence as first-order concerns on modern GPU architectures~\cite{10.1145/3625549.3658683}. Beyond compute kernels, GPU-enabled asynchronous checkpoint caching and prefetching treat GPU memory as a first-class tier to improve end-to-end throughput for I/O-heavy workflows~\cite{10.1145/3588195.3592987}. Format choices and composition are also critical for irregular workloads, as shown by automatic sparse format composition for SpMM that avoids expensive autotuning while delivering strong performance~\cite{10.1145/3731545.3731574}.
 Another line of work focuses on reliability, debugging, and cluster-scale GPU management, which together shape how GPU-centric systems are built and operated. GPU-FPX provides low-overhead floating-point exception tracking for NVIDIA GPUs~\cite{10.1145/3588195.3592991}, FPBOXer improves scalable input generation for triggering floating-point exceptions in GPU programs~\cite{10.1145/3625549.3658660}, and FloatGuard extends whole-program exception detection to AMD GPUs and highlights cross-vendor portability concerns~\cite{10.1145/3731545.3731586}. At the application and cluster level, SIMCoV-GPU studies multi-node, multi-GPU acceleration for irregular agent-based simulations~\cite{10.1145/3625549.3658692}, FASOP automates fast search for near-optimal transformer parallelization on heterogeneous GPU clusters~\cite{10.1145/3625549.3658687}, and serverless platforms motivate GPU sharing and scheduling mechanisms such as ESG and FluidFaaS~\cite{10.1145/3625549.3658657,10.1145/3731545.3731580}. These works reinforce the importance of aligning work granularity with warps, minimizing synchronization overhead, and designing memory layouts that preserve locality, which are relevant to GPU-resident indexing under dynamic updates.
+
+However, applying these general-purpose HPC optimizations to vector search remains non-trivial due to the irregular memory access patterns of IVF traversal. SIVF bridges this gap by tailoring these micro-architectural principles, specifically warp-aligned slabs and lock-free synchronization, to construct the first GPU-resident index capable of sustaining high-velocity updates without compromising retrieval integrity.
 
 \section{Design and Implementation of SIVF}
 \label{sec:design_implementation}
@@ -756,9 +764,9 @@ Comprehensive evaluation against the industry-standard Faiss library, spanning 5
 % \subsection{Limitations and Future Directions}
 % \label{sec:limitations}
 
-Despite the orders-of-magnitude improvement in mutation latency, current SIVF design entails specific trade-offs. 
-First, the \textit{pointer-chasing overhead} inherent in the linked-slab architecture reduces memory coalescing efficiency for those high-dimensional vectors. As observed in the GIST1M (960 dimensions) evaluation, this results in a $37\%$ reduction in raw search QPS compared to contiguous static indices. While acceptable for write-heavy streaming scenarios, future work will address this by exploring \textit{adaptive super-slabs} that enforce page-aligned storage to restore memory bandwidth utilization.
-Second, the current implementation operates on a single GPU, bounding the maximum active window size to the available VRAM (e.g., approximately 20M 128-dim vectors on a 24-GB GPU card). While our sliding window experiments demonstrate stability under infinite streams, scaling the \textit{simultaneous} index capacity to larger datasets will require extending SIVF with \textit{multi-GPU sharding} via NVLink and unified memory prefetching techniques.
+% Despite the orders-of-magnitude improvement in mutation latency, current SIVF design entails specific trade-offs. 
+% First, the \textit{pointer-chasing overhead} inherent in the linked-slab architecture reduces memory coalescing efficiency for those high-dimensional vectors. As observed in the GIST1M (960 dimensions) evaluation, this results in a $37\%$ reduction in raw search QPS compared to contiguous static indices. While acceptable for write-heavy streaming scenarios, future work will address this by exploring \textit{adaptive super-slabs} that enforce page-aligned storage to restore memory bandwidth utilization.
+% Second, the current implementation operates on a single GPU, bounding the maximum active window size to the available VRAM (e.g., approximately 20M 128-dim vectors on a 24-GB GPU card). While our sliding window experiments demonstrate stability under infinite streams, scaling the \textit{simultaneous} index capacity to larger datasets will require extending SIVF with \textit{multi-GPU sharding} via NVLink and unified memory prefetching techniques.
 
 % Finally, our consistency model prioritizes throughput over strict linearizability. While sufficient for the probabilistic nature of approximate nearest neighbor search, future work will investigate lightweight snapshot isolation mechanisms to support transactional semantics without compromising the lock-free ingestion speed.
 
