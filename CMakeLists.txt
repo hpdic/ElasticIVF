@@ -129,7 +129,14 @@ if(BUILD_TESTING)
   endif()
 endif()
 
-# --- DEEP Benchmarks ---
+##
+## HPDIC Experiments
+##
+
+find_package(CUDAToolkit REQUIRED)
+find_package(OpenMP REQUIRED)
+
+# --- Deep1B Benchmarks ---
 add_executable(test_sivf_deep_add hpdic/experiment/deep/test_sivf_deep_add.cpp)
 target_link_libraries(test_sivf_deep_add faiss OpenMP::OpenMP_CXX CUDA::cudart CUDA::cublas)
 add_executable(test_sivf_deep_search hpdic/experiment/deep/test_sivf_deep_search.cpp)
@@ -137,9 +144,7 @@ target_link_libraries(test_sivf_deep_search faiss OpenMP::OpenMP_CXX CUDA::cudar
 add_executable(test_sivf_deep_delete hpdic/experiment/deep/test_sivf_deep_delete.cpp)
 target_link_libraries(test_sivf_deep_delete faiss OpenMP::OpenMP_CXX CUDA::cudart CUDA::cublas)
 
-# --- SIFT Benchmark ---
-find_package(CUDAToolkit REQUIRED)
-find_package(OpenMP REQUIRED)
+# --- SIFT1M Benchmark ---
 add_executable(test_sivf_sift_add hpdic/experiment/sift/test_sivf_sift_add.cpp)
 target_link_libraries(test_sivf_sift_add 
     faiss 
@@ -162,7 +167,7 @@ target_link_libraries(test_sivf_sift_delete
     CUDA::cublas
 )
 
-# --- GIST Benchmarks ---
+# --- GIST1M Benchmarks ---
 add_executable(test_sivf_gist_add hpdic/experiment/gist/test_sivf_gist_add.cpp)
 target_link_libraries(test_sivf_gist_add faiss OpenMP::OpenMP_CXX CUDA::cudart CUDA::cublas)
 add_executable(test_sivf_gist_search hpdic/experiment/gist/test_sivf_gist_search.cpp)
@@ -170,7 +175,7 @@ target_link_libraries(test_sivf_gist_search faiss OpenMP::OpenMP_CXX CUDA::cudar
 add_executable(test_sivf_gist_delete hpdic/experiment/gist/test_sivf_gist_delete.cpp)
 target_link_libraries(test_sivf_gist_delete faiss OpenMP::OpenMP_CXX CUDA::cudart CUDA::cublas)
 
-# --- T2I Benchmarks ---
+# --- T2I-1B Benchmarks ---
 add_executable(test_sivf_t2i_add hpdic/experiment/t2i/test_sivf_t2i_add.cpp)
 target_link_libraries(test_sivf_t2i_add faiss OpenMP::OpenMP_CXX CUDA::cudart CUDA::cublas)
 add_executable(test_sivf_t2i_search hpdic/experiment/t2i/test_sivf_t2i_search.cpp)
