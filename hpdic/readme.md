@@ -35,14 +35,14 @@ cd ~/ElasticIVF/build
 make -j test_sivf_sensitivity
 ./faiss/gpu/test_sivf_sensitivity
 
-# Dataset DEEP:
+# Dataset Deep1B:
 cd ~/ElasticIVF/build
 make test_sivf_deep_add test_sivf_deep_search test_sivf_deep_delete -j
 ./test_sivf_deep_add
 ./test_sivf_deep_search
 ./test_sivf_deep_delete
 
-# Dataset SIFT:
+# Dataset SIFT1M:
 cd ~/ElasticIVF/build
 make -j test_sivf_sift_add
 ./test_sivf_sift_add
@@ -51,14 +51,14 @@ make -j test_sivf_sift_search
 make -j test_sivf_sift_delete
 ./test_sivf_sift_delete
 
-# Dataset GIST:
+# Dataset GIST1M:
 cd ~/ElasticIVF/build
 make test_sivf_gist_add test_sivf_gist_search test_sivf_gist_delete -j
 ./test_sivf_gist_add
 ./test_sivf_gist_search
 ./test_sivf_gist_delete
 
-# Dataset T2I:
+# Dataset T2I-1B:
 cd ~/ElasticIVF/build
 make test_sivf_t2i_add test_sivf_t2i_search test_sivf_t2i_delete -j
 ./test_sivf_t2i_add
@@ -117,8 +117,7 @@ git clone https://github.com/hpdic/ElasticIVF.git
 cd ElasticIVF
 python3 -m venv myenv
 source myenv/bin/activate
-which python 
-# 输出应该是 /home/cc/ElasticIVF/myenv/bin/python
+which python # e.g., /home/cc/ElasticIVF/myenv/bin/python
 pip install matplotlib torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
 python3 ~/ElasticIVF/hpdic/script/test_gpu.py
 rm -rf build
