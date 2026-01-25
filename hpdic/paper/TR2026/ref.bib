@@ -1,3 +1,39 @@
+@inproceedings{zli_sigmod26,
+      title={Scalable Graph Indexing using GPUs for Approximate Nearest Neighbor Search}, 
+      author={Zhonggen Li and Xiangyu Ke and Yifan Zhu and Bocheng Yu and Baihua Zheng and Yunjun Gao},
+      year={2026},
+      booktitle = {Proceedings of the 2026 International Conference on Management of Data (SIGMOD)},
+      url={https://arxiv.org/abs/2508.08744}, 
+}
+
+@inproceedings {zzhang_nsdi24,
+author = {Zili Zhang and Fangyue Liu and Gang Huang and Xuanzhe Liu and Xin Jin},
+title = {Fast Vector Query Processing for Large Datasets Beyond {GPU} Memory with Reordered Pipelining},
+booktitle = {21st USENIX Symposium on Networked Systems Design and Implementation (NSDI 24)},
+year = {2024},
+isbn = {978-1-939133-39-7},
+address = {Santa Clara, CA},
+pages = {23--40},
+url = {https://www.usenix.org/conference/nsdi24/presentation/zhang-zili-pipelining},
+publisher = {USENIX Association},
+month = apr
+}
+
+@inproceedings{jmohoney_osdi25,
+author = {Mohoney, Jason and Sarda, Devesh and Tang, Mengze and Chowdhury, Shihabur Rahman and Pacaci, Anil and Ilyas, Ihab F. and Rekatsinas, Theodoros and Venkataraman, Shivaram},
+title = {Quake: adaptive indexing for vector search},
+year = {2025},
+isbn = {978-1-939133-47-2},
+publisher = {USENIX Association},
+address = {USA},
+abstract = {Vector search, the task of finding the k-nearest neighbors of a query vector against a database of high-dimensional vectors, underpins many machine learning applications, including retrieval-augmented generation, recommendation systems, and information retrieval. However, existing approximate nearest neighbor (ANN) methods perform poorly under dynamic and skewed workloads where data distributions evolve. We introduce Quake, an adaptive indexing system that maintains low latency and high recall in such environments. Quake employs a multi-level partitioning scheme that adjusts to updates and changing access patterns, guided by a cost model that predicts query latency based on partition sizes and access frequencies. Quake also dynamically sets query execution parameters to meet recall targets using a novel recall estimation model. Furthermore, Quake utilizes NUMA-aware intraquery parallelism for improved memory bandwidth utilization during search. To evaluate Quake, we prepare a Wikipedia vector search workload and develop a workload generator to create vector search workloads with configurable access patterns. Our evaluation shows that on dynamic workloads, Quake achieves query latency reductions of 1.5-38\texttimes{} and update latency reductions of 4.5-126\texttimes{} compared to state-of-the-art indexes such as SVS, DiskANN, HNSW, and SCANN.},
+booktitle = {Proceedings of the 19th USENIX Conference on Operating Systems Design and Implementation},
+articleno = {9},
+numpages = {17},
+location = {Boston, MA, USA},
+series = {OSDI '25}
+}
+
 @inproceedings{vectraflow,
   title = {VectraFlow: Integrating Vectors into Stream Processing},
   author = {Lu, Duo and Feng, Siming and Zhou, Jonathan and Solleza, Franco and Schwarzkopf, Malte and Çetintemel, Uğur},
