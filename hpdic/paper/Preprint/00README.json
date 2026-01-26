@@ -1,0 +1,29 @@
+{
+   "sources" : [
+      {
+         "usage" : "toplevel",
+         "filename" : "sivf.tex"
+      },
+      {
+         "usage" : "ignore",
+         "filename" : "ACM-Reference-Format.bst"
+      },
+      {
+         "usage" : "ignore",
+         "filename" : "ann.bib"
+      },
+      {
+         "usage" : "ignore",
+         "filename" : "gpu.bib"
+      },
+      {
+         "usage" : "ignore",
+         "filename" : "ref.bib"
+      }
+   ],
+   "spec_version" : 1,
+   "texlive_version" : "2025",
+   "process" : {
+      "compiler" : "pdflatex"
+   }
+}
