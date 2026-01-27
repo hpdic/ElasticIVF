@@ -7,7 +7,6 @@
 
 \usepackage{placeins}
 \usepackage{lipsum}
-\usepackage{amsmath}
 \usepackage{mathtools}
 % \usepackage{amsthm}
 % \usepackage{algorithmic}
@@ -27,6 +26,8 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % THEOREMS
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\usepackage{amsmath,amsthm}
+
 \theoremstyle{plain}
 \newtheorem{theorem}{Theorem}[section]
 \newtheorem{proposition}[theorem]{Proposition}
@@ -416,11 +417,9 @@ Maintaining top-$k$ results without global contention is achieved using a two-st
 
 After all probed lists are traversed, the warp aggregates results. Each thread writes its local top-$k$ list to shared memory. A single thread then performs a deterministic merge across the 32 per-thread lists and outputs the final top-$k$ for the query. This design trades a small amount of serial work for a contention-free aggregation path and avoids additional warp-level primitives.
 
-\subsubsection{Correctness Under Concurrent Ingestion}
+\subsubsection{Search Algorithm}
 
-SIVF supports concurrent ingestion by using a publish protocol based on the validity bitmap. The ingestion kernel writes the payload, updates the identifier buffer and address table entry, and then executes \verb|__threadfence()| before setting the corresponding validity bit via an atomic operation. The search kernel consults the validity bit as the sole signal that a slot is present. Therefore, if search observes a valid bit, the payload and identifier for that slot have been made globally visible prior to publication. This ensures that search does not read partially initialized vectors from concurrent insertions.
-
-Algorithm~\ref{alg:sivf_search} describes the warp-cooperative search procedure of SIVF. 
+Algorithm~\ref{alg:sivf_search} describes the proposed search procedure of SIVF based on warp cooperation. 
 We launch one CUDA block per query with 32 threads, so each query is processed by a single warp. 
 At the beginning of the kernel, the warp cooperatively stages the query vector into shared memory to avoid redundant global loads during list traversal. 
 For each query, we probe $nprobe$ coarse lists returned by the quantizer. 
@@ -429,7 +428,6 @@ At each slab, thread $t_j$ corresponds to slot $j$ and consults the slab validit
 If the $j$-th bit is set, the thread loads the vector payload from the slab data region, computes the squared $L_2$ distance to the shared query, retrieves the corresponding user identifier from the slab identifier buffer, and updates its local top-$k$ candidates. 
 Traversal proceeds by following the \texttt{next\_slab\_idx} pointer recorded in the slab metadata. 
 To ensure termination under unexpected corruption, we additionally bound the traversal length and break on self-loops.
-
 
 \begin{algorithm}[t]
 \caption{Warp-cooperative search in SIVF}
@@ -492,7 +490,7 @@ The vector payload is not moved or overwritten. Search kernels consult the bitma
 
 Deletion requests may include duplicates or may race with other deletions. SIVF treats deletion as an idempotent operation. After the atomic bitmap update, the kernel checks whether the bit was previously set by inspecting the pre-update value returned by \texttt{atomicAnd}. Only if the bit transitioned from $1$ to $0$ does the kernel decrement the slab counter \texttt{valid\_count} and increment a global deletion counter. Finally, the kernel marks $\mathcal{T}[u] \leftarrow \text{INVALID}$ to prevent future deletion requests from dereferencing a stale coordinate.
 
-This protocol provides a clear correctness contract with concurrent search and insertion. Search considers a slot present only if its validity bit is set. Insertion sets the validity bit only after payload and identifier writes are completed and a device-wide memory fence is executed. Deletion clears the validity bit via an atomic operation, so a deleted slot is excluded from search as soon as the bit is cleared. The ATT invalidation is a secondary safety step that prevents repeated deletions from accessing recycled or stale coordinates.
+This protocol provides a clear correctness contract with concurrent search and insertion. Search considers a slot present only if its validity bit is set. Insertion sets the validity bit only after payload and identifier writes are completed and a device-wide memory fence is executed. Deletion clears the validity bit via an atomic operation, so a deleted slot is excluded from search as soon as the bit is cleared. The ATT invalidation is a secondary safety step that prevents repeated deletions from accessing recycled or stale coordinates. A more formal correctness analysis is provided in Section~\ref{sec:theoretical_analysis}.
 
 Deletion performs a constant number of random memory accesses: one read of $\mathcal{T}[u]$, one atomic update of a 32-bit bitmap, and one write of the 64-bit ATT entry to the invalid sentinel. The data payload remains untouched, avoiding bandwidth-heavy compaction. In addition, the implementation optionally updates a 32-bit counter in the slab metadata and a global 32-bit deletion counter for bookkeeping. Overall, the dominant deletion work is independent of the inverted list length, explaining the large speedups observed in our evaluation.
 
@@ -528,14 +526,146 @@ Finally, the kernel writes the invalid sentinel back to $\mathcal{T}[u]$ to prev
 \end{algorithmic}
 \end{algorithm}
 
-\section{Theoretical Analysis}
+\subsection{Theoretical Analysis}
 \label{sec:theoretical_analysis}
 
-\subsection{Correctness}
+\don{Need to add correctness of parallel ingestion}
 
-\subsection{Time Complexity}
+\subsubsection{Correctness}
+\label{sec:correctness}
 
-\subsection{Space Complexity}
+We establish two correctness properties under concurrency: (1) search safety: no search reads partially initialized
+payloads or identifiers; and (2) deletion semantics: lazy eviction is linearizable with respect to the validity bitmap,
+making a deleted vector logically invisible once its bit is cleared.
+The arguments refer to Algorithms~\ref{alg:sdma_core}--\ref{alg:sivf_delete}.
+
+Let $H[\ell]$ be the head slab id of list $\ell$. Each slab $s$ has metadata \texttt{slab\_meta[$s$]} containing
+\texttt{next}, \texttt{valid\_count}, and a 32-bit \texttt{validity\_bitmap}. Slot $(s,o)$ is logically present
+iff bit $o$ is 1 in \texttt{validity\_bitmap}. Payloads and ids are stored in \texttt{slab data[$s$][$o$]} and
+\texttt{slab\_ids[$s$][$o$]}. The address table $\mathcal{T}$ maps each vector id $u$ to a coordinate $(s,o)$ (encoded as
+\texttt{coord}), or \texttt{INVALID} if absent.
+
+\begin{assumption}[Atomic bitmap updates]
+\label{assump:atomic-bitmap}
+For any slab $s$, \texttt{atomicOr} and \texttt{atomicAnd} on \texttt{slab\_meta[$s$].validity\_bitmap} are atomic
+read-modify-write operations. All updates to the same 32-bit word take effect atomically and are observed in a single
+total order by all threads.
+\end{assumption}
+
+\begin{assumption}[Fence-to-atomic visibility]
+\label{assump:fence}
+In Algorithm~\ref{alg:sivf_ingestion}, for any thread, global-memory writes issued before \verb|__threadfence()|
+(potentially including writes to \texttt{slab data}, \texttt{slab\_ids}, \texttt{slab\_meta}, and $\mathcal{T}$)
+become visible to other threads no later than any subsequent atomic operation issued by that thread after the fence
+becomes visible.
+\end{assumption}
+
+\begin{assumption}[Search checks validity before dereference]
+\label{assump:search-check}
+Algorithm~\ref{alg:sivf_search} reads a slot's validity bit before reading the slot's payload or id, and it reads the
+payload/id only if it observed the validity bit as 1.
+\end{assumption}
+
+\begin{assumption}[No overwrite while visible]
+\label{assump:no-overwrite}
+No thread overwrites \texttt{slab data[$s$][$o$]} or \texttt{slab\_ids[$s$][$o$]} while bit $o$ is 1 in
+\texttt{slab\_meta[$s$].validity\_bitmap}.
+\end{assumption}
+
+\begin{assumption}[Per-id operation order]
+\label{assump:per-id}
+The application does not invoke \textsc{Delete} for a vector id $u$ while an \textsc{Insert} for the same $u$ is still in
+progress (operations on the same id are ordered by the caller).
+\end{assumption}
+
+\begin{lemma}[Publication order for a slot]
+\label{lem:pub-order}
+Consider any successful insert in Algorithm~\ref{alg:sivf_ingestion} that publishes slot $(s,o)$ by setting bit $o$ using
+\texttt{atomicOr}. In that execution, the writer performs, in program order:
+(1) write payload to \texttt{slab data[$s$][$o$]}, (2) write id to \texttt{slab\_ids[$s$][$o$]},
+(3) write $\mathcal{T}[v_{id}] \gets (s,o)$, (4) execute \verb|__threadfence()|, and (5) execute the atomic bit-set.
+\end{lemma}
+
+\begin{proof}
+This is exactly the code path in Algorithm~\ref{alg:sivf_ingestion} for both the existing-head case and the new-slab case.
+\end{proof}
+
+\begin{remark}[Counter semantics and slot reuse]
+\label{rem:counters-reuse}
+The proofs below treat the validity bitmap as the sole membership predicate and assume that published slots are not
+overwritten while they remain visible. This requires a consistent interpretation of counters used during insertion.
+In Algorithm~\ref{alg:sivf_ingestion}, \texttt{valid\_count} is used to select the slot index $c$ (the value observed
+before a successful CAS). Therefore, the reservation index used to choose $c$ must not move backwards while there exist
+occupied slots. Algorithm~\ref{alg:sivf_delete} shows \texttt{atomicSub(\&valid\_count, 1)} when a bit transitions from 1 to 0.
+This decrement is safe only if it applies to a separate live-count used for statistics, not to the monotone reservation cursor
+used to select slot indices; otherwise a later insert could reuse an index whose validity bit is still 1.
+In addition, Algorithm~\ref{alg:sivf_delete} deletes by following $\mathcal{T}[u]$ to a coordinate $(s,o)$ and clearing bit $o$.
+If a cleared slot can later be reused for a different id, then $\mathcal{T}$ must prevent stale coordinates from referring to a
+new occupant, for example by storing a small generation tag in $\mathcal{T}$ and in per-slot metadata and checking it before
+clearing the bit. Without such a guard, a delete for an old id could clear the validity bit of a different vector.
+\end{remark}
+
+
+\begin{theorem}[Search safety]
+\label{thm:search-safety}
+Every payload/id read performed by Algorithm~\ref{alg:sivf_search} is fully initialized, i.e., no search reads partially
+initialized \texttt{slab data} or \texttt{slab\_ids}.
+\end{theorem}
+
+\begin{proof}
+Fix any execution and any read by Algorithm~\ref{alg:sivf_search} of \texttt{slab data[$s$][$o$]} or \texttt{slab\_ids[$s$][$o$]}.
+By Assumption~\ref{assump:search-check}, this read occurs only after the search observed bit $o$ as 1.
+By Lemma~\ref{lem:pub-order}, the writer that set bit $o$ executed \verb|__threadfence()| after writing the payload/id and
+$\mathcal{T}$ entry and before issuing the atomic bit-set.
+By Assumption~\ref{assump:fence}, those prior writes become visible to other threads no later than the bit-set becomes visible.
+Therefore, any thread that observes the bit-set as 1 must observe the payload/id writes as visible.
+Finally, by Assumption~\ref{assump:no-overwrite}, no concurrent writer overwrites that slot while the bit remains 1.
+The counter condition in Remark~\ref{rem:counters-reuse} ensures that the reservation index cannot reuse an occupied slot,
+which is needed for the no-overwrite condition assumed above.
+Hence the search read cannot observe a partially initialized payload/id and must see a fully initialized pair.
+\end{proof}
+
+\begin{theorem}[Linearizable lazy deletion]
+\label{thm:delete-linearizable}
+For each vector id $u$, Algorithm~\ref{alg:sivf_delete} is linearizable with linearization point at the atomic bit-clear
+\texttt{atomicAnd}. After the clear takes effect, the vector is logically absent from the search space until a later insert
+sets the same bit again; repeated deletes of the same $u$ are safe.
+\end{theorem}
+
+\begin{proof}
+Consider any delete operation on id $u$ in Algorithm~\ref{alg:sivf_delete}. If $\mathcal{T}[u]=$\texttt{INVALID}, the delete
+returns and can be linearized at its \texttt{INVALID} check.
+
+Otherwise, the delete decodes $\mathcal{T}[u]$ into $(s,o)$ and executes
+\texttt{old = atomicAnd(\&$\mathcal{B}_s$, $\sim$(1<<$o$))}, which clears bit $o$.
+By Assumption~\ref{assump:atomic-bitmap}, this clear takes effect atomically and all bitmap updates are totally ordered.
+We choose the instant when this atomic operation takes effect as the linearization point of the delete.
+
+Algorithm~\ref{alg:sivf_search} uses the validity bit as the membership predicate (Assumption~\ref{assump:search-check}).
+Thus, any search that reads the bitmap after the linearization point and observes bit $o=0$ will skip the slot and will not
+include this vector in its candidate set. Because the delete only changes the validity bit, no payload reclamation is required.
+
+If the old bitmap value indicates that the bit was previously 1, the delete performs bookkeeping and sets
+$\mathcal{T}[u]\gets$\texttt{INVALID}. If the bit was already 0, the atomic clear is a no-op on the logical state.
+In both cases, repeated deletes are safe: either the bit remains 0, or the \texttt{INVALID} table entry causes a future delete
+to stop early. Assumption~\ref{assump:per-id} ensures that a delete on $u$ does not race with an in-progress insert of $u$.
+
+The slot-reuse condition in Remark~\ref{rem:counters-reuse} ensures that $\mathcal{T}[u]$ does not refer to a different
+occupant when slots are reused, preserving per-id deletion semantics.
+
+\end{proof}
+
+\subsubsection{Time Complexity}
+We analyze the complexity relative to the number of existing vectors $N$ and the dimensionality $D$.
+For ingestion, the standard dynamic array approach requires $O(N)$ time in the worst case to copy data during capacity resizing. In contrast, the slab-based allocation in SIVF operates in $O(1)$ time, as it involves only pointer manipulation and atomic counter updates, independent of the current list size.
+For deletion, traditional IVF implementations without a reverse index require scanning the target inverted list, yielding a complexity of $O(N/n_{list})$. Even with a reverse index, physical removal requires $O(N/n_{list})$ data movement to maintain array contiguity. SIVF achieves $O(1)$ deletion complexity by utilizing the Address Translation Table to locate the target slot in constant time and performing a logical invalidation via a single atomic instruction.
+For search, the complexity remains $O(nprobe \cdot (N/n_{list}) \cdot D)$, which is asymptotically equivalent to standard IVF. While the linked-slab layout introduces pointer-chasing overhead, it does not alter the algorithmic complexity class.
+
+\subsubsection{Space Complexity}
+The space complexity of SIVF consists of the vector storage, the slab metadata, and the address translation structures.
+Let $S$ be the slab capacity (fixed at 32). The metadata overhead per vector is constant, scaling as $O(1/S)$.
+The Address Translation Table introduces a linear space overhead of $O(N_{max})$, where each entry requires 8 bytes.
+Comparing this to standard dynamic arrays, which often reserve up to $2 \times N$ capacity to amortize resizing costs, SIVF maintains a tighter memory footprint. The external fragmentation is bounded by the size of the free pool, and internal fragmentation is limited to the unused slots in the tail slab of each list. Consequently, the total space complexity is $O(N \cdot D)$, maintaining linear scalability with dataset size.
 
 \section{Evaluation}
 \label{sec:evaluation}
