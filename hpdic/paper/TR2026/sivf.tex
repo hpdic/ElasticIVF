@@ -121,6 +121,7 @@ The absence of a GPU-resident eviction operator is not an oversight but a conseq
 % \subsection{Proposed Solution: The SIVF Architecture}
 % \label{sec:proposed_work}
 
+\don{Need to revise the following paragraph to highlight the technical novelty}
 To resolve these architectural limitations, we propose SIVF, i.e., Streaming Inverted File, a GPU indexing architecture designed to support high-throughput insertion and deletion without relying on CPU-GPU interaction. SIVF introduces a triad of mechanisms to enable efficient in-place mutability on GPUs. We first address the memory management overhead by abandoning the contiguous memory layout in favor of a \emph{slab allocation} mechanism. GPU memory is pre-allocated as a pool of fixed-size blocks, and inverted lists are implemented as chained blocks. When a list grows, a new block is atomically linked from the free pool, virtually eliminating memory fragmentation and avoiding the cost of data compaction. To solve the synchronization challenge, we decouple logical deletion from physical removal using a bitmap-based lazy eviction strategy. Each memory block is associated with a validity bitmap; eviction is reduced to a single atomic bit-flip, allowing thousands of concurrent threads to operate without contention. Finally, to eliminate the $O(N)$ scan overhead, SIVF maintains a compact, GPU-resident address translation table (ATT). This table maps active vector IDs to their physical memory coordinates, enabling $O(1)$ location resolution during deletion.
 
 
