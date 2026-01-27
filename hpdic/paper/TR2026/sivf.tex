@@ -528,8 +528,23 @@ Finally, the kernel writes the invalid sentinel back to $\mathcal{T}[u]$ to prev
 \end{algorithmic}
 \end{algorithm}
 
+\section{Theoretical Analysis}
+\label{sec:theoretical_analysis}
+
+\subsection{Correctness}
+
+\subsection{Time Complexity}
+
+\subsection{Space Complexity}
+
 \section{Evaluation}
 \label{sec:evaluation}
+
+\don{Add CAGRA results}
+
+\don{Add multi-GPU results}
+
+\don{Remove GIST1M results}
 
 We implement SIVF by extending the GPU components of the widely-adopted Faiss library~\cite{douze2024faiss}, integrating our proposed data structures and algorithms into its core indexing architecture. Our evaluation benchmarks SIVF directly against the native Faiss GPU implementations, specifically targeting ingestion throughput and deletion latency under high-concurrency streaming workloads. We have open-sourced our complete implementation and evaluation scripts on GitHub.
 
@@ -548,7 +563,9 @@ For acceleration, the node features an NVIDIA Quadro RTX 6000 GPU with 24 GB of 
 Each reported data point represents the average of at least three independent executions. Error bars are omitted in figures where the standard deviation is negligible to maintain visual clarity. 
 Unless explicitly stated (as in Section~\ref{sec:eval_real_world}), our experiments utilize synthetic datasets consisting of random 128-dimensional vectors generated from a uniform distribution. We employ this configuration as a neutral baseline to isolate system-level overheads (e.g., memory allocation, PCIe transfer) from data distribution effects. Note that because uniform data lacks the clustering structure inherent in real-world applications, the performance advantages of SIVF in microbenchmarks are primarily architectural and appear more conservative than real-world datasets.
 
-\subsection{Microbenchmark: Ingestion}
+\subsection{Microbenchmarks}
+
+\subsubsection{Ingestion}
 \label{sec:eval_add_performance}
 
 We evaluate ingestion throughput against the standard Faiss GPU IVFFlat baseline, varying database size ($N_B$: 1M--4M) and cluster count ($n_{list}$: 1024--16384). As shown in Figure~\ref{fig:add_perf}, SIVF achieves consistent performance advantages with up to 2.65$\times$ speedup.
@@ -570,7 +587,7 @@ While the baseline throughput degrades monotonically as $n_{list}$ increases (dr
 \paragraph{Overall Speedup (Fig.~\ref{fig:add_perf}c)}
 SIVF outperforms the baseline across all configurations, with speedups typically ranging from 2.4$\times$ to 2.9$\times$. Even under maximum contention (4M vectors, $n_{list}=1024$), SIVF retains a 1.79$\times$ advantage, confirming the efficiency of the non-blocking, slab-based pipeline for streaming scenarios.
 
-\subsection{Microbenchmark: Search}
+\subsubsection{Search}
 \label{sec:eval_search_performance}
 
 We evaluate query performance against the Vanilla Faiss GPU baseline. While SIVF trades memory contiguity for mutability, Figure~\ref{fig:search_perf} confirms competitive efficiency, reaching up to 91\% of baseline performance in optimized configurations.
@@ -592,7 +609,7 @@ Increasing $n_{list}$ from 1024 to 4096 boosts SIVF throughput by $69\%$ (70K $\
 \paragraph{Query Efficiency (Fig.~\ref{fig:search_perf}c)}
 The efficiency ratio, which is defined as ($QPS_{SIVF} / QPS_{Vanilla}$), highlights the effectiveness of warp-level optimizations. In sparse scenarios ($n_{list}=16384$, 100K vectors), SIVF achieves 0.91$\times$ efficiency, nearly matching contiguous arrays. As lists lengthen (500K vectors), the ratio stabilizes between 0.40$\times$ and 0.52$\times$, reflecting the necessary physical trade-off of pointer chasing for dynamic memory support.
 
-\subsection{Microbenchmark: Deletion}
+\subsubsection{Deletion}
 \label{sec:eval_deletion_performance}
 
 We evaluate the efficiency of the vector deletion mechanism in SIVF by comparing it against the standard Faiss GPU IVF baseline. The experiment measures latency and throughput when removing a batch of 10,000 vectors from a populated index of one million 128-dimensional vectors.
@@ -724,7 +741,6 @@ Furthermore, we verified the efficacy of our memory reclamation strategy. In a s
 \subsection{SIVF vs. Non-IVF Streaming}
 \label{sec:eval_non_ivf}
 
-\don{Add CAGRA?}
 To position SIVF within the broader indexing landscape, we benchmarked it against four representative non-IVF architectures: (1) Faiss GPU Flat (brute-force baseline, i.e., no index), (2) HNSW~\cite{malkov2018efficient} (dynamic graphs), (3) LSH~\cite{10.1145/997817.997857} (legacy hash-based approaches), and (4) NSG~\cite{10.14778/3303753.3303754} (static graphs).
 
 \begin{table}[t]
