@@ -215,7 +215,6 @@ $\mathcal{T}$ and atomically clearing the corresponding bitmap bit (Algorithm~\r
 \subsection{Slab-based Memory Management}
 \label{sec:slab_memory_management}
 
-
 We propose a Slab-based Dynamic Memory Allocator (SDMA) that replaces monolithic, variable-length inverted lists with linked
 chains of fixed-size blocks on GPU. SDMA pre-allocates a contiguous slab pool; each slab stores up to $C$ vectors and a small
 metadata header
@@ -539,8 +538,6 @@ Comparing this to standard dynamic arrays, which often reserve up to $2 \times N
 
 \don{Add multi-GPU results}
 
-\don{Remove GIST1M results}
-
 We implement SIVF by extending the GPU components of the widely-adopted Faiss library~\cite{douze2024faiss}, integrating our proposed data structures and algorithms into its core indexing architecture. Our evaluation benchmarks SIVF directly against the native Faiss GPU implementations, specifically targeting ingestion throughput and deletion latency under high-concurrency streaming workloads. We have open-sourced our complete implementation and evaluation scripts on GitHub.
 
 Implementing SIVF required substantial modifications to the Faiss GPU backend and associated experimental infrastructure. In total, the implementation involves approximately 9,000 lines of code changes across more than 45 source files. Core system changes are concentrated in the GPU index implementation, incorporating new GPU-native insertion, deletion, and search operators (e.g., \texttt{GpuIndexSIVF}, \texttt{SIVFAppend}, \texttt{SIVFSearch}, \texttt{SIVFDelete}), alongside a custom slab-based memory manager (e.g., \texttt{SlabManager}) and lock-free metadata structures (e.g., \texttt{SIVFStructs}). Furthermore, we developed a comprehensive benchmarking suite that extends beyond standard metric testing to include end-to-end streaming simulations, memory scalability analysis, and automated visualization scripts, ensuring a rigorous and reproducible evaluation.
@@ -768,9 +765,7 @@ SIVF emerges as the only architecture enabling holistic stream processing: it su
 
 This work addresses a structural limitation inherent in the de facto GPU-accelerated Inverted File (IVF) indices, which effectively precludes their use in streaming vector analytics due to rigid and static memory layouts. 
 A new GPU-native indexing method, namely SIVF, is proposed, which relocates memory management responsibilities entirely onto the device. 
-% With the newly proposed data structures and algorithms crafted for GPUs, SIVF decouples index maintenance from the host CPU to enable high-throughput and in-place mutation directly in the GPU VRAM.
 SIVF has been implemented and integrated into the industry-standard Faiss library; extensive evaluation spanning 5 baseline architectures and 5 datasets demonstrates that SIVF effectively bridge the latency/throughput gap between static high-throughput search and dynamic mutability with negligible memory overhead in streaming vector analytics.
-% SIVF accelerates data deletion by up to $13,307\times$ and improves ingestion throughput by up to $120\times$ compared to those baselines; In end-to-end sliding window scenarios, SIVF eliminates system freezes and achieves a up to $262\times$ speedup while maintaining a negligible memory overhead of less than $0.8\%$ compared to static indices. SIVF represents a significant step towards enabling real-time vector analytics, unlocking new possibilities for applications based on streaming vectors.
 
 % \noindent
 % \textbf{The complete implementation and evaluation scripts are available on GitHub: \url{https://github.com/hpdic/ElasticIVF}.}
@@ -778,13 +773,11 @@ SIVF has been implemented and integrated into the industry-standard Faiss librar
 % \subsection{Limitations and Future Directions}
 % \label{sec:limitations}
 
-% Despite the orders-of-magnitude improvement in mutation latency, current SIVF design entails specific trade-offs. 
-% First, the \textit{pointer-chasing overhead} inherent in the linked-slab architecture reduces memory coalescing efficiency for those high-dimensional vectors. 
-% As observed in the GIST1M (960 dimensions) evaluation, this results in a $37\%$ reduction in raw search QPS compared to contiguous static indices. While acceptable for write-heavy streaming scenarios, future work will address this by exploring \textit{adaptive super-slabs} that enforce page-aligned storage to restore memory bandwidth utilization.
-\paragraph{Future Work}
-The current implementation operates on a single GPU, bounding the maximum active window size to the available VRAM. While our sliding window experiments demonstrate stability under infinite streams, scaling the \textit{simultaneous} index capacity to larger datasets will require extending SIVF with \textit{multi-GPU sharding} via NVLink and unified memory prefetching techniques.
-
-% Finally, our consistency model prioritizes throughput over strict linearizability. While sufficient for the probabilistic nature of approximate nearest neighbor search, future work will investigate lightweight snapshot isolation mechanisms to support transactional semantics without compromising the lock-free ingestion speed.
+Despite the orders-of-magnitude improvement in mutation latency, current SIVF design entails specific trade-offs. 
+First, the \textit{pointer-chasing overhead} inherent in the linked-slab architecture reduces memory coalescing efficiency for those high-dimensional vectors. 
+As observed in the GIST1M (960 dimensions) evaluation, this results in a $37\%$ reduction in raw search QPS compared to contiguous static indices. While acceptable for write-heavy streaming scenarios, future work will address this by exploring \textit{adaptive super-slabs} that enforce page-aligned storage to restore memory bandwidth utilization.
+% The current implementation operates on a single GPU, bounding the maximum active window size to the available VRAM. While our sliding window experiments demonstrate stability under infinite streams, scaling the \textit{simultaneous} index capacity to larger datasets will require extending SIVF with \textit{multi-GPU sharding} via NVLink and unified memory prefetching techniques.
+Second, our consistency model prioritizes throughput over strict linearizability. While sufficient for the probabilistic nature of approximate nearest neighbor search, future work will investigate lightweight snapshot isolation mechanisms to support transactional semantics without compromising the lock-free ingestion speed.
 
 % \section*{Acknowledgment}
 % Results presented in this paper were obtained using the Chameleon testbed supported by the National Science Foundation.
