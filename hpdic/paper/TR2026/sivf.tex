@@ -156,9 +156,10 @@ In summary, this paper makes the following contributions:
 \section{Related Work}
 \label{sec:related_work}
 
-% Recent advancements in Approximate Nearest Neighbor (ANN) search have primarily focused on refining graph-based indexing structures, integrating attribute filtering for hybrid queries, and enhancing system scalability through quantization and hardware acceleration. In parallel, GPU-oriented techniques provide reusable patterns, such as warp-aligned work partitioning, coalesced accesses, and low-overhead synchronization, that can inform the design of GPU-resident ANN systems.
+Approximate Nearest Neighbor (ANN) search has been extensively studied, with a rich body of work spanning CPU-based dynamic indices, GPU-accelerated static indices, and hybrid approaches that integrate attribute filtering or quantization. This section reviews these developments, highlighting their respective strengths and limitations in the context of streaming vector analytics.
 
-\paragraph{Optimization of Graph-Based Indices}
+\subsection{Optimization of Graph-Based Indices}
+
 Graph-based indices remain the state-of-the-art for high-recall retrieval. To address performance bottlenecks in production, frameworks like VSAG~\cite{10.14778/3750601.3750624} optimize memory access patterns and parameter tuning, while SOAR~\cite{DBLP:conf/nips/SunSDGK23} improves indexing structures. 
 Of note, CAGRA~\cite{10597683} establishes a new state-of-the-art for static graph construction and search throughput on GPUs; however, it is fundamentally designed for write-once-read-many workloads and lacks native support for the efficient, fine-grained in-place deletions required by streaming applications.
 Navigational efficiency is a key optimization target; SHG~\cite{10.14778/3748191.3748212} introduces a hierarchical graph with shortcuts to bypass redundant levels, and probabilistic routing methods~\cite{lu2024probabilistic} have been proposed to enhance traversal. 
@@ -169,7 +170,8 @@ Furthermore, theoretical frameworks like Subspace Collision~\cite{10.1145/370972
 
 Collectively, while these approaches maximize navigational efficiency for static data, they fundamentally rely on complex edge dependencies that are prohibitively expensive to maintain on GPUs. Unlike SIVF, they lack the architectural support for $O(1)$ lock-free mutation, rendering them unsuitable for high-churn streaming workloads where sub-millisecond update latency is critical.
 
-\paragraph{Attribute-Filtered and Hybrid Search}
+\subsection{Attribute-Filtered and Hybrid Search}
+
 The integration of structured constraints with vector analytics has led to a surge in Filtered ANN research. Li et al.~\cite{10.1145/3769763} provide a comprehensive taxonomy and benchmark of these methods. 
 A primary focus is handling dynamic updates and specific filter types such as ranges or windows. 
 For range filtering, UNIFY~\cite{10.14778/3717755.3717770} introduces a segmented inclusive graph to support pre-, post-, and hybrid filtering strategies. 
@@ -180,7 +182,8 @@ Engels et al.~\cite{engels2024approximate} focus on window filters, while WoW~\c
 
 However, these contributions primarily optimize algorithmic filtering logic rather than the underlying storage architecture. They remain constrained by the static memory layouts of standard GPU indices, whereas SIVF fundamentally redesigns the VRAM management to enable the high-throughput, in-place mutability that is a prerequisite for such dynamic operations.
 
-\paragraph{Quantization and Scalability}
+\subsection{Quantization and Scalability}
+
 To manage high-dimensional data at scale, quantization and system-level optimizations are critical. 
 RaBitQ~\cite{10.1145/3654970} and its extended version~\cite{10.1145/3725413} provide theoretical error bounds for bitwise quantization with flexible compression rates. 
 SymphonyQG~\cite{10.1145/3709730} integrates quantization codes directly with graph structures to reduce memory access overhead, while LoRANN~\cite{DBLP:conf/nips/JaasaariHR24} utilizes low-rank matrix factorization for compression.
@@ -531,23 +534,54 @@ Let $S$ be the slab capacity (fixed at 32). The metadata overhead per vector is 
 The Address Translation Table introduces a linear space overhead of $O(N_{max})$, where each entry requires 8 bytes.
 Comparing this to standard dynamic arrays, which often reserve up to $2 \times N$ capacity to amortize resizing costs, SIVF maintains a tighter memory footprint. The external fragmentation is bounded by the size of the free pool, and internal fragmentation is limited to the unused slots in the tail slab of each list. Consequently, the total space complexity is $O(N \cdot D)$, maintaining linear scalability with dataset size.
 
+\subsection{System Implementation}
+
+We implement SIVF by extending the GPU components of the widely-adopted Faiss library~\cite{douze2024faiss}, integrating our proposed data structures and algorithms into its core indexing architecture. We have open-sourced our complete implementation and evaluation scripts on GitHub.
+
+Implementing SIVF required substantial modifications to the Faiss GPU backend and associated experimental infrastructure. Table~\ref{tab:file_structure} summarizes some of the key source files added or modified in the repository based on our development history. In total, the implementation involves approximately 9,000 lines of code changes across more than 45 source files. Core system changes are concentrated in the GPU index implementation, incorporating new GPU-native insertion, deletion, and search operators (e.g., \texttt{GpuIndexSIVF}, \texttt{SIVFAppend}, \texttt{SIVFSearch}, \texttt{SIVFDelete}), alongside a custom slab-based memory manager (e.g., \texttt{SlabManager}) and lock-free metadata structures (e.g., \texttt{SIVFStructs}). Furthermore, we developed a comprehensive benchmarking suite that extends beyond standard metric testing to include end-to-end streaming simulations, memory scalability analysis, and automated visualization scripts, ensuring a rigorous and reproducible evaluation.
+
+\begin{table*}[t]
+    \centering
+    \caption{Summary of Source Files and Modifications in SIVF Project}
+    \label{tab:file_structure}
+    \begin{tabular}{l|p{10.5cm}}
+    \hline
+    \textit{File Path} & \textit{Description} \\
+    \hline
+    \multicolumn{2}{c}{\textit{Core SIVF Architecture \& Memory Management}} \\
+    \hline
+    \texttt{faiss/gpu/GpuIndexSIVF.h} & Header definition for the SIVF index class, inheriting from \texttt{GpuIndex}. \\
+    \texttt{faiss/gpu/GpuIndexSIVF.cu} & Manages host-device synchronization and overrides standard operations. \\
+    \texttt{faiss/gpu/impl/SlabManager.cuh} & Defines the device-side slab structures, arena pointers, and metadata layout. \\
+    \texttt{faiss/gpu/impl/SlabManager.cu} & Slab-based Dynamic Memory Allocator (SDMA) and memory pool management. \\
+    \texttt{faiss/gpu/impl/SIVFStructs.cuh} & Shared data structures and metadata definitions used across host and device code. \\
+    \hline
+    \multicolumn{2}{c}{\textit{CUDA Kernels (Ingestion, Search, Deletion)}} \\
+    \hline
+    \texttt{faiss/gpu/impl/SIVFAppend.cuh} & Device function templates for the ingestion logic. \\
+    \texttt{faiss/gpu/impl/SIVFAppend.cu} & Lock-free insertion kernel, atomic slot reservation, and slab expansion logic. \\
+    \texttt{faiss/gpu/impl/SIVFSearch.cuh} & Warp-Level Collaborative Search (WLCS) and shared memory reduction. \\
+    \texttt{faiss/gpu/impl/SIVFSearch.cu} & Search kernel, including distance computation and heap aggregation. \\
+    \texttt{faiss/gpu/SIVFDeletion.cu} & Bitmap-based lazy eviction and deletion kernels. \\
+    \hline
+    \end{tabular}
+\end{table*}
+
+\don{TODO}
+
 \section{Evaluation}
 \label{sec:evaluation}
 
+Our evaluation benchmarks SIVF directly against the native Faiss GPU implementations, specifically targeting ingestion throughput and deletion latency under high-concurrency streaming workloads.
+
 \don{Add multi-GPU results}
-
-\don{Add hybrid workloads (query + insert + delete)}
-
-We implement SIVF by extending the GPU components of the widely-adopted Faiss library~\cite{douze2024faiss}, integrating our proposed data structures and algorithms into its core indexing architecture. Our evaluation benchmarks SIVF directly against the native Faiss GPU implementations, specifically targeting ingestion throughput and deletion latency under high-concurrency streaming workloads. We have open-sourced our complete implementation and evaluation scripts on GitHub.
-
-Implementing SIVF required substantial modifications to the Faiss GPU backend and associated experimental infrastructure. In total, the implementation involves approximately 9,000 lines of code changes across more than 45 source files. Core system changes are concentrated in the GPU index implementation, incorporating new GPU-native insertion, deletion, and search operators (e.g., \texttt{GpuIndexSIVF}, \texttt{SIVFAppend}, \texttt{SIVFSearch}, \texttt{SIVFDelete}), alongside a custom slab-based memory manager (e.g., \texttt{SlabManager}) and lock-free metadata structures (e.g., \texttt{SIVFStructs}). Furthermore, we developed a comprehensive benchmarking suite that extends beyond standard metric testing to include end-to-end streaming simulations, memory scalability analysis, and automated visualization scripts, ensuring a rigorous and reproducible evaluation.
 
 \subsection{Experimental Setup}
 \label{sec:exp_setup}
 
 To ensure a comprehensive evaluation, we adopt a two-tiered baseline strategy. 
 First, our primary baseline is the standard Faiss GPU IVF, which serves as a direct architectural counterpart; this allows us to isolate the performance gains specifically attributable to our proposed memory management innovations, excluding confounding factors from differing algorithmic paradigms. 
-Second, to position SIVF within the broader indexing landscape, we in Section~\ref{sec:eval_non_ivf} compare against representative non-IVF indices, including GPU Flat (brute-force), HNSW~\cite{malkov2018efficient} (dynamic graph), NSG~\cite{10.14778/3303753.3303754} (static graph), and LSH~\cite{10.1145/997817.997857} (hashing).
+Second, to position SIVF within the broader indexing landscape, we in Section~\ref{sec:eval_non_ivf} compare against representative non-IVF indices, including GPU CAGRA~\cite{10597683} (dynamic graph), GPU Flat (brute-force), HNSW~\cite{malkov2018efficient} (dynamic graph), NSG~\cite{10.14778/3303753.3303754} (static graph), and LSH~\cite{10.1145/997817.997857} (hashing).
 
 All experiments were conducted on a bare-metal node from the Chameleon Cloud testbed~\cite{keahey2020lessons} (CHI@UC site). The platform is equipped with dual-socket Intel Xeon Gold 6126 CPUs (Skylake microarchitecture), providing a total of 24 physical cores (48 threads with Hyper-Threading) clocked at 2.60 GHz. The host memory consists of 192 GiB of RAM. 
 For acceleration, the node features an NVIDIA Quadro RTX 6000 GPU with 24 GB of GDDR6 VRAM. The system runs on a Ubuntu 24.04 environment with the CUDA toolkit installed: Driver ver. 560.35.05 and CUDA ver. 12.2.
@@ -775,10 +809,10 @@ SIVF has been implemented and integrated into the industry-standard Faiss librar
 % \label{sec:limitations}
 
 Despite the orders-of-magnitude improvement in mutation latency, current SIVF design entails specific trade-offs. 
-First, the \textit{pointer-chasing overhead} inherent in the linked-slab architecture reduces memory coalescing efficiency for those high-dimensional vectors. 
-As observed in the GIST1M (960 dimensions) evaluation, this results in a $37\%$ reduction in raw search QPS compared to contiguous static indices. While acceptable for write-heavy streaming scenarios, future work will address this by exploring \textit{adaptive super-slabs} that enforce page-aligned storage to restore memory bandwidth utilization.
+% First, the \textit{pointer-chasing overhead} inherent in the linked-slab architecture reduces memory coalescing efficiency for those high-dimensional vectors. 
+% As observed in the GIST1M (960 dimensions) evaluation, this results in a $37\%$ reduction in raw search QPS compared to contiguous static indices. While acceptable for write-heavy streaming scenarios, future work will address this by exploring \textit{adaptive super-slabs} that enforce page-aligned storage to restore memory bandwidth utilization.
 % The current implementation operates on a single GPU, bounding the maximum active window size to the available VRAM. While our sliding window experiments demonstrate stability under infinite streams, scaling the \textit{simultaneous} index capacity to larger datasets will require extending SIVF with \textit{multi-GPU sharding} via NVLink and unified memory prefetching techniques.
-Second, our consistency model prioritizes throughput over strict linearizability. While sufficient for the probabilistic nature of approximate nearest neighbor search, future work will investigate lightweight snapshot isolation mechanisms to support transactional semantics without compromising the lock-free ingestion speed.
+The consistency model of SIVF prioritizes throughput over strict linearizability. While sufficient for the probabilistic nature of approximate nearest neighbor search, future work will investigate lightweight snapshot isolation mechanisms to support transactional semantics without compromising the lock-free ingestion speed.
 
 % \section*{Acknowledgment}
 % Results presented in this paper were obtained using the Chameleon testbed supported by the National Science Foundation.
