@@ -814,9 +814,9 @@ SIVF has been implemented and integrated into the industry-standard Faiss librar
 
 Despite the orders-of-magnitude improvement in mutation latency, current SIVF design entails specific trade-offs. 
 % First, the \textit{pointer-chasing overhead} inherent in the linked-slab architecture reduces memory coalescing efficiency for those high-dimensional vectors. 
-% As observed in the GIST1M (960 dimensions) evaluation, this results in a $37\%$ reduction in raw search QPS compared to contiguous static indices. While acceptable for write-heavy streaming scenarios, future work will address this by exploring \textit{adaptive super-slabs} that enforce page-aligned storage to restore memory bandwidth utilization.
+First, as observed in the GIST1M (960 dimensions) evaluation, this results in a $37\%$ reduction in raw search QPS compared to contiguous static indices. While acceptable for write-heavy streaming scenarios, future work will address this by exploring \textit{adaptive super-slabs} that enforce page-aligned storage to restore memory bandwidth utilization.
 % The current implementation operates on a single GPU, bounding the maximum active window size to the available VRAM. While our sliding window experiments demonstrate stability under infinite streams, scaling the \textit{simultaneous} index capacity to larger datasets will require extending SIVF with \textit{multi-GPU sharding} via NVLink and unified memory prefetching techniques.
-The consistency model of SIVF prioritizes throughput over strict linearizability. While sufficient for the probabilistic nature of approximate nearest neighbor search, future work will investigate lightweight snapshot isolation mechanisms to support transactional semantics without compromising the lock-free ingestion speed.
+Second, the consistency model of SIVF prioritizes throughput over strict linearizability. While sufficient for the probabilistic nature of approximate nearest neighbor search, future work will investigate lightweight snapshot isolation mechanisms to support transactional semantics without compromising the lock-free ingestion speed.
 
 % \section*{Acknowledgment}
 % Results presented in this paper were obtained using the Chameleon testbed supported by the National Science Foundation.
