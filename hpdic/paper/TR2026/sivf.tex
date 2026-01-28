@@ -844,7 +844,7 @@ Figure~\ref{fig:eval_memory} illustrates the memory growth trends for both SIFT1
 
 Furthermore, we verified the efficacy of our memory reclamation strategy. In a stress test (not shown in the figure) involving the deletion of 50\% of the dataset followed by immediate re-insertion, SIVF maintained a constant memory footprint without triggering OS-level deallocation. The deletion operation completed in sub-millisecond time per batch (e.g., 4.04~ms for 100K GIST vectors), confirming that memory slots are logically reclaimed via bitmap toggling and immediately available for reuse. This zero-cost reclamation ensures that SIVF can sustain long-running streaming workloads without suffering from memory leaks or fragmentation-induced bloat.
 
-\subsection{Graph-based Indexing}
+\subsection{Non-IVF Index of Streaming Vectors}
 \label{sec:eval_non_ivf}
 
 To position SIVF within the broader indexing landscape, we benchmarked it against five representative non-IVF architectures: GPU CAGRA~\cite{10597683} (graphs), Faiss GPU Flat (brute-force baseline, i.e., no index), HNSW~\cite{malkov2018efficient} (dynamic graphs), (3) LSH~\cite{10.1145/997817.997857} (legacy hash-based approaches), and (4) NSG~\cite{10.14778/3303753.3303754} (static graphs). Table~\ref{tab:landscape_full} summarizes ingestion throughput and deletion latency across three datasets: SIFT1M, T2I-1B, and GIST1M.
