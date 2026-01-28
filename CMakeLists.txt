@@ -143,6 +143,8 @@ add_executable(test_sivf_deep_search hpdic/experiment/deep/test_sivf_deep_search
 target_link_libraries(test_sivf_deep_search faiss OpenMP::OpenMP_CXX CUDA::cudart CUDA::cublas)
 add_executable(test_sivf_deep_delete hpdic/experiment/deep/test_sivf_deep_delete.cpp)
 target_link_libraries(test_sivf_deep_delete faiss OpenMP::OpenMP_CXX CUDA::cudart CUDA::cublas)
+add_executable(test_sivf_deep_pareto hpdic/experiment/deep/test_sivf_deep_pareto.cpp)
+target_link_libraries(test_sivf_deep_pareto faiss OpenMP::OpenMP_CXX CUDA::cudart CUDA::cublas)
 
 # --- SIFT1M Benchmark ---
 add_executable(test_sivf_sift_add hpdic/experiment/sift/test_sivf_sift_add.cpp)
@@ -181,6 +183,8 @@ add_executable(test_sivf_gist_search hpdic/experiment/gist/test_sivf_gist_search
 target_link_libraries(test_sivf_gist_search faiss OpenMP::OpenMP_CXX CUDA::cudart CUDA::cublas)
 add_executable(test_sivf_gist_delete hpdic/experiment/gist/test_sivf_gist_delete.cpp)
 target_link_libraries(test_sivf_gist_delete faiss OpenMP::OpenMP_CXX CUDA::cudart CUDA::cublas)
+add_executable(test_sivf_gist_pareto hpdic/experiment/gist/test_sivf_gist_pareto.cpp)
+target_link_libraries(test_sivf_gist_pareto faiss OpenMP::OpenMP_CXX CUDA::cudart CUDA::cublas)
 
 # --- T2I-1B Benchmarks ---
 add_executable(test_sivf_t2i_add hpdic/experiment/t2i/test_sivf_t2i_add.cpp)
@@ -189,6 +193,8 @@ add_executable(test_sivf_t2i_search hpdic/experiment/t2i/test_sivf_t2i_search.cp
 target_link_libraries(test_sivf_t2i_search faiss OpenMP::OpenMP_CXX CUDA::cudart CUDA::cublas)
 add_executable(test_sivf_t2i_delete hpdic/experiment/t2i/test_sivf_t2i_delete.cpp)
 target_link_libraries(test_sivf_t2i_delete faiss OpenMP::OpenMP_CXX CUDA::cudart CUDA::cublas)
+add_executable(test_sivf_t2i_pareto hpdic/experiment/t2i/test_sivf_t2i_pareto.cpp)
+target_link_libraries(test_sivf_t2i_pareto faiss OpenMP::OpenMP_CXX CUDA::cudart CUDA::cublas)
 
 # --- Sliding Window ---
 add_executable(test_sivf_sliding hpdic/experiment/test_sivf_sliding.cpp)

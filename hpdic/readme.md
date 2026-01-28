@@ -37,10 +37,11 @@ make -j test_sivf_sensitivity
 
 # Dataset Deep1B:
 cd ~/ElasticIVF/build
-make test_sivf_deep_add test_sivf_deep_search test_sivf_deep_delete -j
+make test_sivf_deep_add test_sivf_deep_search test_sivf_deep_delete test_sivf_deep_pareto -j
 ./test_sivf_deep_add
 ./test_sivf_deep_search
 ./test_sivf_deep_delete
+./test_sivf_deep_pareto
 
 # Dataset SIFT1M:
 cd ~/ElasticIVF/build
@@ -55,17 +56,19 @@ make -j test_sivf_sift_pareto
 
 # Dataset GIST1M:
 cd ~/ElasticIVF/build
-make test_sivf_gist_add test_sivf_gist_search test_sivf_gist_delete -j
+make test_sivf_gist_add test_sivf_gist_search test_sivf_gist_delete test_sivf_gist_pareto -j
 ./test_sivf_gist_add
 ./test_sivf_gist_search
 ./test_sivf_gist_delete
+./test_sivf_gist_pareto
 
 # Dataset T2I-1B:
 cd ~/ElasticIVF/build
-make test_sivf_t2i_add test_sivf_t2i_search test_sivf_t2i_delete -j
+make test_sivf_t2i_add test_sivf_t2i_search test_sivf_t2i_delete test_sivf_t2i_pareto -j
 ./test_sivf_t2i_add
 ./test_sivf_t2i_search
 ./test_sivf_t2i_delete
+./test_sivf_t2i_pareto
 
 # Sliding window:
 cd ~/ElasticIVF/build
