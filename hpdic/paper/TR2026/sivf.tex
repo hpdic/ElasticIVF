@@ -529,131 +529,113 @@ Finally, the kernel writes the invalid sentinel back to $\mathcal{T}[u]$ to prev
 \subsection{Theoretical Analysis}
 \label{sec:theoretical_analysis}
 
-\don{Need to add correctness of parallel ingestion}
-
 \subsubsection{Correctness}
 \label{sec:correctness}
 
-We establish two correctness properties under concurrency: (1) search safety: no search reads partially initialized
-payloads or identifiers; and (2) deletion semantics: lazy eviction is linearizable with respect to the validity bitmap,
-making a deleted vector logically invisible once its bit is cleared.
-The arguments refer to Algorithms~\ref{alg:sdma_core}--\ref{alg:sivf_delete}.
+We prove three properties. The first establishes the correctness of parallel ingestion in Algorithm~\ref{alg:sivf_ingestion}.
+The second shows that search in Algorithm~\ref{alg:sivf_search} is safe under concurrent ingestion and deletion.
+The third proves that lazy eviction in Algorithm~\ref{alg:sivf_delete} is linearizable with a clear linearization point.
 
-Let $H[\ell]$ be the head slab id of list $\ell$. Each slab $s$ has metadata \texttt{slab\_meta[$s$]} containing
-\texttt{next}, \texttt{valid\_count}, and a 32-bit \texttt{validity\_bitmap}. Slot $(s,o)$ is logically present
-iff bit $o$ is 1 in \texttt{validity\_bitmap}. Payloads and ids are stored in \texttt{slab data[$s$][$o$]} and
-\texttt{slab\_ids[$s$][$o$]}. The address table $\mathcal{T}$ maps each vector id $u$ to a coordinate $(s,o)$ (encoded as
-\texttt{coord}), or \texttt{INVALID} if absent.
+We use the same state as the pseudocode. For each list id $\ell$, $H[\ell]$ stores the head slab id. Each slab $s$ has
+metadata \texttt{slab\_meta[$s$]} including \texttt{next}, \texttt{valid\_count}, and a 32 bit
+\texttt{validity\_bitmap}. A slot $(s,o)$ is logically present if and only if bit $o$ in the bitmap is 1.
+Payloads and ids are stored in \texttt{slab data[$s$][$o$]} and \texttt{slab\_ids[$s$][$o$]}.
+The address table $\mathcal{T}$ maps a vector id $u$ to a coordinate $(s,o)$ encoded in \texttt{coord}, or \texttt{INVALID}.
 
-\begin{assumption}[Atomic bitmap updates]
-\label{assump:atomic-bitmap}
-For any slab $s$, \texttt{atomicOr} and \texttt{atomicAnd} on \texttt{slab\_meta[$s$].validity\_bitmap} are atomic
-read-modify-write operations. All updates to the same 32-bit word take effect atomically and are observed in a single
-total order by all threads.
-\end{assumption}
-
-\begin{assumption}[Fence-to-atomic visibility]
-\label{assump:fence}
-In Algorithm~\ref{alg:sivf_ingestion}, for any thread, global-memory writes issued before \verb|__threadfence()|
-(potentially including writes to \texttt{slab data}, \texttt{slab\_ids}, \texttt{slab\_meta}, and $\mathcal{T}$)
-become visible to other threads no later than any subsequent atomic operation issued by that thread after the fence
-becomes visible.
-\end{assumption}
-
-\begin{assumption}[Search checks validity before dereference]
-\label{assump:search-check}
-Algorithm~\ref{alg:sivf_search} reads a slot's validity bit before reading the slot's payload or id, and it reads the
-payload/id only if it observed the validity bit as 1.
-\end{assumption}
-
-\begin{assumption}[No overwrite while visible]
-\label{assump:no-overwrite}
-No thread overwrites \texttt{slab data[$s$][$o$]} or \texttt{slab\_ids[$s$][$o$]} while bit $o$ is 1 in
-\texttt{slab\_meta[$s$].validity\_bitmap}.
-\end{assumption}
-
-\begin{assumption}[Per-id operation order]
-\label{assump:per-id}
-The application does not invoke \textsc{Delete} for a vector id $u$ while an \textsc{Insert} for the same $u$ is still in
-progress (operations on the same id are ordered by the caller).
-\end{assumption}
-
-\begin{lemma}[Publication order for a slot]
-\label{lem:pub-order}
-Consider any successful insert in Algorithm~\ref{alg:sivf_ingestion} that publishes slot $(s,o)$ by setting bit $o$ using
-\texttt{atomicOr}. In that execution, the writer performs, in program order:
-(1) write payload to \texttt{slab data[$s$][$o$]}, (2) write id to \texttt{slab\_ids[$s$][$o$]},
-(3) write $\mathcal{T}[v_{id}] \gets (s,o)$, (4) execute \verb|__threadfence()|, and (5) execute the atomic bit-set.
-\end{lemma}
-
-\begin{proof}
-This is exactly the code path in Algorithm~\ref{alg:sivf_ingestion} for both the existing-head case and the new-slab case.
-\end{proof}
-
-\begin{remark}[Counter semantics and slot reuse]
-\label{rem:counters-reuse}
-The proofs below treat the validity bitmap as the sole membership predicate and assume that published slots are not
-overwritten while they remain visible. This requires a consistent interpretation of counters used during insertion.
-In Algorithm~\ref{alg:sivf_ingestion}, \texttt{valid\_count} is used to select the slot index $c$ (the value observed
-before a successful CAS). Therefore, the reservation index used to choose $c$ must not move backwards while there exist
-occupied slots. Algorithm~\ref{alg:sivf_delete} shows \texttt{atomicSub(\&valid\_count, 1)} when a bit transitions from 1 to 0.
-This decrement is safe only if it applies to a separate live-count used for statistics, not to the monotone reservation cursor
-used to select slot indices; otherwise a later insert could reuse an index whose validity bit is still 1.
-In addition, Algorithm~\ref{alg:sivf_delete} deletes by following $\mathcal{T}[u]$ to a coordinate $(s,o)$ and clearing bit $o$.
-If a cleared slot can later be reused for a different id, then $\mathcal{T}$ must prevent stale coordinates from referring to a
-new occupant, for example by storing a small generation tag in $\mathcal{T}$ and in per-slot metadata and checking it before
-clearing the bit. Without such a guard, a delete for an old id could clear the validity bit of a different vector.
-\end{remark}
-
-
-\begin{theorem}[Search safety]
-\label{thm:search-safety}
-Every payload/id read performed by Algorithm~\ref{alg:sivf_search} is fully initialized, i.e., no search reads partially
-initialized \texttt{slab data} or \texttt{slab\_ids}.
+\begin{theorem}[Parallel ingestion is safe and linearizable]
+\label{thm:ingestion}
+Consider any concurrent execution of Algorithm~\ref{alg:sivf_ingestion}.
+For every insertion that returns successfully, there exists a unique slot $(s,o)$ such that
+(i) the insertion writes the payload and id into that slot, then sets bit $o$ in \texttt{validity\_bitmap} exactly once,
+(ii) once the bit is set, the slot contains a fully initialized payload and id, and
+(iii) the insertion can be linearized at the atomic bit set operation \texttt{atomicOr} that makes the slot visible.
 \end{theorem}
 
 \begin{proof}
-Fix any execution and any read by Algorithm~\ref{alg:sivf_search} of \texttt{slab data[$s$][$o$]} or \texttt{slab\_ids[$s$][$o$]}.
-By Assumption~\ref{assump:search-check}, this read occurs only after the search observed bit $o$ as 1.
-By Lemma~\ref{lem:pub-order}, the writer that set bit $o$ executed \verb|__threadfence()| after writing the payload/id and
-$\mathcal{T}$ entry and before issuing the atomic bit-set.
-By Assumption~\ref{assump:fence}, those prior writes become visible to other threads no later than the bit-set becomes visible.
-Therefore, any thread that observes the bit-set as 1 must observe the payload/id writes as visible.
-Finally, by Assumption~\ref{assump:no-overwrite}, no concurrent writer overwrites that slot while the bit remains 1.
-The counter condition in Remark~\ref{rem:counters-reuse} ensures that the reservation index cannot reuse an occupied slot,
-which is needed for the no-overwrite condition assumed above.
-Hence the search read cannot observe a partially initialized payload/id and must see a fully initialized pair.
+We first argue the uniqueness of the chosen slot for a successful insertion.
+
+In the existing head case, the code reads 
+\[ c=\texttt{slab\_meta}[h].\texttt{valid\_count} \] 
+and attempts to reserve index $c$
+using an atomic compare and swap. Only one thread can succeed for a given observed $c$, because the compare and swap updates a single memory location atomically. 
+Therefore, among concurrent contenders for the same slab $h$, at most one insertion
+obtains a given index $c$. 
+In the new slab case, the thread publishes its new slab as the head using \texttt{atomicCAS(\&H[$\ell$], h, s\_new)}; only one thread can win this publication for a fixed old head value $h$,
+and the winner uses slot $o=0$ in its newly allocated slab. Thus, every successful insertion selects exactly one slot $(s,o)$.
+
+We next argue that the chosen slot is initialized before it becomes visible.
+In both code paths, after reserving the slot, the writer performs the payload write to \texttt{slab data[$s$][$o$]} and
+the id write to \texttt{slab\_ids[$s$][$o$]}, then writes $\mathcal{T}(v_{id})\gets\langle s,o\rangle$, then executes
+\verb|__threadfence()|, and only after the fence performs \texttt{atomicOr} to set bit $o$ in the bitmap.
+The intended CUDA guarantee used here is that the fence makes the prior global writes visible before a later atomic operation
+performed by the same thread becomes visible to other threads. Therefore, once bit $o$ is observed as set, the payload and id
+written earlier by that insertion are already visible as well.
+
+Finally, we justify linearizability of a successful insertion with linearization point at the atomic bit set.
+The membership predicate used throughout the design is exactly the bitmap bit. Before the \texttt{atomicOr}, the bit is 0,
+so the slot is logically absent. After the \texttt{atomicOr} takes effect, the bit is 1, so the slot is logically present.
+Since \texttt{atomicOr} is an atomic operation on the bitmap word, it takes effect at a single instant and provides a valid
+linearization point. At that instant, the slot becomes visible and, by the fence argument above, it is already fully initialized.
 \end{proof}
 
-\begin{theorem}[Linearizable lazy deletion]
-\label{thm:delete-linearizable}
-For each vector id $u$, Algorithm~\ref{alg:sivf_delete} is linearizable with linearization point at the atomic bit-clear
-\texttt{atomicAnd}. After the clear takes effect, the vector is logically absent from the search space until a later insert
-sets the same bit again; repeated deletes of the same $u$ are safe.
+\begin{theorem}[Search safety under concurrent ingestion and deletion]
+\label{thm:search}
+In any concurrent execution of Algorithms~\ref{alg:sivf_ingestion}, \ref{alg:sivf_search}, and \ref{alg:sivf_delete},
+every payload and id read performed by Algorithm~\ref{alg:sivf_search} is fully initialized.
 \end{theorem}
 
 \begin{proof}
-Consider any delete operation on id $u$ in Algorithm~\ref{alg:sivf_delete}. If $\mathcal{T}[u]=$\texttt{INVALID}, the delete
-returns and can be linearized at its \texttt{INVALID} check.
+Algorithm~\ref{alg:sivf_search} reads a slot $(s,j)$ only if it first observes that bit $j$ in
+\texttt{slab\_meta[$s$].validity\_bitmap} is set. When the search observes the bit set, the slot must have been published
+by some successful insertion. By Theorem~\ref{thm:ingestion}, the publication point is the atomic bit set in
+Algorithm~\ref{alg:sivf_ingestion}, and the payload and id writes occur before the fence, which occurs before the bit set.
+The same fence guarantee used in Theorem~\ref{thm:ingestion} implies that once the bit set is visible, the earlier payload and
+id writes are also visible. Therefore, the search cannot observe a partially initialized payload or id.
 
-Otherwise, the delete decodes $\mathcal{T}[u]$ into $(s,o)$ and executes
-\texttt{old = atomicAnd(\&$\mathcal{B}_s$, $\sim$(1<<$o$))}, which clears bit $o$.
-By Assumption~\ref{assump:atomic-bitmap}, this clear takes effect atomically and all bitmap updates are totally ordered.
-We choose the instant when this atomic operation takes effect as the linearization point of the delete.
+Deletion does not write payloads or ids. Algorithm~\ref{alg:sivf_delete} only clears the validity bit and possibly updates
+counters and $\mathcal{T}$. Hence, even if a search races with a delete, the only effect is whether the search sees the bit as 1
+or 0. If it sees 0, it skips the slot and reads nothing. If it sees 1, it reads a payload and id that were fully initialized
+before publication, by the argument above. In neither case does the search read partially initialized data.
 
-Algorithm~\ref{alg:sivf_search} uses the validity bit as the membership predicate (Assumption~\ref{assump:search-check}).
-Thus, any search that reads the bitmap after the linearization point and observes bit $o=0$ will skip the slot and will not
-include this vector in its candidate set. Because the delete only changes the validity bit, no payload reclamation is required.
-
-If the old bitmap value indicates that the bit was previously 1, the delete performs bookkeeping and sets
-$\mathcal{T}[u]\gets$\texttt{INVALID}. If the bit was already 0, the atomic clear is a no-op on the logical state.
-In both cases, repeated deletes are safe: either the bit remains 0, or the \texttt{INVALID} table entry causes a future delete
-to stop early. Assumption~\ref{assump:per-id} ensures that a delete on $u$ does not race with an in-progress insert of $u$.
-
-The slot-reuse condition in Remark~\ref{rem:counters-reuse} ensures that $\mathcal{T}[u]$ does not refer to a different
-occupant when slots are reused, preserving per-id deletion semantics.
-
+Algorithm~\ref{alg:sivf_search} also terminates because its traversal is bounded, and it includes an explicit self loop guard
+(\texttt{md.next = s}) before following \texttt{next}. Concurrent insertions can add a new head slab, but they do not require the
+search to revisit already visited slabs within the traversal bound.
 \end{proof}
+
+\begin{theorem}[Lazy eviction is linearizable and makes deleted vectors invisible]
+\label{thm:delete}
+Consider any concurrent execution of Algorithms~\ref{alg:sivf_search} and \ref{alg:sivf_delete}.
+For any delete request on id $u$ such that $\mathcal{T}[u]\neq\texttt{INVALID}$ and decodes to
+$(\text{idx}_{slab},\text{idx}_{slot})$, define
+\[
+mask = \sim(1 \ll \text{idx}_{slot}).
+\]
+Then the atomic operation
+\texttt{old = atomicAnd(\&$\mathcal{B}_{\text{idx}_{slab}}$, mask)}
+in Algorithm~\ref{alg:sivf_delete} is a linearization point for logical deletion. After this atomic operation takes effect,
+the slot becomes logically absent from the search space until a later insertion sets the same bit again. Repeated deletes of
+the same id are safe.
+\end{theorem}
+
+\begin{proof}
+If $\mathcal{T}[u]=\texttt{INVALID}$, Algorithm~\ref{alg:sivf_delete} performs no state change and the delete can be linearized
+at the \texttt{INVALID} check.
+
+Otherwise, the delete decodes \texttt{coord} into $(\text{idx}_{slab},\text{idx}_{slot})$, computes
+$mask=\sim(1\ll \text{idx}_{slot})$, and executes
+\[\texttt{old = atomicAnd(\&$\mathcal{B}_{\text{idx}_{slab}}$, mask)}\] to clear the corresponding bit.
+The intended guarantee is that this atomic read modify write takes effect at a single instant on the bitmap word.
+We choose that instant as the linearization point.
+
+Algorithm~\ref{alg:sivf_search} uses the validity bit as the membership predicate and checks it before dereference.
+Thus, after the clear takes effect, any search that reads the bitmap and sees the bit as 0 skips the slot and does not include
+it as a candidate. No payload reclamation is required because logical membership is determined solely by the validity bit.
+
+If the old bitmap value shows the bit transitioned from 1 to 0, the delete performs bookkeeping and sets
+$\mathcal{T}[u]\gets\texttt{INVALID}$. If the bit was already 0, clearing it again does not change the logical state.
+Either way, repeated deletes are safe.
+\end{proof}
+
 
 \subsubsection{Time Complexity}
 We analyze the complexity relative to the number of existing vectors $N$ and the dimensionality $D$.
