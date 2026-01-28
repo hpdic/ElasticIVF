@@ -128,7 +128,7 @@ To resolve these limitations, we propose SIVF, a GPU-resident indexing method th
 
 SIVF has been implemented and integrated into Faiss~\cite{douze2024faiss} as a new index through the \texttt{GpuIndexSIVF} class. Our implementation leverages CUDA for device-side kernels and employs a dual-view memory management strategy to maintain the consistency between host and device states. All new algorithms as well as key data structures are encapsulated within a \texttt{SlabManager} class that abstracts the complexity of dynamic memory operations on the GPU. 
 
-We have evaluated SIVF against a comprehensive set of baselines within Faiss, including CAGRA, IVF, Flat, HNSW, NSG, and LSH indices. Our evaluation was carried out on five datasets representing a variety of modalities, dimensions, and scalability: synthetic, Deep1B, SIFT1M, T2I-1B, and GIST1M. Experimental results show that SIVF achieves up to $13,307\times$ reduction in deletion latency (Fig.~\ref{fig:eval_deletion}) and improves ingestion throughput by $36\times$--$120\times$ compared to existing GPU indices (Fig.~\ref{fig:eval_ingestion}). In end-to-end sliding window scenarios, SIVF delivers a $163\times$--$262\times$ speedup (Fig.~\ref{fig:eval_sliding}) with a negligible memory overhead less than 0.8\% (Fig.~\ref{fig:eval_memory}), effectively closing the gap between static and streaming vector analytics performance.
+We have evaluated SIVF against a comprehensive set of baselines within Faiss, including CAGRA, IVF, Flat, HNSW, NSG, and LSH. Our evaluation was carried out on five datasets representing a variety of modalities, dimensions, and scalability: synthetic, Deep1B, SIFT1M, T2I-1B, and GIST1M. Experimental results show that SIVF achieves up to $13,307\times$ reduction in deletion latency (Fig.~\ref{fig:eval_deletion}) and improves ingestion throughput by $36\times$--$120\times$ compared to existing GPU indices (Fig.~\ref{fig:eval_ingestion}). In end-to-end sliding window scenarios, SIVF delivers a $163\times$--$262\times$ speedup (Fig.~\ref{fig:eval_sliding}) with a negligible memory overhead less than 0.8\% (Fig.~\ref{fig:eval_memory}), effectively closing the gap between static and streaming vector analytics performance.
 
 % \subsection{Contributions}
 % \label{sec:contributions}
@@ -139,7 +139,7 @@ In summary, this paper makes the following contributions:
     
     \item We propose a new indexing method, namely SIVF, that synthesizes a series of GPU-optimized data structures and algorithms for streaming vector analytics. This design enables $O(1)$ time complexity for deletion and constant-time insertion overhead with negligible memory overhead.
     
-    \item We implement SIVF in the state-of-the-art vector search library Faiss and evaluate SIVF against a broad spectrum of baselines (GPU CAGRA, GPU Flat, GPU IVF, HNSW, NSG, and LSH) on 5 datasets: synthetic, Deep1B, SIFT1M, T2I-1B, and GIST1M. The results demonstrate that SIVF achieves up to $13,307\times$ reduction in deletion latency, $120\times$ faster ingestion, and $266\times$ end-to-end sliding window speedup with less than 0.8\% memory overhead.
+    \item We implement SIVF in the state-of-the-art vector search library Faiss and evaluate SIVF against a broad spectrum of baselines (GPU CAGRA, GPU Flat, GPU IVF, HNSW, NSG, and LSH) on 5 representative datasets: synthetic, Deep1B, SIFT1M, T2I-1B, and GIST1M. The results demonstrate that SIVF achieves up to $13,307\times$ reduction in deletion latency, $120\times$ faster ingestion, and $266\times$ end-to-end sliding window speedup with less than 0.8\% memory overhead.
 \end{itemize}
 
 % \noindent
@@ -165,7 +165,7 @@ Navigational efficiency is a key optimization target; SHG~\cite{10.14778/3748191
 Several works focus on distance metric optimizations: ADA-NNS~\cite{10.1145/3696410.3714870} utilizes angular distance guidance to filter irrelevant neighbors, DADE~\cite{10.14778/3712221.3712244} accelerates comparisons via data-aware distance estimation in lower dimensions, and HSCG~\cite{10.1145/3769786} adapts the Monotonic Relative Neighbor Graph for cosine similarity using hemi-sphere centroids.
 Efforts to improve graph construction and maintenance include LIGS~\cite{10.1145/3726302.3730028}, which employs locality-sensitive hashing (LSH) to simulate proximity graphs for faster updates, and CSPG~\cite{DBLP:conf/nips/YangCZ24}, which crosses sparse proximity graphs. 
 Addressing robustness, Hua et al.~\cite{10.1145/3769783} propose dynamically detecting and fixing graph hardness for out-of-distribution queries. MIRAGE-ANNS~\cite{10.1145/3725325} attempts to bridge the gap between incremental and refinement-based construction. 
-Furthermore, theoretical frameworks like Subspace Collision~\cite{10.1145/3709729} provide guarantees on result quality using clustering-based indexing.
+Furthermore, theoretical frameworks like Subspace Collision~\cite{10.1145/3709729} provide guarantees on result quality via clustering-based indexing.
 
 Collectively, while these approaches maximize navigational efficiency for static data, they fundamentally rely on complex edge dependencies that are prohibitively expensive to maintain on GPUs. Unlike SIVF, they lack the architectural support for $O(1)$ lock-free mutation, rendering them unsuitable for high-churn streaming workloads where sub-millisecond update latency is critical.
 
@@ -738,6 +738,8 @@ Figure~\ref{fig:eval_search} compares query throughput (QPS). SIVF exhibits a lo
 \subsection{End-to-End Streaming Performance}
 \label{sec:eval_streaming}
 
+\subsubsection{Sliding window}
+
 We evaluate real-time applicability using a \textit{Sliding Window} benchmark that mimics production streams. The system maintains a fixed active window ($W$) by ingesting a new batch ($B$) and evicting the oldest batch ($B$) at each step. We test on SIFT1M ($W=200\text{K}, B=10\text{K}$) and GIST1M ($W=100\text{K}, B=5\text{K}$).
 
 \begin{figure}[t]
@@ -749,6 +751,8 @@ We evaluate real-time applicability using a \textit{Sliding Window} benchmark th
 
 As shown in Figure~\ref{fig:eval_sliding}, the standard Faiss baseline suffers from high latency due to the CPU-GPU roundtrip required for index reconstruction, causing system freezes of 355~ms (SIFT1M) and $>$ 1.1~s (GIST1M) per update.
 In contrast, SIVF executes updates strictly in VRAM via slab-based management, reducing per-step latency to $\approx$ 2.2~ms (SIFT1M) and 4.2~ms (GIST1M). This yields speedups of $163\times$ and $262\times$, respectively. Notably, the performance gap widens with dimensionality (GIST1M), where the baseline is bottlenecked by PCIe saturation. SIVF eliminates this bottleneck, maintaining single-digit millisecond latency and transforming the GPU IVF index into a real-time streaming engine.
+
+\subsubsection{Long-term streaming}
 
 \begin{table}[t]
 \centering
@@ -769,6 +773,8 @@ As shown in Table~\ref{tab:tail_latency}, the results confirm two critical chara
 First, the latency scales linearly: reducing the batch size by 10$\times$ (compared to the standard batching in Fig.~\ref{fig:eval_deletion}) reduces the average latency proportionally (from $\approx0.89$ ms to $\approx0.08$ ms), confirming the O(1) nature of our bitmap operations.
 Second, the performance is exceptionally stable: the 99th percentile (P99) latency is nearly identical to the average (0.10 ms vs 0.08 ms) for both SIFT1M (128D) and GIST1M (960D).
 This demonstrate that SIVF's lock-free retry mechanism introduces negligible jitter even under continuous churn, and its performance remains strictly dimension-agnostic.
+
+\subsubsection{Mixed operations}
 
 \begin{table}[t]
 \centering
