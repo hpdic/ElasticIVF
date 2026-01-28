@@ -227,3 +227,12 @@ target_link_libraries(test_sivf_p99
     CUDA::cudart 
     CUDA::cublas
 )
+
+# --- Mixed Workload ---
+add_executable(test_sivf_mixed hpdic/experiment/test_sivf_mixed.cpp)
+target_link_libraries(test_sivf_mixed 
+    faiss 
+    OpenMP::OpenMP_CXX 
+    CUDA::cudart 
+    CUDA::cublas
+)

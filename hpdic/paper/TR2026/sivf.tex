@@ -765,12 +765,32 @@ GIST1M  & 960 & 0.08 & 0.10 & 0.53 \\
 \end{tabular}
 \end{table}
 
-To validate system stability under high-frequency streaming, we conducted a fine-grained benchmark with a reduced batch size of $B=1,000$ over 1,000 continuous steps.
+To validate SIVF's stability under long-term streaming, we conducted a fine-grained benchmark with a reduced batch size of $B=1,000$ over 1,000 continuous steps.
 As shown in Table~\ref{tab:tail_latency}, the results confirm two critical characteristics.
-First, the latency scales linearly: reducing the batch size by 10$\times$ (compared to the standard batching in Fig.~\ref{fig:deletion_latency}) reduces the average latency proportionally (from $\approx0.89$ ms to $\approx0.08$ ms), confirming the O(1) nature of our bitmap operations.
+First, the latency scales linearly: reducing the batch size by 10$\times$ (compared to the standard batching in Fig.~\ref{fig:eval_deletion}) reduces the average latency proportionally (from $\approx0.89$ ms to $\approx0.08$ ms), confirming the O(1) nature of our bitmap operations.
 Second, the performance is exceptionally stable: the 99th percentile (P99) latency is nearly identical to the average (0.10 ms vs 0.08 ms) for both SIFT1M (128D) and GIST1M (960D).
 This demonstrate that SIVF's lock-free retry mechanism introduces negligible jitter even under continuous churn, and its performance remains strictly dimension-agnostic.
 
+\begin{table}[t]
+\centering
+\small
+\caption{Search latency stability under mixed workload.}
+\label{tab:search_stability}
+\begin{tabular}{l|c|cc}
+\toprule
+Dataset & Dim & Avg (ms) & P99 (ms) \\
+\midrule
+SIFT1M  & 128 & 0.25 & 0.41 \\
+GIST1M  & 960 & 0.69 & 0.78 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+We evaluated search stability by interleaving query batches within the sliding window loop (Insert $\rightarrow$ Search $\rightarrow$ Delete). 
+The results confirm that SIVF maintains sub-millisecond retrieval latency even under continuous mutation. 
+On SIFT1M, the 99th percentile (P99) search latency was 0.41 ms (Avg: 0.25 ms). 
+Notably, on the high-dimensional GIST1M, the system exhibited negligible jitter with a P99 of 0.78 ms (Avg: 0.69 ms). 
+This stability verifies that our slab-based memory management prevents the fragmentation-induced performance degradation typical of dynamic GPU indices.
 
 \subsection{Hardware Utilization}
 \label{sec:hardware_analysis}

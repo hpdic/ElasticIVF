@@ -108,6 +108,11 @@ nsys stats sivf_pcie_evidence.nsys-rep --report gputrace,cuda_api_sum
 cd ~/ElasticIVF/build
 make -j test_sivf_p99
 ./test_sivf_p99
+
+# Mixed workload latency test:
+cd ~/ElasticIVF/build
+make -j test_sivf_mixed
+./test_sivf_mixed
 ```
 
 ## Benchmarks
