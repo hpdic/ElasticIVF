@@ -81,6 +81,14 @@ make -j test_sivf_memory
 cd ~/ElasticIVF/build
 make -j test_sivf_nonivf
 ./test_sivf_nonivf
+
+# CAGRA:
+source ~/ElasticIVF/myenv/bin/activate
+pip install cuvs-cu12 --extra-index-url https://pypi.nvidia.com
+pip install cupy-cuda12x
+export LD_LIBRARY_PATH=$(dirname $(find ~/ElasticIVF/myenv -name "libcuvs_c.so" | head -n 1)):$LD_LIBRARY_PATH
+cd ~/ElasticIVF/hpdic/script/
+python bench_cagra.py
 ```
 
 ## Benchmarks
