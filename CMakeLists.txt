@@ -166,6 +166,13 @@ target_link_libraries(test_sivf_sift_delete
     CUDA::cudart 
     CUDA::cublas
 )
+add_executable(test_sivf_sift_pareto hpdic/experiment/sift/test_sivf_sift_pareto.cpp)
+target_link_libraries(test_sivf_sift_pareto 
+    faiss 
+    OpenMP::OpenMP_CXX 
+    CUDA::cudart 
+    CUDA::cublas
+)
 
 # --- GIST1M Benchmarks ---
 add_executable(test_sivf_gist_add hpdic/experiment/gist/test_sivf_gist_add.cpp)
@@ -231,15 +238,6 @@ target_link_libraries(test_sivf_p99
 # --- Mixed Workload ---
 add_executable(test_sivf_mixed hpdic/experiment/test_sivf_mixed.cpp)
 target_link_libraries(test_sivf_mixed 
-    faiss 
-    OpenMP::OpenMP_CXX 
-    CUDA::cudart 
-    CUDA::cublas
-)
-
-# --- Pareto ---
-add_executable(test_sivf_pareto hpdic/experiment/test_sivf_pareto.cpp)
-target_link_libraries(test_sivf_pareto 
     faiss 
     OpenMP::OpenMP_CXX 
     CUDA::cudart 

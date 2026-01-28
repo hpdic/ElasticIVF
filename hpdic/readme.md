@@ -50,6 +50,8 @@ make -j test_sivf_sift_search
 ./test_sivf_sift_search
 make -j test_sivf_sift_delete
 ./test_sivf_sift_delete
+make -j test_sivf_sift_pareto
+./test_sivf_sift_pareto
 
 # Dataset GIST1M:
 cd ~/ElasticIVF/build
@@ -114,10 +116,6 @@ cd ~/ElasticIVF/build
 make -j test_sivf_mixed
 ./test_sivf_mixed
 
-# Pareto:
-cd ~/ElasticIVF/build
-make -j test_sivf_pareto
-./test_sivf_pareto
 ```
 
 ## Benchmarks
