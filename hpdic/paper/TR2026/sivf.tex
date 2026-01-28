@@ -536,6 +536,8 @@ Comparing this to standard dynamic arrays, which often reserve up to $2 \times N
 
 \don{Add multi-GPU results}
 
+\don{Add hybrid workloads (query + insert + delete)}
+
 We implement SIVF by extending the GPU components of the widely-adopted Faiss library~\cite{douze2024faiss}, integrating our proposed data structures and algorithms into its core indexing architecture. Our evaluation benchmarks SIVF directly against the native Faiss GPU implementations, specifically targeting ingestion throughput and deletion latency under high-concurrency streaming workloads. We have open-sourced our complete implementation and evaluation scripts on GitHub.
 
 Implementing SIVF required substantial modifications to the Faiss GPU backend and associated experimental infrastructure. In total, the implementation involves approximately 9,000 lines of code changes across more than 45 source files. Core system changes are concentrated in the GPU index implementation, incorporating new GPU-native insertion, deletion, and search operators (e.g., \texttt{GpuIndexSIVF}, \texttt{SIVFAppend}, \texttt{SIVFSearch}, \texttt{SIVFDelete}), alongside a custom slab-based memory manager (e.g., \texttt{SlabManager}) and lock-free metadata structures (e.g., \texttt{SIVFStructs}). Furthermore, we developed a comprehensive benchmarking suite that extends beyond standard metric testing to include end-to-end streaming simulations, memory scalability analysis, and automated visualization scripts, ensuring a rigorous and reproducible evaluation.
@@ -650,7 +652,6 @@ Deletion performance reveals a tradeoff between resource provisioning and batchi
 \paragraph{Latency Stability (Fig.~\ref{fig:sivf_sensitivity_lat})}
 Figure~\ref{fig:sivf_sensitivity_lat} analyzes the end-to-end latency for index mutations. Insertion latency (Fig.~\ref{fig:sivf_sensitivity_lat}a) remains consistent between 3.09 ms and 3.69 ms. Performance correlates with memory provisioning: increasing $maxvec\_factor$ to 1.5 minimizes dynamic resizing overhead, achieving the lowest insertion latency of 3.09 ms. Deletion operations (Fig.~\ref{fig:sivf_sensitivity_lat}b) are significantly faster, maintaining sub-millisecond latency (0.58--0.93 ms) across all settings. This $3\times$--$5\times$ speed advantage over insertion stems from SIVF's lock-free bitmap mechanism, which avoids the data movement required for insertion. Notably, deletion latency benefits from batch amortization, dropping from 0.93 ms to 0.63 ms as batch size increases, confirming that kernel launch overhead dominates the cost of these lightweight bitwise operations.
 
-
 \subsection{Real-world Datasets}
 \label{sec:eval_real_world}
 
@@ -728,7 +729,7 @@ Figure~\ref{fig:eval_memory} illustrates the memory growth trends for both SIFT1
 
 Furthermore, we verified the efficacy of our memory reclamation strategy. In a stress test (not shown in the figure) involving the deletion of 50\% of the dataset followed by immediate re-insertion, SIVF maintained a constant memory footprint without triggering OS-level deallocation. The deletion operation completed in sub-millisecond time per batch (e.g., 4.04~ms for 100K GIST vectors), confirming that memory slots are logically reclaimed via bitmap toggling and immediately available for reuse. This ``zero-cost'' reclamation ensures that SIVF can sustain long-running streaming workloads without suffering from memory leaks or fragmentation-induced bloat.
 
-\subsection{SIVF vs. Non-IVF Streaming}
+\subsection{Graph-based Index Comparison}
 \label{sec:eval_non_ivf}
 
 To position SIVF within the broader indexing landscape, we benchmarked it against four representative non-IVF architectures: (1) Faiss GPU Flat (brute-force baseline, i.e., no index), (2) HNSW~\cite{malkov2018efficient} (dynamic graphs), (3) LSH~\cite{10.1145/997817.997857} (legacy hash-based approaches), and (4) NSG~\cite{10.14778/3303753.3303754} (static graphs).
