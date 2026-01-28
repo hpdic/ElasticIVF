@@ -103,6 +103,11 @@ sudo /usr/local/cuda/bin/ncu \
     --launch-count 10 \
     ./test_sivf_profiling > sivf_metrics_fast.csv
 nsys stats sivf_pcie_evidence.nsys-rep --report gputrace,cuda_api_sum
+
+# P99 latency test:
+cd ~/ElasticIVF/build
+make -j test_sivf_p99
+./test_sivf_p99
 ```
 
 ## Benchmarks

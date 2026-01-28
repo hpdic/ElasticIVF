@@ -218,3 +218,12 @@ target_link_libraries(test_sivf_profiling
     CUDA::cudart 
     CUDA::cublas
 )
+
+# --- P99 ---
+add_executable(test_sivf_p99 hpdic/experiment/test_sivf_p99.cpp)
+target_link_libraries(test_sivf_p99 
+    faiss 
+    OpenMP::OpenMP_CXX 
+    CUDA::cudart 
+    CUDA::cublas
+)

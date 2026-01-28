@@ -751,6 +751,27 @@ We evaluate real-time applicability using a \textit{Sliding Window} benchmark th
 As shown in Figure~\ref{fig:eval_sliding}, the standard Faiss baseline suffers from high latency due to the CPU-GPU roundtrip required for index reconstruction, causing system freezes of 355~ms (SIFT1M) and $>$ 1.1~s (GIST1M) per update.
 In contrast, SIVF executes updates strictly in VRAM via slab-based management, reducing per-step latency to $\approx$ 2.2~ms (SIFT1M) and 4.2~ms (GIST1M). This yields speedups of $163\times$ and $262\times$, respectively. Notably, the performance gap widens with dimensionality (GIST1M), where the baseline is bottlenecked by PCIe saturation. SIVF eliminates this bottleneck, maintaining single-digit millisecond latency and transforming the GPU IVF index into a real-time streaming engine.
 
+\begin{table}[t]
+\centering
+\caption{Tail latency of deletion operations over 1,000 streaming steps (Batch Size $B=1,000$).}
+\label{tab:tail_latency}
+\begin{tabular}{l|c|cc|c}
+\toprule
+\textbf{Dataset} & \textbf{Dim} & \textbf{Avg (ms)} & \textbf{P99 (ms)} & \textbf{Max (ms)} \\
+\midrule
+SIFT1M  & 128 & 0.08 & 0.10 & 0.58 \\
+GIST1M  & 960 & 0.08 & 0.10 & 0.53 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+To validate system stability under high-frequency streaming, we conducted a fine-grained benchmark with a reduced batch size of $B=1,000$ over 1,000 continuous steps.
+As shown in Table~\ref{tab:tail_latency}, the results confirm two critical characteristics.
+First, the latency scales linearly: reducing the batch size by 10$\times$ (compared to the standard batching in Fig.~\ref{fig:deletion_latency}) reduces the average latency proportionally (from $\approx0.89$ ms to $\approx0.08$ ms), confirming the O(1) nature of our bitmap operations.
+Second, the performance is exceptionally stable: the 99th percentile (P99) latency is nearly identical to the average (0.10 ms vs 0.08 ms) for both SIFT1M (128D) and GIST1M (960D).
+This demonstrate that SIVF's lock-free retry mechanism introduces negligible jitter even under continuous churn, and its performance remains strictly dimension-agnostic.
+
+
 \subsection{Hardware Utilization}
 \label{sec:hardware_analysis}
 
@@ -818,8 +839,8 @@ To position SIVF within the broader indexing landscape, we benchmarked it agains
 \multirow{2}{*}{\textbf{Method}} & \multicolumn{2}{c|}{\textbf{SIFT1M}} & \multicolumn{2}{c|}{\textbf{T2I-1B}} & \multicolumn{2}{c}{\textbf{GIST1M}} \\
  & Add & Del & Add & Del & Add & Del \\
 \midrule
-Flat~\cite{douze2024faiss} & 9,169 & 836 & 6,020 & 1,160 & 1,230 & 1,143 \\
-CAGRA~\cite{10597683} & 305 & 3,030 & 259 & 3,773 & 97.1 & 10,215 \\
+GPU Flat~\cite{douze2024faiss} & 9,169 & 836 & 6,020 & 1,160 & 1,230 & 1,143 \\
+GPU CAGRA~\cite{10597683} & 305 & 3,030 & 259 & 3,773 & 97.1 & 10,215 \\
 HNSW~\cite{malkov2018efficient} & 25.5 & N/A & 25.7 & N/A & 0.6 & N/A \\
 NSG~\cite{10.14778/3303753.3303754} & 3.7 & N/A & 3.2 & N/A & 0.7 & N/A \\
 LSH~\cite{10.1145/997817.997857} & 787 & 14.6 & 428 & 16.3 & 36.6 & 9.2 \\
