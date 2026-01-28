@@ -538,11 +538,9 @@ Comparing this to standard dynamic arrays, which often reserve up to $2 \times N
 
 We implement SIVF by extending the GPU components of the widely-adopted Faiss library~\cite{douze2024faiss}, integrating our proposed data structures and algorithms into its core indexing architecture. We have open-sourced our complete implementation and evaluation scripts on GitHub.
 
-Implementing SIVF required substantial modifications to the Faiss GPU backend and associated experimental infrastructure. Table~\ref{tab:file_structure} summarizes some of the key source files added or modified in the repository based on our development history. In total, the implementation involves approximately 9,000 lines of code changes across more than 45 source files. Core system changes are concentrated in the GPU index implementation, incorporating new GPU-native insertion, deletion, and search operators (e.g., \texttt{GpuIndexSIVF}, \texttt{SIVFAppend}, \texttt{SIVFSearch}, \texttt{SIVFDelete}), alongside a custom slab-based memory manager (e.g., \texttt{SlabManager}) and lock-free metadata structures (e.g., \texttt{SIVFStructs}). Furthermore, we developed a comprehensive benchmarking suite that extends beyond standard metric testing to include end-to-end streaming simulations, memory scalability analysis, and automated visualization scripts, ensuring a rigorous and reproducible evaluation.
-
 \begin{table*}[t]
     \centering
-    \caption{Summary of Source Files and Modifications in SIVF Project}
+    \caption{Summary of Key Source Files of SIVF Implementation in Faiss~\cite{douze2024faiss}}
     \label{tab:file_structure}
     \begin{tabular}{l|p{10.5cm}}
     \hline
@@ -567,7 +565,13 @@ Implementing SIVF required substantial modifications to the Faiss GPU backend an
     \end{tabular}
 \end{table*}
 
-\don{TODO}
+Implementing SIVF required substantial modifications to the Faiss GPU backend and associated experimental infrastructure. Table~\ref{tab:file_structure} summarizes some of the key source files added or modified in the repository based on our development history. In total, the implementation involves approximately 9,000 lines of code changes across more than 45 source files. Core system changes are concentrated in the GPU index implementation, incorporating new GPU-native insertion, deletion, and search operators (e.g., \texttt{GpuIndexSIVF}, \texttt{SIVFAppend}, \texttt{SIVFSearch}, \texttt{SIVFDelete}), alongside a custom slab-based memory manager (e.g., \texttt{SlabManager}) and lock-free metadata structures (e.g., \texttt{SIVFStructs}). Furthermore, we developed a comprehensive benchmarking suite that extends beyond standard metric testing to include end-to-end streaming simulations, memory scalability analysis, and automated visualization scripts, ensuring a rigorous and reproducible evaluation.
+
+Integrating SIVF into Faiss presented unique engineering challenges, particularly in reconciling our dynamic memory model with Faiss's static resource management.
+Unlike standard Faiss indices which rely on pre-allocated flat arrays (managed via \texttt{DeviceTensor}), SIVF introduces a custom \texttt{SlabManager} that operates directly on a raw GPU memory arena.
+To maintain compatibility, we implemented \texttt{GpuIndexSIVF} as a direct subclass of \texttt{GpuIndex}, overriding the virtual \texttt{addImpl} and \texttt{searchImpl} methods. This polymorphism allows SIVF to serve as a drop-in replacement in existing Faiss pipelines.
+Of note, our implementation respects Faiss's \texttt{GpuResources} context, ensuring that all SIVF kernels (append, search, delete) are dispatched onto the user-specified CUDA streams. This design allows SIVF to support asynchronous ingest-search pipelines without blocking the default stream, a requirement for high-throughput streaming scenarios.
+Finally, we extended the SWIG interface files to expose the new \texttt{SIVF} class and its configuration parameters (e.g., slab size, relaxation factor) to the Python layer, enabling seamless interaction with PyTorch and NumPy workflows.
 
 \section{Evaluation}
 \label{sec:evaluation}
@@ -766,7 +770,7 @@ Furthermore, we verified the efficacy of our memory reclamation strategy. In a s
 \subsection{Graph-based Index Comparison}
 \label{sec:eval_non_ivf}
 
-To position SIVF within the broader indexing landscape, we benchmarked it against four representative non-IVF architectures: (1) Faiss GPU Flat (brute-force baseline, i.e., no index), (2) HNSW~\cite{malkov2018efficient} (dynamic graphs), (3) LSH~\cite{10.1145/997817.997857} (legacy hash-based approaches), and (4) NSG~\cite{10.14778/3303753.3303754} (static graphs).
+To position SIVF within the broader indexing landscape, we benchmarked it against five representative non-IVF architectures: GPU CAGRA~\cite{10597683} (graphs), Faiss GPU Flat (brute-force baseline, i.e., no index), HNSW~\cite{malkov2018efficient} (dynamic graphs), (3) LSH~\cite{10.1145/997817.997857} (legacy hash-based approaches), and (4) NSG~\cite{10.14778/3303753.3303754} (static graphs). Table~\ref{tab:landscape_full} summarizes ingestion throughput and deletion latency across three datasets: SIFT1M, T2I-1B, and GIST1M.
 
 \begin{table}[t]
 \caption{Comparison of ingestion throughput (K vec/s) and deletion latency (ms) across different datasets.}
