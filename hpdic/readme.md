@@ -89,6 +89,20 @@ pip install cupy-cuda12x
 export LD_LIBRARY_PATH=$(dirname $(find ~/ElasticIVF/myenv -name "libcuvs_c.so" | head -n 1)):$LD_LIBRARY_PATH
 cd ~/ElasticIVF/hpdic/script/
 python bench_cagra.py
+
+# Profiling
+cd ~/ElasticIVF/build
+make -j test_sivf_profiling
+./test_sivf_profiling
+sudo nsys profile     --trace=cuda,nvtx,osrt     --gpu-metrics-device=all     --output=sivf_pcie_evidence     --force-overwrite=true     ./test_sivf_profiling
+sudo /usr/local/cuda/bin/ncu \
+    --target-processes all \
+    --metrics gpu__time_duration.sum,dram__bytes.sum,sm__throughput.avg.pct_of_peak_sustained_elapsed \ 
+    --csv \
+    --launch-skip 100 \
+    --launch-count 10 \
+    ./test_sivf_profiling > sivf_metrics_fast.csv
+nsys stats sivf_pcie_evidence.nsys-rep --report gputrace,cuda_api_sum
 ```
 
 ## Benchmarks

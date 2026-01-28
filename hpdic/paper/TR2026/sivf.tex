@@ -749,6 +749,29 @@ We evaluate real-time applicability using a \textit{Sliding Window} benchmark th
 As shown in Figure~\ref{fig:eval_sliding}, the standard Faiss baseline suffers from high latency due to the CPU-GPU roundtrip required for index reconstruction, causing system freezes of 355~ms (SIFT1M) and $>$ 1.1~s (GIST1M) per update.
 In contrast, SIVF executes updates strictly in VRAM via slab-based management, reducing per-step latency to $\approx$ 2.2~ms (SIFT1M) and 4.2~ms (GIST1M). This yields speedups of $163\times$ and $262\times$, respectively. Notably, the performance gap widens with dimensionality (GIST1M), where the baseline is bottlenecked by PCIe saturation. SIVF eliminates this bottleneck, maintaining single-digit millisecond latency and transforming the GPU IVF index into a real-time streaming engine.
 
+\subsection{Hardware Utilization}
+\label{sec:hardware_analysis}
+
+To understand the micro-architectural drivers of the observed performance divergence, we profiled the GPU execution pipeline during the streaming update phase using NVIDIA Nsight Systems and Nsight Compute.
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=\linewidth]{figures/profiling_comparison.pdf}
+    \caption{Breakdown of GPU time consumption during streaming updates.}
+    \label{fig:profiling_comparison}
+\end{figure}
+
+Figure~\ref{fig:profiling_comparison} presents a breakdown of the execution time.
+The baseline implementation reveals a severe resource mismatch: 53.2\% of the total runtime is consumed by host-to-device data transfer (\texttt{cudaMemcpyAsync}) via the PCIe bus, and an additional 39.2\% is spent on dynamic memory management overheads (\texttt{cudaMalloc} or \texttt{cudaFree}).
+Consequently, the actual GPU compute units (SMs) remain idle for over 96\% of the update cycle, with only 3.2\% of time spent on kernel execution.
+In contrast, SIVF's GPU-resident architecture eliminates these PCIe roundtrips and OS-level allocations.
+As a result, the execution profile is transformed: 95.0\% of the time is dedicated to active kernel execution, confirming that SIVF successfully shifts the workload from being I/O-bound to compute-bound.
+
+Further profiling with Nsight Compute confirms that SIVF effectively saturates on-device resources.
+During the ingestion phase on SIFT1M, the quantization kernels achieve a Streaming Multiprocessor (SM) utilization of 49.0\%, indicating a healthy compute-bound workload.
+Simultaneously, the slab selection kernels exhibit an effective memory bandwidth of 150.3 GB/s.
+This demonstrates that despite the irregular memory access patterns inherent to linked-slab traversals, SIVF's warp-aligned design ($C=32$) maintains sufficient coalescing to utilize a significant fraction of the device's memory bandwidth, a property unattainable by pointer-based CPU data structures.
+
 \subsection{Memory Efficiency and Scalability}
 \label{sec:eval_memory}
 

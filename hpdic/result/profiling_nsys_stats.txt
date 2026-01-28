@@ -1,0 +1,32 @@
+(myenv) cc@rtx6000:~/ElasticIVF/build$ nsys stats sivf_pcie_evidence.nsys-rep --report gputrace,cuda_api_sum
+Generating SQLite file sivf_pcie_evidence.sqlite from sivf_pcie_evidence.nsys-rep
+Processing [sivf_pcie_evidence.sqlite] with [gputrace]... 
+ERROR: Report 'gputrace' could not be found.
+
+Processing [sivf_pcie_evidence.sqlite] with [/opt/nvidia/nsight-systems/2024.5.1/host-linux-x64/reports/cuda_api_sum.py]... 
+
+ ** CUDA API Summary (cuda_api_sum):
+
+ Time (%)  Total Time (ns)  Num Calls   Avg (ns)     Med (ns)    Min (ns)   Max (ns)   StdDev (ns)               Name             
+ --------  ---------------  ---------  -----------  -----------  ---------  ---------  -----------  ------------------------------
+     53.2        850459479      53611      15863.5       3050.0        171   87870916     540199.7  cudaMemcpyAsync               
+     19.6        313569629          1  313569629.0  313569629.0  313569629  313569629          0.0  cudaHostAlloc                 
+      9.1        145864903      17583       8295.8       4868.0       1675    4826100      57237.3  cudaFree                      
+      7.5        120535945      17582       6855.6       3377.0       1675    3610369      35066.7  cudaMalloc                    
+      4.4         70100590      17553       3993.7       3320.0       1957     158434       2642.3  cudaMemsetAsync               
+      3.2         50543103       7707       6558.1       4670.0       3104    3899002      65122.4  cudaLaunchKernel              
+      3.0         47442077          1   47442077.0   47442077.0   47442077   47442077          0.0  cudaFreeHost                  
+      0.0           203345        108       1882.8       1444.5        305       5112       1338.2  cudaEventCreateWithFlags      
+      0.0           183514         90       2039.0       1640.5        464       4933       1374.1  cudaEventRecord               
+      0.0           181181         72       2516.4       1745.0        913       6448       1431.8  cudaStreamSynchronize         
+      0.0           180294        120       1502.5       1050.0        489       4213        990.1  cudaStreamWaitEvent           
+      0.0           138682        810        171.2        136.0         80       1186        100.2  cuGetProcAddress_v2           
+      0.0           127668        108       1182.1        840.5        296      12594       1282.6  cudaEventDestroy              
+      0.0           101367         24       4223.6       3136.5        948      17930       3645.7  cudaDeviceSynchronize         
+      0.0            79654          4      19913.5       3431.0       3320      69472      33039.1  cudaStreamCreateWithFlags     
+      0.0            32371          4       8092.8       5830.0       3416      17295       6504.5  cudaStreamDestroy             
+      0.0             6567          3       2189.0       2247.0       1991       2329        176.3  cuInit                        
+      0.0             1838          3        612.7        289.0        139       1410        694.6  cuModuleGetLoadingMode        
+      0.0             1207          2        603.5        603.5        355        852        351.4  cudaGetDriverEntryPoint_v11030
+
+(myenv) cc@rtx6000:~/ElasticIVF/build$ 

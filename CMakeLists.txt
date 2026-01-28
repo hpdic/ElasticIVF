@@ -209,3 +209,12 @@ target_link_libraries(test_sivf_nonivf
     CUDA::cudart 
     CUDA::cublas
 )
+
+# --- Profiling ---
+add_executable(test_sivf_profiling hpdic/experiment/test_sivf_profiling.cpp)
+target_link_libraries(test_sivf_profiling 
+    faiss 
+    OpenMP::OpenMP_CXX 
+    CUDA::cudart 
+    CUDA::cublas
+)

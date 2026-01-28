@@ -1,0 +1,69 @@
+[Loader] Reading SIFT1M...
+
+=== HPDC Hardware Profiling Mode ===
+Dataset: SIFT1M | Steps: 5
+
+>>> Running SIVF...
+==PROF== Connected to process 587522 (/home/cc/ElasticIVF/build/test_sivf_profiling)
+[HPDIC MOD] Faiss GPU initialized on device ID: 0
+
+[HPDIC MEMORY FIX] Resizing:
+  > Slab Pool:   128 -> 38471
+  > Data Buffer: 220000 -> 1231072 vectors (Avoids Overflow)
+
+[SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...
+Clustering 50000 points in 128D to 1024 clusters, redo 1 times, 20 iterations
+  Preprocessing in 0.02 s
+  Iteration 0 (22.37 s, search 22.33 s): objective=3.71603e+09 imbalance=1.859 nsplit=0       
+  Iteration 1 (22.40 s, search 22.35 s): objective=2.61181e+09 imbalance=1.455 nsplit=0       
+  Iteration 2 (22.44 s, search 22.37 s): objective=2.52522e+09 imbalance=1.358 nsplit=0       
+  Iteration 3 (22.46 s, search 22.39 s): objective=2.49033e+09 imbalance=1.315 nsplit=0       
+  Iteration 4 (22.49 s, search 22.41 s): objective=2.47144e+09 imbalance=1.290 nsplit=0       
+  Iteration 5 (22.52 s, search 22.43 s): objective=2.45946e+09 imbalance=1.276 nsplit=0       
+  Iteration 6 (22.54 s, search 22.45 s): objective=2.4513e+09 imbalance=1.266 nsplit=0       
+  Iteration 7 (22.57 s, search 22.47 s): objective=2.44537e+09 imbalance=1.260 nsplit=0       
+  Iteration 8 (22.59 s, search 22.49 s): objective=2.44118e+09 imbalance=1.256 nsplit=0       
+  Iteration 9 (22.63 s, search 22.51 s): objective=2.43784e+09 imbalance=1.252 nsplit=0       
+  Iteration 10 (22.65 s, search 22.53 s): objective=2.43523e+09 imbalance=1.249 nsplit=0       
+  Iteration 11 (22.68 s, search 22.55 s): objective=2.43306e+09 imbalance=1.247 nsplit=0       
+  Iteration 12 (22.71 s, search 22.57 s): objective=2.4314e+09 imbalance=1.246 nsplit=0       
+  Iteration 13 (22.75 s, search 22.59 s): objective=2.43009e+09 imbalance=1.245 nsplit=0       
+  Iteration 14 (22.77 s, search 22.61 s): objective=2.42884e+09 imbalance=1.245 nsplit=0       
+  Iteration 15 (22.79 s, search 22.63 s): objective=2.42781e+09 imbalance=1.244 nsplit=0       
+  Iteration 16 (22.82 s, search 22.65 s): objective=2.42704e+09 imbalance=1.243 nsplit=0       
+  Iteration 17 (22.84 s, search 22.67 s): objective=2.42635e+09 imbalance=1.242 nsplit=0       
+  Iteration 18 (22.87 s, search 22.69 s): objective=2.4258e+09 imbalance=1.241 nsplit=0       
+  Iteration 19 (22.89 s, search 22.72 s): objective=2.42526e+09 imbalance=1.242 nsplit=0       
+[SIVF::train] GPU K-Means complete. Quantizer populated with 1024 centroids.
+==PROF== Disconnected from process 587522
+"ID","Process ID","Process Name","Host Name","Kernel Name","Context","Stream","Block Size","Grid Size","Device","CC","Section Name","Metric Name","Metric Unit","Metric Value"
+"0","587522","test_sivf_profiling","127.0.0.1","void faiss::l2SelectMin1<float, 8, 256>(faiss::Tensor<T1, 2, 1, long, faiss::DefaultPtrTraits>, faiss::Tensor<T1, 1, 1, long, faiss::DefaultPtrTraits>, faiss::Tensor<T1, 2, 1, long, faiss::DefaultPtrTraits>, faiss::Tensor<long, 2, 1, long, faiss::DefaultPtrTraits>)","1","15","(256, 1, 1)","(64, 1, 1)","0","7.5","Command line profiler metrics","dram__bytes.sum","byte","2162368"
+"0","587522","test_sivf_profiling","127.0.0.1","void faiss::l2SelectMin1<float, 8, 256>(faiss::Tensor<T1, 2, 1, long, faiss::DefaultPtrTraits>, faiss::Tensor<T1, 1, 1, long, faiss::DefaultPtrTraits>, faiss::Tensor<T1, 2, 1, long, faiss::DefaultPtrTraits>, faiss::Tensor<long, 2, 1, long, faiss::DefaultPtrTraits>)","1","15","(256, 1, 1)","(64, 1, 1)","0","7.5","Command line profiler metrics","gpu__time_duration.sum","ns","14592"
+"0","587522","test_sivf_profiling","127.0.0.1","void faiss::l2SelectMin1<float, 8, 256>(faiss::Tensor<T1, 2, 1, long, faiss::DefaultPtrTraits>, faiss::Tensor<T1, 1, 1, long, faiss::DefaultPtrTraits>, faiss::Tensor<T1, 2, 1, long, faiss::DefaultPtrTraits>, faiss::Tensor<long, 2, 1, long, faiss::DefaultPtrTraits>)","1","15","(256, 1, 1)","(64, 1, 1)","0","7.5","Command line profiler metrics","sm__throughput.avg.pct_of_peak_sustained_elapsed","%","14.29"
+"1","587522","test_sivf_profiling","127.0.0.1","void faiss::sumAlongRows<float, 1>(faiss::Tensor<T1, 1, 1, long, faiss::DefaultPtrTraits>, faiss::Tensor<T1, 2, 1, long, faiss::DefaultPtrTraits>)","1","15","(1, 1, 1)","(512, 1, 1)","0","7.5","Command line profiler metrics","dram__bytes.sum","byte","7392"
+"1","587522","test_sivf_profiling","127.0.0.1","void faiss::sumAlongRows<float, 1>(faiss::Tensor<T1, 1, 1, long, faiss::DefaultPtrTraits>, faiss::Tensor<T1, 2, 1, long, faiss::DefaultPtrTraits>)","1","15","(1, 1, 1)","(512, 1, 1)","0","7.5","Command line profiler metrics","gpu__time_duration.sum","ns","3488"
+"1","587522","test_sivf_profiling","127.0.0.1","void faiss::sumAlongRows<float, 1>(faiss::Tensor<T1, 1, 1, long, faiss::DefaultPtrTraits>, faiss::Tensor<T1, 2, 1, long, faiss::DefaultPtrTraits>)","1","15","(1, 1, 1)","(512, 1, 1)","0","7.5","Command line profiler metrics","sm__throughput.avg.pct_of_peak_sustained_elapsed","%","2.25"
+"2","587522","test_sivf_profiling","127.0.0.1","volta_sgemm_128x64_tn","1","16","(128, 1, 1)","(8, 8, 1)","0","7.5","Command line profiler metrics","dram__bytes.sum","byte","1552224"
+"2","587522","test_sivf_profiling","127.0.0.1","volta_sgemm_128x64_tn","1","16","(128, 1, 1)","(8, 8, 1)","0","7.5","Command line profiler metrics","gpu__time_duration.sum","ns","22400"
+"2","587522","test_sivf_profiling","127.0.0.1","volta_sgemm_128x64_tn","1","16","(128, 1, 1)","(8, 8, 1)","0","7.5","Command line profiler metrics","sm__throughput.avg.pct_of_peak_sustained_elapsed","%","48.74"
+"3","587522","test_sivf_profiling","127.0.0.1","void faiss::l2SelectMin1<float, 8, 256>(faiss::Tensor<T1, 2, 1, long, faiss::DefaultPtrTraits>, faiss::Tensor<T1, 1, 1, long, faiss::DefaultPtrTraits>, faiss::Tensor<T1, 2, 1, long, faiss::DefaultPtrTraits>, faiss::Tensor<long, 2, 1, long, faiss::DefaultPtrTraits>)","1","16","(256, 1, 1)","(64, 1, 1)","0","7.5","Command line profiler metrics","dram__bytes.sum","byte","2160192"
+"3","587522","test_sivf_profiling","127.0.0.1","void faiss::l2SelectMin1<float, 8, 256>(faiss::Tensor<T1, 2, 1, long, faiss::DefaultPtrTraits>, faiss::Tensor<T1, 1, 1, long, faiss::DefaultPtrTraits>, faiss::Tensor<T1, 2, 1, long, faiss::DefaultPtrTraits>, faiss::Tensor<long, 2, 1, long, faiss::DefaultPtrTraits>)","1","16","(256, 1, 1)","(64, 1, 1)","0","7.5","Command line profiler metrics","gpu__time_duration.sum","ns","14464"
+"3","587522","test_sivf_profiling","127.0.0.1","void faiss::l2SelectMin1<float, 8, 256>(faiss::Tensor<T1, 2, 1, long, faiss::DefaultPtrTraits>, faiss::Tensor<T1, 1, 1, long, faiss::DefaultPtrTraits>, faiss::Tensor<T1, 2, 1, long, faiss::DefaultPtrTraits>, faiss::Tensor<long, 2, 1, long, faiss::DefaultPtrTraits>)","1","16","(256, 1, 1)","(64, 1, 1)","0","7.5","Command line profiler metrics","sm__throughput.avg.pct_of_peak_sustained_elapsed","%","14.31"
+"4","587522","test_sivf_profiling","127.0.0.1","void faiss::sumAlongRows<float, 1>(faiss::Tensor<T1, 1, 1, long, faiss::DefaultPtrTraits>, faiss::Tensor<T1, 2, 1, long, faiss::DefaultPtrTraits>)","1","16","(1, 1, 1)","(512, 1, 1)","0","7.5","Command line profiler metrics","dram__bytes.sum","byte","7392"
+"4","587522","test_sivf_profiling","127.0.0.1","void faiss::sumAlongRows<float, 1>(faiss::Tensor<T1, 1, 1, long, faiss::DefaultPtrTraits>, faiss::Tensor<T1, 2, 1, long, faiss::DefaultPtrTraits>)","1","16","(1, 1, 1)","(512, 1, 1)","0","7.5","Command line profiler metrics","gpu__time_duration.sum","ns","3520"
+"4","587522","test_sivf_profiling","127.0.0.1","void faiss::sumAlongRows<float, 1>(faiss::Tensor<T1, 1, 1, long, faiss::DefaultPtrTraits>, faiss::Tensor<T1, 2, 1, long, faiss::DefaultPtrTraits>)","1","16","(1, 1, 1)","(512, 1, 1)","0","7.5","Command line profiler metrics","sm__throughput.avg.pct_of_peak_sustained_elapsed","%","2.25"
+"5","587522","test_sivf_profiling","127.0.0.1","volta_sgemm_128x64_tn","1","15","(128, 1, 1)","(8, 8, 1)","0","7.5","Command line profiler metrics","dram__bytes.sum","byte","1552384"
+"5","587522","test_sivf_profiling","127.0.0.1","volta_sgemm_128x64_tn","1","15","(128, 1, 1)","(8, 8, 1)","0","7.5","Command line profiler metrics","gpu__time_duration.sum","ns","22400"
+"5","587522","test_sivf_profiling","127.0.0.1","volta_sgemm_128x64_tn","1","15","(128, 1, 1)","(8, 8, 1)","0","7.5","Command line profiler metrics","sm__throughput.avg.pct_of_peak_sustained_elapsed","%","49.01"
+"6","587522","test_sivf_profiling","127.0.0.1","void faiss::l2SelectMin1<float, 8, 256>(faiss::Tensor<T1, 2, 1, long, faiss::DefaultPtrTraits>, faiss::Tensor<T1, 1, 1, long, faiss::DefaultPtrTraits>, faiss::Tensor<T1, 2, 1, long, faiss::DefaultPtrTraits>, faiss::Tensor<long, 2, 1, long, faiss::DefaultPtrTraits>)","1","15","(256, 1, 1)","(64, 1, 1)","0","7.5","Command line profiler metrics","dram__bytes.sum","byte","2160800"
+"6","587522","test_sivf_profiling","127.0.0.1","void faiss::l2SelectMin1<float, 8, 256>(faiss::Tensor<T1, 2, 1, long, faiss::DefaultPtrTraits>, faiss::Tensor<T1, 1, 1, long, faiss::DefaultPtrTraits>, faiss::Tensor<T1, 2, 1, long, faiss::DefaultPtrTraits>, faiss::Tensor<long, 2, 1, long, faiss::DefaultPtrTraits>)","1","15","(256, 1, 1)","(64, 1, 1)","0","7.5","Command line profiler metrics","gpu__time_duration.sum","ns","14368"
+"6","587522","test_sivf_profiling","127.0.0.1","void faiss::l2SelectMin1<float, 8, 256>(faiss::Tensor<T1, 2, 1, long, faiss::DefaultPtrTraits>, faiss::Tensor<T1, 1, 1, long, faiss::DefaultPtrTraits>, faiss::Tensor<T1, 2, 1, long, faiss::DefaultPtrTraits>, faiss::Tensor<long, 2, 1, long, faiss::DefaultPtrTraits>)","1","15","(256, 1, 1)","(64, 1, 1)","0","7.5","Command line profiler metrics","sm__throughput.avg.pct_of_peak_sustained_elapsed","%","14.16"
+"7","587522","test_sivf_profiling","127.0.0.1","void faiss::sumAlongRows<float, 1>(faiss::Tensor<T1, 1, 1, long, faiss::DefaultPtrTraits>, faiss::Tensor<T1, 2, 1, long, faiss::DefaultPtrTraits>)","1","15","(1, 1, 1)","(512, 1, 1)","0","7.5","Command line profiler metrics","dram__bytes.sum","byte","7392"
+"7","587522","test_sivf_profiling","127.0.0.1","void faiss::sumAlongRows<float, 1>(faiss::Tensor<T1, 1, 1, long, faiss::DefaultPtrTraits>, faiss::Tensor<T1, 2, 1, long, faiss::DefaultPtrTraits>)","1","15","(1, 1, 1)","(512, 1, 1)","0","7.5","Command line profiler metrics","gpu__time_duration.sum","ns","3520"
+"7","587522","test_sivf_profiling","127.0.0.1","void faiss::sumAlongRows<float, 1>(faiss::Tensor<T1, 1, 1, long, faiss::DefaultPtrTraits>, faiss::Tensor<T1, 2, 1, long, faiss::DefaultPtrTraits>)","1","15","(1, 1, 1)","(512, 1, 1)","0","7.5","Command line profiler metrics","sm__throughput.avg.pct_of_peak_sustained_elapsed","%","2.16"
+"8","587522","test_sivf_profiling","127.0.0.1","volta_sgemm_128x64_tn","1","16","(128, 1, 1)","(8, 8, 1)","0","7.5","Command line profiler metrics","dram__bytes.sum","byte","1549760"
+"8","587522","test_sivf_profiling","127.0.0.1","volta_sgemm_128x64_tn","1","16","(128, 1, 1)","(8, 8, 1)","0","7.5","Command line profiler metrics","gpu__time_duration.sum","ns","22400"
+"8","587522","test_sivf_profiling","127.0.0.1","volta_sgemm_128x64_tn","1","16","(128, 1, 1)","(8, 8, 1)","0","7.5","Command line profiler metrics","sm__throughput.avg.pct_of_peak_sustained_elapsed","%","48.75"
+"9","587522","test_sivf_profiling","127.0.0.1","void faiss::l2SelectMin1<float, 8, 256>(faiss::Tensor<T1, 2, 1, long, faiss::DefaultPtrTraits>, faiss::Tensor<T1, 1, 1, long, faiss::DefaultPtrTraits>, faiss::Tensor<T1, 2, 1, long, faiss::DefaultPtrTraits>, faiss::Tensor<long, 2, 1, long, faiss::DefaultPtrTraits>)","1","16","(256, 1, 1)","(64, 1, 1)","0","7.5","Command line profiler metrics","dram__bytes.sum","byte","2161152"
+"9","587522","test_sivf_profiling","127.0.0.1","void faiss::l2SelectMin1<float, 8, 256>(faiss::Tensor<T1, 2, 1, long, faiss::DefaultPtrTraits>, faiss::Tensor<T1, 1, 1, long, faiss::DefaultPtrTraits>, faiss::Tensor<T1, 2, 1, long, faiss::DefaultPtrTraits>, faiss::Tensor<long, 2, 1, long, faiss::DefaultPtrTraits>)","1","16","(256, 1, 1)","(64, 1, 1)","0","7.5","Command line profiler metrics","gpu__time_duration.sum","ns","14528"
+"9","587522","test_sivf_profiling","127.0.0.1","void faiss::l2SelectMin1<float, 8, 256>(faiss::Tensor<T1, 2, 1, long, faiss::DefaultPtrTraits>, faiss::Tensor<T1, 1, 1, long, faiss::DefaultPtrTraits>, faiss::Tensor<T1, 2, 1, long, faiss::DefaultPtrTraits>, faiss::Tensor<long, 2, 1, long, faiss::DefaultPtrTraits>)","1","16","(256, 1, 1)","(64, 1, 1)","0","7.5","Command line profiler metrics","sm__throughput.avg.pct_of_peak_sustained_elapsed","%","14.55"
