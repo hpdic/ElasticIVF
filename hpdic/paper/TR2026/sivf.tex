@@ -201,61 +201,34 @@ However, applying these general-purpose HPC optimizations to vector search remai
 \section{Design and Implementation of SIVF}
 \label{sec:design_implementation}
 
-% In this section, we detail the architecture of SIVF, designed to enable high-concurrency mutability on GPUs. We begin by introducing the Slab-based Dynamic Memory Allocator (Section~\ref{sec:slab_memory_management}), which replaces rigid contiguous arrays with a flexible pool of fixed-size blocks to mitigate fragmentation. Building on this storage layer, we describe the Lock-free Parallel Ingestion protocol (Section~\ref{sec:lock_free_ingestion}) that allows conflict-free streaming updates via atomic slot reservation. To ensure retrieval efficiency despite the non-contiguous memory layout, we present a specialized High-Performance Search Kernel (Section~\ref{sec:methods_search_kernel}) utilizing warp-level collaboration. Finally, we detail the Bitmap-based Lazy Eviction mechanism (Section~\ref{sec:bitmap_lazy_eviction}), which achieves $O(1)$ deletion complexity through a GPU-resident address translation table.
+This section presents the design of SIVF for high-concurrency updates on GPUs. We first introduce the Slab-based Dynamic
+Memory Allocator (Section~\ref{sec:slab_memory_management}), which represents each IVF list as a linked chain of fixed-capacity
+slabs with per-list head pointers $H[\cdot]$ and per-slab metadata $(\texttt{next}, \texttt{valid\_count}, \texttt{validity\_bitmap})$
+(Algorithm~\ref{alg:sdma_core}). Building on SDMA, we describe the parallel ingestion kernel (Section~\ref{sec:lock_free_ingestion})
+in which each thread inserts one vector by reserving a slot via \texttt{atomicCAS} on \texttt{valid\_count} and publishing visibility
+by setting a validity bit after \verb|__threadfence()| (Algorithm~\ref{alg:sivf_ingestion}). We then present a warp-cooperative search
+kernel (Section~\ref{sec:methods_search_kernel}) that assigns one warp to one query and evaluates one slab per traversal step by
+consulting the validity bitmap before reading payloads (Algorithm~\ref{alg:sivf_search}). Finally, we detail lazy eviction
+(Section~\ref{sec:bitmap_lazy_eviction}), which performs constant-time deletion by looking up coordinates in the address table
+$\mathcal{T}$ and atomically clearing the corresponding bitmap bit (Algorithm~\ref{alg:sivf_delete}).
 
 \subsection{Slab-based Memory Management}
 \label{sec:slab_memory_management}
 
-Standard GPU-based IVF indices rely on contiguous memory arrays to store inverted lists. This monolithic design exhibits severe limitations in streaming scenarios. First, resizing an inverted list requires allocating a larger memory region and copying existing data, introducing synchronization stalls and high latency. Second, frequent insertions and deletions of variable-length lists exacerbate memory fragmentation and reduce allocator efficiency on GPUs.
 
-To address these challenges, we propose a Slab-based Dynamic Memory Allocator (SDMA). Instead of managing variable-length arrays, SDMA pre-allocates a contiguous GPU memory region and manages it as a pool of fixed-size blocks, referred to as \emph{slabs}. Inverted lists are therefore represented as linked chains of slabs. This design transforms dynamic list growth into constant-time block allocation while enabling efficient in-place mutation through lightweight metadata updates.
-
-\subsubsection{Slab Layout and Metadata}
-
-A \emph{slab} is defined as the fundamental unit of storage. Each slab has a fixed capacity $C$, and we set $C = 32$ to align with the NVIDIA warp size, thereby enabling coalesced memory access when threads within a warp operate on the same slab. A Slab $S_i$ consists of two regions:
-
-\begin{itemize}
-    \item \textit{Data Payload}: Stores vectors contiguously. For a vector space of dimension $D$, the payload size is
-    \[
-        L_p = C \times D \times \text{sizeof(float)}.
-    \]
-
-    \item \textit{Metadata Header}: Stores control information required for traversal and mutation. The metadata of slab $S_i$ is represented as
-    \begin{equation}
-        M_i = \langle n_{next}, b_{valid}, c_{valid} \rangle,
-    \end{equation}
-    where $n_{next}$ denotes the identifier of the next slab in the logical list, $b_{valid}$ is a 32-bit validity bitmap indicating occupied slots, and $c_{valid}$ records the number of valid vectors stored in the slab.
-\end{itemize}
-
-Logical deletion is implemented by atomically clearing the corresponding bit in $b_{valid}$, yielding constant-time removal without triggering memory compaction or data movement to CPUs.
-
-\subsubsection{Conflict-Free Slab Allocation}
-
-General-purpose device-side memory allocators incur substantial synchronization and fragmentation overhead when invoked from GPU kernels. SDMA instead manages slabs from a pre-allocated pool. On initialization, a device kernel constructs a free-list array and sets a global stack pointer $P_{top}$ to the pool size. Allocation obtains a fresh slab identifier by atomically decrementing $P_{top}$:
-\begin{equation}
-    s_{id} = \texttt{atomicSub}(P_{top}, 1) - 1.
-\end{equation}
-
-In lock-free allocators, reusing memory identifiers may lead to the ``ABA'' problem, where a shared variable changes from value $A$ to $B$ and back to $A$ between two observations, causing concurrent threads to falsely assume that the system state remains unchanged. In GPU memory management, this may occur if a slab identifier is reclaimed and reassigned while another thread still holds a stale reference.
-SDMA avoids this issue by ensuring that slab identifiers are never reused while concurrent kernels may still observe them. Deletion only invalidates logical occupancy via the bitmap and does not immediately recycle slab identifiers back to the pool. This design keeps the meaning of an allocated slab identifier stable during execution and avoids additional versioning mechanisms.
-
-\subsubsection{Virtual Addressing via Address Table}
-
-To decouple logical vector identifiers from physical storage locations, SDMA introduces a global Address Table that implements a translation function
-\begin{equation}
-    \mathcal{T}(v_{id}) \rightarrow \langle s_{id}, o_{slot} \rangle,
-\end{equation}
-where $s_{id}$ denotes the slab identifier and $o_{slot}$ denotes the slot offset within that slab, with $0 \le o_{slot} < C$.
-
-The address table is initialized with an invalid sentinel value for all entries. Upon insertion, the table is updated to record the physical location of each vector. During deletion, the system queries $\mathcal{T}(v_{id})$ to directly locate the corresponding slab and slot, enabling constant-time invalidation without scanning inverted lists.
-
-\subsubsection{System Implementation}
-
-We implemented SDMA in CUDA C++ within the Faiss framework using a dual-view architecture. On the host side, GPU memory resources are managed using RAII-compliant containers encapsulated in a \texttt{SlabManager} class, including slab metadata, slab data, address table, and allocator state. These resources are projected into a lightweight \texttt{SlabManagerDevice} structure containing raw pointers and scalar parameters passed by value to device kernels.
-
-Index integration is implemented in \texttt{GpuIndexSIVF}. During initialization, the index selects a safe slab pool size and derives a consistent maximum vector capacity to prevent device memory overflow when slabs are appended. The index maintains an array of per-list head pointers (\texttt{list\_heads}) initialized to an invalid value. Insertions first perform coarse quantization using the existing Faiss GPU quantizer to obtain list assignments, and then invoke a GPU append kernel that writes vectors into the slab chains. Deletions use the address table to locate and invalidate target slots in place.
-
-Algorithm~\ref{alg:sdma_core} summarizes the allocator and deletion logic. Insertion resolves the target inverted list, attempts to reserve a free slot in the current head slab, and allocates and links a new slab if needed. The address table is updated after the physical location is finalized. Deletion performs a direct address table lookup followed by an atomic bit clear, leaving slab storage intact.
+We propose a Slab-based Dynamic Memory Allocator (SDMA) that replaces monolithic, variable-length inverted lists with linked
+chains of fixed-size blocks on GPU. SDMA pre-allocates a contiguous slab pool; each slab stores up to $C$ vectors and a small
+metadata header
+$M=\langle n_{next}, b_{valid}, c_{valid}\rangle$, where $n_{next}$ is the next-slab pointer, $b_{valid}$ is a $C$-bit validity
+bitmap, and $c_{valid}$ tracks occupancy. We set $C=32$ to match the warp size. Each IVF list $\ell$ is represented by a head
+pointer $H[\ell]$ to the first slab in its chain. Allocation draws a fresh slab id from a global stack pointer $P_{top}$ via
+$s=\texttt{atomicSub}(P_{top},1)-1$, and links the new slab by setting its $n_{next}$ to the previous head and then publishing
+$H[\ell]$ with an atomic compare-and-swap. Insertion for a vector id $v_{id}$ first reads the current head slab $s\gets H[\ell]$,
+reserves a free slot $o$ in $s$ by atomically updating $c_{valid}$, writes the payload into \texttt{slab data[$s$][$o$]}, and
+publishes visibility by atomically setting bit $o$ in $b_{valid}$. To support $O(1)$ deletion, SDMA maintains an address table
+$\mathcal{T}$ that records the physical coordinate of each id, $\mathcal{T}(v_{id})=\langle s,o\rangle$; deletion performs a
+direct lookup and atomically clears bit $o$ in $b_{valid}$, then marks $\mathcal{T}(v_{id})$ invalid. Algorithm~\ref{alg:sdma_core}
+summarizes these core operations.
 
 \begin{algorithm}[t]
 \caption{Core operations of SDMA}
@@ -291,55 +264,20 @@ Algorithm~\ref{alg:sdma_core} summarizes the allocator and deletion logic. Inser
 \subsection{Lock-free Parallel Ingestion}
 \label{sec:lock_free_ingestion}
 
-Many GPU-based ANN indices are optimized for static or bulk ingestion and commonly rely on sorting, segmented scans, or bulk-copying to build inverted lists. While these approaches can achieve high throughput, they often incur high end-to-end latency for streaming updates. SIVF instead implements a fully parallel insertion kernel in which each CUDA thread ingests one vector and performs lock-free appends to inverted lists. Concurrency is handled using atomic slot reservation in the current head slab and speculative slab expansion under contention. Correctness under CUDA's relaxed memory consistency is ensured by device-wide memory fences and a publish protocol based on a validity bitmap.
-
-At a high level, each SIVF list is represented as a singly linked chain of fixed-capacity slabs. Each slab stores up to $C=32$ vectors and maintains a counter \texttt{valid\_count}, a 32-bit \texttt{validity\_bitmap}, and a link field \texttt{next\_slab\_idx}. Insertion follows a two-stage protocol. First, a thread attempts to reserve a slot in the current head slab. If the head slab is absent or full, the thread allocates a new slab from the global pool and attempts to publish it as the new head using compare-and-swap (CAS). In both cases, the inserted vector becomes visible to concurrent readers only when the corresponding validity bit is set after a memory fence.
-
-\subsubsection{Atomic Slot Reservation}
-\label{sub:atomic_reservation}
-
-Ingestion begins with coarse quantization, assigning each vector to a list $\ell$. A thread reads the current head slab index $h = H[\ell]$. If $h \neq -1$, the thread attempts to reserve a writing slot by conditionally incrementing the head slab counter. Let $c$ be the value of \texttt{valid\_count}. If $c < C$, the thread executes:
-\begin{equation}
-\label{eq:cas_count}
-\text{success} =
-\texttt{atomicCAS}(\&\text{slab}[h].\text{valid\_count}, c, c+1) == c .
-\end{equation}
-When the above check succeeds, the reserved slot index is $o=c$. This conditional CAS-based increment ensures that exactly one thread claims each slot index and avoids counter overflow under contention. Threads that fail the CAS retry by re-reading the head and counter.
-
-After reserving a slot, the thread writes the vector payload into the slab data region, writes the user identifier into a parallel identifier buffer indexed by \texttt{(slab, slot)}, and updates the address table entry for the user identifier to a compact coordinate encoding $\langle s_{id}, o_{slot} \rangle$. Only after these writes are completed does the thread execute \verb|__threadfence()| and set the corresponding bit in \texttt{validity\_bitmap} via \texttt{atomicOr}. The validity bit is the publication signal for readers, so this ordering ensures that a concurrent search that observes an enabled bit never reads uninitialized payload or a missing address translation.
-
-\subsubsection{Speculative Slab Expansion}
-\label{sub:dynamic_expansion}
-
-If the head slab is absent ($h=-1$) or full, the thread expands the list by allocating a new slab from the global pool. Allocation decrements a global stack pointer \texttt{free\_list\_top} and retrieves a slab index from \texttt{free\_list}. If the pool is exhausted, the thread restores the pointer and returns.
-
-After allocation, the thread initializes the new slab metadata by setting \texttt{valid\_count} to $1$, clearing \texttt{validity\_bitmap} to $0$, and setting \texttt{next\_slab\_idx} to the previous head $h$. A \verb|__threadfence()| is executed before attempting to publish the new slab as the list head using CAS:
-\begin{equation}
-\label{eq:cas_head}
-\text{success} = \texttt{atomicCAS}(\&H[\ell], h, s_{new}) == h .
-\end{equation}
-Equation~\ref{eq:cas_head} defines the linearization point of list expansion. Only one contending thread succeeds in updating the head pointer, and its newly allocated slab becomes immediately visible to concurrent writers and readers that traverse from the head.
-
-If the head publication CAS fails due to contention, the allocated slab is not returned to the free list. Instead, the thread retries the insertion loop. This leak-on-failure policy avoids additional synchronization on allocator state under contention and prevents hazards that may arise from reclaiming slab identifiers while other threads may still observe stale references. In practice, the overhead is controlled by provisioning sufficient slab pool capacity so that occasional contention-induced leakage does not affect ingestion.
-
-\subsubsection{Kernel-Level Memory Ordering and Publication}
-\label{sec:kernel_impl}
-
-SIVF enforces safe publication under CUDA's weak memory consistency using \verb|__threadfence()| at two critical points. First, before a thread sets a slot's validity bit, it fences to ensure that payload writes, identifier buffer writes, and address table updates become globally visible. Second, before a thread publishes a newly initialized slab as the list head, it fences to ensure that slab metadata is visible before any concurrent traversal observes the head update. These fences prevent readers from observing a published structural pointer or validity bit that refers to partially initialized state.
-
-\subsubsection{Micro-architectural Considerations}
-\label{sub:micro_arch}
-
-\paragraph{Register-efficient addressing}
-SIVF represents slab links using 32-bit slab indices within a pre-allocated region rather than 64-bit device pointers. This reduces register pressure and simplifies address computation in the critical path. The address table stores a compact 64-bit coordinate encoding the slab index and slot offset, enabling constant-time deletion without list scans.
-
-\paragraph{Contention behavior and forward progress}
-Insertion experiences high contention when many vectors map to the same centroid. Most insertions complete through slot reservation when the head slab has available capacity. When the head becomes full, contention shifts to head publication, after which subsequent threads quickly observe the new head and resume slot reservation. The kernel bounds retries with a fixed attempt limit.
-
-\paragraph{Intra-slab coalescing}
-Vectors within each slab are stored contiguously. When multiple threads append to adjacent slots, payload writes to slab data and identifier buffer writes are naturally coalesced, preserving memory bandwidth under streaming ingestion.
-
-Algorithm~\ref{alg:sivf_ingestion} summarizes the per-thread ingestion protocol implemented by the insertion kernel. The protocol first attempts slot reservation on the current head slab using CAS on \texttt{valid\_count}. If successful, it writes payload, identifier, and address table entry, then publishes the slot by setting the validity bit after a device-wide fence. If the head is absent or full, it allocates and initializes a new slab and attempts to publish it as the new head using CAS on the head pointer, again with a fence before publication. If head publication fails, it retries without reclaiming the allocated slab.
+SIVF uses a fully parallel ingestion kernel in which each CUDA thread inserts one vector into its assigned IVF list $\ell$.
+Each list is a singly linked chain of fixed-capacity slabs, with head pointer $H[\ell]$ and per-slab metadata
+\texttt{valid\_count}, \texttt{validity\_bitmap}, and \texttt{next}. Insertion follows a reserve, write, publish protocol.
+A thread first reads the current head slab $h=H[\ell]$ and attempts to reserve a slot by incrementing
+\texttt{slab\_meta[$h$].valid\_count} using \texttt{atomicCAS}; the reserved slot index is the old counter value $c$.
+On success, the thread writes the payload to \texttt{slab data[$h$][$c$]} and the id to \texttt{slab\_ids[$h$][$c$]}, updates
+the address table $\mathcal{T}(v_{id})\gets\langle h,c\rangle$, then executes \verb|__threadfence()| and sets the corresponding
+validity bit using \texttt{atomicOr}. The validity bit is the only publication signal read by search, so this ordering ensures
+that a reader observing the bit set never sees partially initialized payload or a missing table entry. If the head slab is
+absent or full, the thread allocates a new slab id from the global pool via \texttt{atomicSub} on $P_{top}$, initializes its
+metadata (\texttt{valid\_count}, \texttt{validity\_bitmap}, \texttt{next}), executes \verb|__threadfence()|, and attempts to
+publish it as the new head with \texttt{atomicCAS(\&H[$\ell$], h, s\_new)}. If head publication fails under contention, the
+thread retries without reclaiming the allocated slab, avoiding allocator-side synchronization in the hot path. The full
+per-thread protocol is given in Algorithm~\ref{alg:sivf_ingestion}.
 
 \begin{algorithm}[t]
 \caption{Lock-free ingestion protocol in SIVF}
@@ -389,45 +327,16 @@ Algorithm~\ref{alg:sivf_ingestion} summarizes the per-thread ingestion protocol 
 \subsection{Coalesced Search on Non-Contiguous Slabs}
 \label{sec:methods_search_kernel}
 
-SIVF replaces contiguous inverted lists with linked slabs, which introduces pointer chasing during traversal. To retain high throughput on GPUs, we design a warp-cooperative search kernel that maps the slab capacity to the warp width. The kernel is optimized for the execution model in which one warp collaboratively processes one query and evaluates one slab per traversal step.
-
-\subsubsection{Warp-Cooperative Slab Traversal}
-
-SIVF launches the search kernel with one thread block per query and 32 threads per block. This design assigns each query to a single warp. For a query vector $\mathbf{q} \in \mathbb{R}^D$, the warp first stages the query into shared memory to reduce redundant global loads:
-\[
-\mathbf{q} \rightarrow \texttt{shared\_query}.
-\]
-The kernel then probes $nprobe$ coarse lists. For each probed list, the warp traverses the slab chain starting from the list head. At each slab $S$, thread $t_j$ is responsible for slot $j$ in that slab. The thread consults the slab validity bitmap and only evaluates the distance if the corresponding bit is set:
-\begin{equation}
-\label{eq:slot_valid}
-\text{valid}(S,j) \Leftrightarrow \left( (b_{valid} \gg j) \mathbin{\&} 1 \right) == 1.
-\end{equation}
-If valid, the thread loads the vector stored at $(S,j)$ and computes the squared $L_2$ distance:
-\begin{equation}
-\label{eq:l2}
-d(\mathbf{q}, \mathbf{x}_{S,j}) = \sum_{k=1}^{D} (q_k - x_{S,j,k})^2.
-\end{equation}
-The slab pointer is advanced using the metadata \texttt{next\_slab\_idx}. The kernel also includes safety checks that bound the traversal length and break on degenerate self-loops, preventing potential non-terminating traversal under unexpected corruption.
-
-% This mapping yields a fixed control structure: within each traversal step, the warp accesses one slab metadata record and up to 32 payload vectors, which matches the slab capacity and avoids inter-warp synchronization.
-
-\subsubsection{Top-$k$ Maintenance and Warp Aggregation}
-
-Maintaining top-$k$ results without global contention is achieved using a two-stage aggregation scheme. Each thread maintains a small top-$k$ list in registers. Upon computing a candidate distance, the thread inserts it into its local top-$k$ list using an in-register insertion routine. This avoids shared data structures and eliminates inter-thread contention during candidate generation.
-
-After all probed lists are traversed, the warp aggregates results. Each thread writes its local top-$k$ list to shared memory. A single thread then performs a deterministic merge across the 32 per-thread lists and outputs the final top-$k$ for the query. This design trades a small amount of serial work for a contention-free aggregation path and avoids additional warp-level primitives.
-
-\subsubsection{Search Algorithm}
-
-Algorithm~\ref{alg:sivf_search} describes the proposed search procedure of SIVF based on warp cooperation. 
-We launch one CUDA block per query with 32 threads, so each query is processed by a single warp. 
-At the beginning of the kernel, the warp cooperatively stages the query vector into shared memory to avoid redundant global loads during list traversal. 
-For each query, we probe $nprobe$ coarse lists returned by the quantizer. 
-For a probed list, the warp traverses its slab chain starting from the list head pointer. 
-At each slab, thread $t_j$ corresponds to slot $j$ and consults the slab validity bitmap. 
-If the $j$-th bit is set, the thread loads the vector payload from the slab data region, computes the squared $L_2$ distance to the shared query, retrieves the corresponding user identifier from the slab identifier buffer, and updates its local top-$k$ candidates. 
-Traversal proceeds by following the \texttt{next\_slab\_idx} pointer recorded in the slab metadata. 
-To ensure termination under unexpected corruption, we additionally bound the traversal length and break on self-loops.
+SIVF stores each inverted list as a linked chain of fixed-capacity slabs, which replaces contiguous scans with traversal via
+\texttt{next}. To retain high GPU throughput, we use a warp-cooperative search kernel that matches slab capacity to the warp
+width ($C=32$). The kernel launches one warp per query. The warp first stages the query vector into shared memory, then probes
+$nprobe$ coarse lists returned by the quantizer. For each probed list $\ell$, the warp traverses the slab chain starting from
+$s=H[\ell]$. At each slab $s$, lane $j$ consults \texttt{slab\_meta[$s$].validity\_bitmap} and evaluates slot $j$ only if the
+corresponding bit is set. If set, the lane loads the payload from \texttt{slab data[$s$][$j$]}, retrieves the label from
+\texttt{slab\_ids[$s$][$j$]}, computes the distance to the shared query, and updates a small per-lane top-$k$ structure kept in
+registers. After traversal, lanes write their local top-$k$ candidates to shared memory and one lane merges them into the final
+top-$k$ result for the query. To ensure termination under unexpected corruption, traversal is bounded and the kernel breaks on
+self-loops (\texttt{md.next == s}). Algorithm~\ref{alg:sivf_search} summarizes the procedure.
 
 \begin{algorithm}[t]
 \caption{Warp-cooperative search in SIVF}
@@ -466,42 +375,16 @@ To ensure termination under unexpected corruption, we additionally bound the tra
 \subsection{Lazy Eviction via Address Translation Table}
 \label{sec:bitmap_lazy_eviction}
 
-Traditional vector deletion in IVF indices often requires locating the target element inside an inverted list and physically compacting memory to close the gap, which can incur a cost proportional to the list length and trigger substantial global memory traffic. This overhead fundamentally limits deletion throughput in streaming workloads. SIVF adopts bitmap-based lazy eviction, which decouples logical validity from physical residency. Deletion is reduced to a constant-time metadata update by combining a global Address Translation Table (ATT) with atomic bitwise invalidation of per-slab validity bitmaps.
-
-\subsubsection{Address Translation Table (ATT)}
-
-SIVF maintains a global table $\mathcal{T}$ that maps a user identifier $u$ to its physical coordinate in the slab pool. The table is implemented as a flat array of 64-bit entries. For an identifier $u$, $\mathcal{T}[u]$ encodes the slab index and slot offset as:
-\begin{equation}
-\label{eq:att_encoding}
-\mathcal{T}[u] = (\text{idx}_{slab} \ll 32) \mid \text{idx}_{slot},
-\end{equation}
-where $\text{idx}_{slot} \in [0, 31]$. The table is initialized with an invalid sentinel value, denoted as $\text{INVALID}$, for all entries. This design enables direct random access to the target slot without traversing inverted lists.
-
-\subsubsection{Atomic Bitwise Invalidation}
-
-Given $\mathcal{T}[u]$, the deletion kernel resolves $(\text{idx}_{slab}, \text{idx}_{slot})$ and invalidates the corresponding slot via the slab validity bitmap. Let $\mathcal{B}_{i}$ denote the 32-bit bitmap of slab $S_i$. The deletion operation clears the target bit using an atomic read-modify-write:
-\begin{equation}
-\label{eq:bitmap_clear}
-\mathcal{B}_{i} \leftarrow \texttt{atomicAnd}(\mathcal{B}_{i}, \sim(1 \ll \text{idx}_{slot})).
-\end{equation}
-The vector payload is not moved or overwritten. Search kernels consult the bitmap when scanning a slab and ignore slots whose bits are cleared, so deletion immediately removes the vector from the search space without compaction.
-
-\subsubsection{Idempotence and Consistency}
-
-Deletion requests may include duplicates or may race with other deletions. SIVF treats deletion as an idempotent operation. After the atomic bitmap update, the kernel checks whether the bit was previously set by inspecting the pre-update value returned by \texttt{atomicAnd}. Only if the bit transitioned from $1$ to $0$ does the kernel decrement the slab counter \texttt{valid\_count} and increment a global deletion counter. Finally, the kernel marks $\mathcal{T}[u] \leftarrow \text{INVALID}$ to prevent future deletion requests from dereferencing a stale coordinate.
-
-This protocol provides a clear correctness contract with concurrent search and insertion. Search considers a slot present only if its validity bit is set. Insertion sets the validity bit only after payload and identifier writes are completed and a device-wide memory fence is executed. Deletion clears the validity bit via an atomic operation, so a deleted slot is excluded from search as soon as the bit is cleared. The ATT invalidation is a secondary safety step that prevents repeated deletions from accessing recycled or stale coordinates. A more formal correctness analysis is provided in Section~\ref{sec:theoretical_analysis}.
-
-Deletion performs a constant number of random memory accesses: one read of $\mathcal{T}[u]$, one atomic update of a 32-bit bitmap, and one write of the 64-bit ATT entry to the invalid sentinel. The data payload remains untouched, avoiding bandwidth-heavy compaction. In addition, the implementation optionally updates a 32-bit counter in the slab metadata and a global 32-bit deletion counter for bookkeeping. Overall, the dominant deletion work is independent of the inverted list length, explaining the large speedups observed in our evaluation.
-
-Algorithm~\ref{alg:sivf_delete} presents the bitmap-based lazy eviction procedure implemented by the SIVF deletion kernel. 
-Each GPU thread processes one identifier $u$ in the deletion batch. 
-The thread first performs a constant-time lookup in the ATT to obtain the encoded coordinate $\mathcal{T}[u]$. 
-If the entry equals the invalid sentinel, the identifier is already absent and the thread terminates without side effects. 
-Otherwise, the thread decodes the slab index and slot offset from the 64-bit coordinate, locates the corresponding slab metadata, and clears the target slot by applying an atomic bitwise operation to the slab validity bitmap. 
-The atomic operation returns the previous bitmap value, which allows the kernel to determine whether the bit was previously set. 
-Only when the bit transitions from $1$ to $0$ does the kernel treat the deletion as successful and perform two bookkeeping updates: it atomically decrements the slab \texttt{valid\_count} and atomically increments a global \texttt{deleted\_count}. 
-Finally, the kernel writes the invalid sentinel back to $\mathcal{T}[u]$ to prevent future deletion requests from dereferencing a stale coordinate. 
+SIVF supports constant-time deletion by combining an Address Translation Table (ATT) with bitmap-based lazy eviction.
+The ATT $\mathcal{T}$ maps each identifier $u$ to its physical coordinate in the slab pool as a 64-bit value
+$\mathcal{T}[u] = (\text{idx}_{slab} \ll 32)\ \mid\ \text{idx}_{slot}$,
+or \texttt{INVALID} if absent. Given $\mathcal{T}[u]$, a deletion thread decodes $(\text{idx}_{slab},\text{idx}_{slot})$ and
+clears the corresponding bit in the slab validity bitmap using an atomic read-modify-write
+(\texttt{atomicAnd} with $mask=\sim(1\ll \text{idx}_{slot})$). The payload is not moved or overwritten; search consults the bitmap
+and skips slots whose bits are cleared, so deletion removes a vector from the search space without compaction. To handle duplicates
+and races among deletions, the kernel uses the pre-update bitmap value returned by \texttt{atomicAnd} to detect a $1\rightarrow 0$
+transition and performs bookkeeping only on that transition (e.g., updating counters), then writes $\mathcal{T}[u]\gets\texttt{INVALID}$
+so repeated deletions become no-ops. Algorithm~\ref{alg:sivf_delete} summarizes the procedure.
 
 \begin{algorithm}[t]
 \caption{Lazy eviction with ATT in SIVF}
