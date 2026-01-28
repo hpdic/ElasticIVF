@@ -113,6 +113,11 @@ make -j test_sivf_p99
 cd ~/ElasticIVF/build
 make -j test_sivf_mixed
 ./test_sivf_mixed
+
+# Pareto:
+cd ~/ElasticIVF/build
+make -j test_sivf_pareto
+./test_sivf_pareto
 ```
 
 ## Benchmarks

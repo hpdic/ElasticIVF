@@ -236,3 +236,12 @@ target_link_libraries(test_sivf_mixed
     CUDA::cudart 
     CUDA::cublas
 )
+
+# --- Pareto ---
+add_executable(test_sivf_pareto hpdic/experiment/test_sivf_pareto.cpp)
+target_link_libraries(test_sivf_pareto 
+    faiss 
+    OpenMP::OpenMP_CXX 
+    CUDA::cudart 
+    CUDA::cublas
+)
