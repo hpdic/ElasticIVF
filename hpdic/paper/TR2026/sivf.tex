@@ -538,34 +538,36 @@ Comparing this to standard dynamic arrays, which often reserve up to $2 \times N
 
 We implement SIVF by extending the GPU components of the widely-adopted Faiss library~\cite{douze2024faiss}, integrating our proposed data structures and algorithms into its core indexing architecture. We have open-sourced our complete implementation and evaluation scripts on GitHub.
 
-\begin{table*}[t]
-    \centering
-    \caption{Summary of Key Source Files of SIVF Implementation in Faiss~\cite{douze2024faiss}}
-    \label{tab:file_structure}
-    \begin{tabular}{l|p{10.5cm}}
-    \hline
-    \textit{File Path} & \textit{Description} \\
-    \hline
-    \multicolumn{2}{c}{\textit{Core SIVF Architecture \& Memory Management}} \\
-    \hline
-    \texttt{faiss/gpu/GpuIndexSIVF.h} & Header definition for the SIVF index class, inheriting from \texttt{GpuIndex}. \\
-    \texttt{faiss/gpu/GpuIndexSIVF.cu} & Manages host-device synchronization and overrides standard operations. \\
-    \texttt{faiss/gpu/impl/SlabManager.cuh} & Defines the device-side slab structures, arena pointers, and metadata layout. \\
-    \texttt{faiss/gpu/impl/SlabManager.cu} & Slab-based Dynamic Memory Allocator (SDMA) and memory pool management. \\
-    \texttt{faiss/gpu/impl/SIVFStructs.cuh} & Shared data structures and metadata definitions used across host and device code. \\
-    \hline
-    \multicolumn{2}{c}{\textit{CUDA Kernels (Ingestion, Search, Deletion)}} \\
-    \hline
-    \texttt{faiss/gpu/impl/SIVFAppend.cuh} & Device function templates for the ingestion logic. \\
-    \texttt{faiss/gpu/impl/SIVFAppend.cu} & Lock-free insertion kernel, atomic slot reservation, and slab expansion logic. \\
-    \texttt{faiss/gpu/impl/SIVFSearch.cuh} & Warp-Level Collaborative Search (WLCS) and shared memory reduction. \\
-    \texttt{faiss/gpu/impl/SIVFSearch.cu} & Search kernel, including distance computation and heap aggregation. \\
-    \texttt{faiss/gpu/SIVFDeletion.cu} & Bitmap-based lazy eviction and deletion kernels. \\
-    \hline
-    \end{tabular}
-\end{table*}
+% \begin{table*}[t]
+%     \centering
+%     \caption{Summary of Key Source Files of SIVF Implementation in Faiss~\cite{douze2024faiss}}
+%     \label{tab:file_structure}
+%     \begin{tabular}{l|p{10.5cm}}
+%     \hline
+%     \textit{File Path} & \textit{Description} \\
+%     \hline
+%     \multicolumn{2}{c}{\textit{Core SIVF Architecture \& Memory Management}} \\
+%     \hline
+%     \texttt{faiss/gpu/GpuIndexSIVF.h} & Header definition for the SIVF index class, inheriting from \texttt{GpuIndex}. \\
+%     \texttt{faiss/gpu/GpuIndexSIVF.cu} & Manages host-device synchronization and overrides standard operations. \\
+%     \texttt{faiss/gpu/impl/SlabManager.cuh} & Defines the device-side slab structures, arena pointers, and metadata layout. \\
+%     \texttt{faiss/gpu/impl/SlabManager.cu} & Slab-based Dynamic Memory Allocator (SDMA) and memory pool management. \\
+%     \texttt{faiss/gpu/impl/SIVFStructs.cuh} & Shared data structures and metadata definitions used across host and device code. \\
+%     \hline
+%     \multicolumn{2}{c}{\textit{CUDA Kernels (Ingestion, Search, Deletion)}} \\
+%     \hline
+%     \texttt{faiss/gpu/impl/SIVFAppend.cuh} & Device function templates for the ingestion logic. \\
+%     \texttt{faiss/gpu/impl/SIVFAppend.cu} & Lock-free insertion kernel, atomic slot reservation, and slab expansion logic. \\
+%     \texttt{faiss/gpu/impl/SIVFSearch.cuh} & Warp-Level Collaborative Search (WLCS) and shared memory reduction. \\
+%     \texttt{faiss/gpu/impl/SIVFSearch.cu} & Search kernel, including distance computation and heap aggregation. \\
+%     \texttt{faiss/gpu/SIVFDeletion.cu} & Bitmap-based lazy eviction and deletion kernels. \\
+%     \hline
+%     \end{tabular}
+% \end{table*}
 
-Implementing SIVF required substantial modifications to the Faiss GPU backend and associated experimental infrastructure. Table~\ref{tab:file_structure} summarizes some of the key source files added or modified in the repository based on our development history. In total, the implementation involves approximately 9,000 lines of code changes across more than 45 source files. Core system changes are concentrated in the GPU index implementation, incorporating new GPU-native insertion, deletion, and search operators (e.g., \texttt{GpuIndexSIVF}, \texttt{SIVFAppend}, \texttt{SIVFSearch}, \texttt{SIVFDelete}), alongside a custom slab-based memory manager (e.g., \texttt{SlabManager}) and lock-free metadata structures (e.g., \texttt{SIVFStructs}). Furthermore, we developed a comprehensive benchmarking suite that extends beyond standard metric testing to include end-to-end streaming simulations, memory scalability analysis, and automated visualization scripts, ensuring a rigorous and reproducible evaluation.
+Implementing SIVF required substantial modifications to the Faiss GPU backend and associated experimental infrastructure. 
+% Table~\ref{tab:file_structure} summarizes some of the key source files added or modified in the repository based on our development history. 
+In total, the implementation involves approximately 9,000 lines of code changes across more than 45 source files. Core system changes are concentrated in the GPU index implementation, incorporating new GPU-native insertion, deletion, and search operators (e.g., \texttt{GpuIndexSIVF}, \texttt{SIVFAppend}, \texttt{SIVFSearch}, \texttt{SIVFDelete}), alongside a custom slab-based memory manager (e.g., \texttt{SlabManager}) and lock-free metadata structures (e.g., \texttt{SIVFStructs}). Furthermore, we developed a comprehensive benchmarking suite that extends beyond standard metric testing to include end-to-end streaming simulations, memory scalability analysis, and automated visualization scripts, ensuring a rigorous and reproducible evaluation.
 
 Integrating SIVF into Faiss presented unique engineering challenges, particularly in reconciling our dynamic memory model with Faiss's static resource management.
 Unlike standard Faiss indices which rely on pre-allocated flat arrays (managed via \texttt{DeviceTensor}), SIVF introduces a custom \texttt{SlabManager} that operates directly on a raw GPU memory arena.
@@ -600,13 +602,13 @@ Unless explicitly stated (as in Section~\ref{sec:eval_real_world}), our experime
 
 We evaluate ingestion throughput against the standard Faiss GPU IVFFlat baseline, varying database size ($N_B$: 1M--4M) and cluster count ($n_{list}$: 1024--16384). As shown in Figure~\ref{fig:add_perf}, SIVF achieves consistent performance advantages with up to 2.65$\times$ speedup.
 
-\begin{figure*}[t]
+\begin{figure}[t]
     \centering
     \includegraphics[width=\linewidth]{./figures/performance_add.pdf}
-    \caption{Microbenchmark performance evaluation of vector ingestion.}
+    \caption{Microbenchmark performance of vector ingestion.}
     \label{fig:add_perf}
     \Description{Three performance graphs comparing SIVF and Vanilla Faiss.}
-\end{figure*}
+\end{figure}
 
 \paragraph{Scalability (Fig.~\ref{fig:add_perf}a)}
 SIVF maintains a stable throughput of $\approx$4.2M vec/s as $N_B$ increases, significantly outperforming the baseline ($\approx$1.7M vec/s). This stability validates our lock-free SlabManager, which ensures $O(1)$ insertion cost independent of index occupancy, thereby avoiding the contiguous memory resizing overheads inherent to the baseline.
@@ -622,13 +624,13 @@ SIVF outperforms the baseline across all configurations, with speedups typically
 
 We evaluate query performance against the Vanilla Faiss GPU baseline. While SIVF trades memory contiguity for mutability, Figure~\ref{fig:search_perf} confirms competitive efficiency, reaching up to 91\% of baseline performance in optimized configurations.
 
-\begin{figure*}[t]
+\begin{figure}[t]
     \centering
     \includegraphics[width=\linewidth]{./figures/performance_search.pdf}
-    \caption{Microbenchmark performance evaluation of vector search.}
+    \caption{Microbenchmark performance of vector search.}
     \label{fig:search_perf}
     \Description{Three performance graphs comparing SIVF and Vanilla Faiss.}
-\end{figure*}
+\end{figure}
 
 \paragraph{Scalability (Fig.~\ref{fig:search_perf}a)}
 SIVF throughput scales predictably from $\approx$383K to 118K QPS as database size grows (100K--500K, $n_{list}=4096$). The trend closely mirrors the baseline, validating the stability of our slab traversal logic under increasing load.
@@ -659,7 +661,7 @@ Figure~\ref{fig:deletion_perf} illustrates the performance comparison between th
 
 % This transformative performance gain is attributed to the architectural shift in handling deletions. The baseline approach enforces contiguous memory layouts, necessitating expensive $O(N)$ memory compaction (e.g., memmove) to fill gaps left by deleted vectors. SIVF, however, leverages its GPU-resident Address Translation Table (ATT) to perform logical deletions. By mapping user IDs directly to physical slots and atomically toggling the corresponding bit in the validity bitmap, SIVF achieves $O(1)$ complexity. This mechanism effectively eliminates the overhead of physical memory reorganization, enabling ultra-low-latency updates essential for real-time streaming applications.
 
-\subsection{Parameter Sensitivity and Ablation Study}
+\subsubsection{Parameter Sensitivity and Ablation Study}
 \label{sec:eval_param_sensitivity}
 
 We evaluate system robustness by sweeping three parameters: (i) vector capacity factor ($maxvec\_factor$, or $mv$), (ii) slab pool redundancy ($slab\_factor$, or $sl$), and (iii) deletion batch size ($b$). These control logical headroom, pre-allocated memory for bursts, and the trade-off between amortization and freshness. Figures~\ref{fig:sivf_sensitivity_qps} and \ref{fig:sivf_sensitivity_lat} summarize the results.
@@ -752,18 +754,29 @@ In contrast, SIVF executes updates strictly in VRAM via slab-based management, r
 \subsection{Hardware Utilization}
 \label{sec:hardware_analysis}
 
+\subsubsection{Computation}
+
 To understand the micro-architectural drivers of the observed performance divergence, we profiled the GPU execution pipeline during the streaming update phase using NVIDIA Nsight Systems and Nsight Compute.
 
-\begin{figure}[t]
-    \centering
-    \includegraphics[width=\linewidth]{figures/profiling_comparison.pdf}
-    \caption{Breakdown of GPU time consumption during streaming updates.}
-    \label{fig:profiling_comparison}
-\end{figure}
+\begin{table}[t]
+\caption{Breakdown of GPU time during streaming updates.}
+\label{tab:profiling_breakdown}
+\centering
+\begin{tabular}{l|r|r}
+\toprule
+Operation Category & GPU IVF & SIVF (Ours) \\
+\midrule
+Data Transfer (PCIe) & 53.2\% & $<$ 1.0\% \\
+Memory Mgmt (\texttt{malloc}/\texttt{free}) & 39.2\% & $<$ 1.0\% \\
+Compute (Active Kernels) & 3.2\% & 95.0\% \\
+Other Overheads & 4.4\% & $\approx$ 4.0\% \\
+\bottomrule
+\end{tabular}
+\end{table}
 
-Figure~\ref{fig:profiling_comparison} presents a breakdown of the execution time.
-The baseline implementation reveals a severe resource mismatch: 53.2\% of the total runtime is consumed by host-to-device data transfer (\texttt{cudaMemcpyAsync}) via the PCIe bus, and an additional 39.2\% is spent on dynamic memory management overheads (\texttt{cudaMalloc} or \texttt{cudaFree}).
-Consequently, the actual GPU compute units (SMs) remain idle for over 96\% of the update cycle, with only 3.2\% of time spent on kernel execution.
+Table~\ref{tab:profiling_breakdown} presents the breakdown of the total execution time.
+The baseline implementation reveals a severe resource mismatch: 53.2\% of the runtime is consumed by host-to-device data transfer (\texttt{cudaMemcpyAsync}) via the PCIe bus, and an additional 39.2\% is spent on dynamic memory management overheads (\texttt{cudaMalloc} or \texttt{cudaFree}).
+Consequently, the actual GPU compute units (SMs) remain idle for over 96\% of the update cycle, with only 3.2\% of time utilized for kernel execution.
 In contrast, SIVF's GPU-resident architecture eliminates these PCIe roundtrips and OS-level allocations.
 As a result, the execution profile is transformed: 95.0\% of the time is dedicated to active kernel execution, confirming that SIVF successfully shifts the workload from being I/O-bound to compute-bound.
 
@@ -772,7 +785,7 @@ During the ingestion phase on SIFT1M, the quantization kernels achieve a Streami
 Simultaneously, the slab selection kernels exhibit an effective memory bandwidth of 150.3 GB/s.
 This demonstrates that despite the irregular memory access patterns inherent to linked-slab traversals, SIVF's warp-aligned design ($C=32$) maintains sufficient coalescing to utilize a significant fraction of the device's memory bandwidth, a property unattainable by pointer-based CPU data structures.
 
-\subsection{Memory Efficiency and Scalability}
+\subsubsection{Memory Efficiency and Scalability}
 \label{sec:eval_memory}
 
 A common concern with dynamic graph-based or list-based indices is the potential for memory bloating due to structural overhead, such as pointers and metadata, as well as fragmentation. To quantify the space complexity of SIVF, we conducted a memory footprint analysis comparing the allocated VRAM usage of SIVF against a theoretically compact array baseline across varying dataset sizes ranging from 100K to 1M vectors.
@@ -788,9 +801,9 @@ Figure~\ref{fig:eval_memory} illustrates the memory growth trends for both SIFT1
     \label{fig:eval_memory}
 \end{figure}
 
-Furthermore, we verified the efficacy of our memory reclamation strategy. In a stress test (not shown in the figure) involving the deletion of 50\% of the dataset followed by immediate re-insertion, SIVF maintained a constant memory footprint without triggering OS-level deallocation. The deletion operation completed in sub-millisecond time per batch (e.g., 4.04~ms for 100K GIST vectors), confirming that memory slots are logically reclaimed via bitmap toggling and immediately available for reuse. This ``zero-cost'' reclamation ensures that SIVF can sustain long-running streaming workloads without suffering from memory leaks or fragmentation-induced bloat.
+Furthermore, we verified the efficacy of our memory reclamation strategy. In a stress test (not shown in the figure) involving the deletion of 50\% of the dataset followed by immediate re-insertion, SIVF maintained a constant memory footprint without triggering OS-level deallocation. The deletion operation completed in sub-millisecond time per batch (e.g., 4.04~ms for 100K GIST vectors), confirming that memory slots are logically reclaimed via bitmap toggling and immediately available for reuse. This zero-cost reclamation ensures that SIVF can sustain long-running streaming workloads without suffering from memory leaks or fragmentation-induced bloat.
 
-\subsection{Graph-based Index Comparison}
+\subsection{Graph-based Indexing}
 \label{sec:eval_non_ivf}
 
 To position SIVF within the broader indexing landscape, we benchmarked it against five representative non-IVF architectures: GPU CAGRA~\cite{10597683} (graphs), Faiss GPU Flat (brute-force baseline, i.e., no index), HNSW~\cite{malkov2018efficient} (dynamic graphs), (3) LSH~\cite{10.1145/997817.997857} (legacy hash-based approaches), and (4) NSG~\cite{10.14778/3303753.3303754} (static graphs). Table~\ref{tab:landscape_full} summarizes ingestion throughput and deletion latency across three datasets: SIFT1M, T2I-1B, and GIST1M.

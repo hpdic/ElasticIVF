@@ -5,8 +5,8 @@ Author: Dongfang Zhao
 Email:  dzhao@uw.edu
 
 Visualization script for SIVF ingestion throughput benchmark.
-Generates a composite figure comparing SIVF vs. Vanilla Faiss across
-different database sizes and cluster configurations.
+Generates a 1x3 composite figure (Horizontal) with OVERSIZED fonts
+to survive extreme scaling (e.g., fitting 3 plots into a single column width).
 """
 
 import matplotlib.pyplot as plt
@@ -16,7 +16,7 @@ import numpy as np
 import os
 
 # ==========================================
-# 1. Input Benchmark Data (2026-01-13: 1M/2M/4M)
+# 1. Input Benchmark Data
 # ==========================================
 data = [
     # NB, nlist, System, QPS
@@ -55,18 +55,28 @@ speedup_df = (pivot_sivf / pivot_vanilla).reset_index()
 speedup_df.rename(columns={'QPS': 'Speedup'}, inplace=True)
 
 # ==========================================
-# 2. Plotting Configuration (Wide Layout)
+# 2. Plotting Configuration (Horizontal 1x3, HUGE FONTS)
 # ==========================================
-sns.set_theme(style="whitegrid", font_scale=1.1)
+# Use a very large font scale so text remains readable when image is shrunk
+sns.set_theme(style="whitegrid", font_scale=2.2) 
 plt.rcParams['font.family'] = 'sans-serif' 
 plt.rcParams['pdf.fonttype'] = 42 
 
-# Create a 1x3 subplot layout
-fig, axes = plt.subplots(1, 3, figsize=(18, 5), constrained_layout=True)
+# Wide figsize to maintain 1x3 aspect ratio.
+# When you insert this into a column, LaTeX will shrink the 24-inch width to ~3.5 inches.
+# The fonts need to be massive to compensate (2.2x scale).
+fig, axes = plt.subplots(1, 3, figsize=(24, 7), constrained_layout=True)
+
+# Common params for visibility
+lw = 5          # Thicker lines
+ms = 16         # Larger markers
+title_size = 24 # Huge titles
+label_size = 22 # Huge labels
+tick_size = 20  # Huge ticks
 
 # -------------------------------------------------------
 # Subplot 1: Scalability (Throughput vs Database Size)
-# Fix nlist=4096 (Most stable and representative configuration)
+# Fix nlist=4096
 # -------------------------------------------------------
 subset_nb = df[df['nlist'] == 4096]
 sns.lineplot(
@@ -77,24 +87,25 @@ sns.lineplot(
     style='System', 
     markers=True, 
     dashes=False, 
-    linewidth=3,
-    markersize=10,
-    palette=['#d7191c', '#2b83ba'], # Red(SIVF) vs Blue(Vanilla)
+    linewidth=lw,
+    markersize=ms,
+    palette=['#d7191c', '#2b83ba'], 
     ax=axes[0]
 )
-axes[0].set_title('(a) Scalability with Data Size (nlist=4096)', fontsize=14, weight='bold', pad=12)
-axes[0].set_xlabel('Database Size (Vectors)', fontsize=12)
-axes[0].set_ylabel('Throughput (Million vec/s)', fontsize=12)
+axes[0].set_title('(a) Scalability', fontsize=title_size, weight='bold', pad=15)
+axes[0].set_xlabel('Database Size', fontsize=label_size)
+axes[0].set_ylabel('Throughput (M vec/s)', fontsize=label_size)
 
-# Update ticks to 1M, 2M, 4M
 axes[0].set_xticks([1000000, 2000000, 4000000])
-axes[0].set_xticklabels(['1M', '2M', '4M'])
-axes[0].set_ylim(0, 7) # SIVF peaks around 6.1M, setting limit to 7 for aesthetics
-axes[0].legend(title=None, loc='center right', frameon=True)
+axes[0].set_xticklabels(['1M', '2M', '4M'], fontsize=tick_size)
+axes[0].tick_params(axis='y', labelsize=tick_size)
+axes[0].set_ylim(0, 7)
+# Legend needs to be huge too
+axes[0].legend(title=None, loc='center right', frameon=True, fontsize=tick_size, markerscale=2.0)
 
 # -------------------------------------------------------
 # Subplot 2: Impact of Clustering (Throughput vs nlist)
-# Fix NB=4M (Max stress test)
+# Fix NB=4M
 # -------------------------------------------------------
 subset_nlist = df[df['NB'] == 4000000]
 bar_plot = sns.barplot(
@@ -104,25 +115,25 @@ bar_plot = sns.barplot(
     hue='System', 
     palette=['#d7191c', '#2b83ba'],
     edgecolor='black',
-    linewidth=1,
+    linewidth=2.5,
     ax=axes[1]
 )
-# Add value labels
+# Add massive value labels
 for container in axes[1].containers:
-    axes[1].bar_label(container, fmt='%.1f', padding=3, fontsize=11)
+    axes[1].bar_label(container, fmt='%.1f', padding=5, fontsize=tick_size, weight='bold')
 
-axes[1].set_title('(b) Impact of Granularity (4M Vectors)', fontsize=14, weight='bold', pad=12)
-axes[1].set_xlabel('Number of Clusters (nlist)', fontsize=12)
-axes[1].set_ylabel('Throughput (Million vec/s)', fontsize=12)
+axes[1].set_title('(b) Granularity', fontsize=title_size, weight='bold', pad=15)
+axes[1].set_xlabel('Clusters (nlist)', fontsize=label_size)
+axes[1].set_ylabel('') # Save space, y-axis shared implicitly by context
+axes[1].tick_params(axis='x', labelsize=tick_size)
+axes[1].tick_params(axis='y', labelsize=tick_size)
 axes[1].set_ylim(0, 7)
-axes[1].legend(title=None, loc='upper right')
+axes[1].legend(title=None, loc='upper right', fontsize=tick_size)
 
 # -------------------------------------------------------
 # Subplot 3: Speedup Heatmap (Summary)
 # -------------------------------------------------------
 heatmap_data = speedup_df.pivot(index="nlist", columns="NB", values="Speedup")
-
-# Manually create an annotation string matrix
 annot_labels = heatmap_data.applymap(lambda v: f"{v:.2f}x")
 
 sns.heatmap(
@@ -130,20 +141,28 @@ sns.heatmap(
     annot=annot_labels, 
     fmt="", 
     cmap="YlGnBu", 
-    linewidths=1, 
+    linewidths=2.5, 
     linecolor='white',
     cbar_kws={'label': 'Speedup Factor'},
-    annot_kws={"size": 13, "weight": "bold"},
+    annot_kws={"size": 22, "weight": "bold"}, # Huge numbers inside heatmap
     ax=axes[2]
 )
-axes[2].set_title('(c) Speedup Factor (SIVF vs Vanilla)', fontsize=14, weight='bold', pad=12)
-axes[2].set_xlabel('Database Size (NB)', fontsize=12)
-axes[2].set_ylabel('Number of Clusters (nlist)', fontsize=12)
-axes[2].set_xticklabels(['1M', '2M', '4M'])
-axes[2].set_yticklabels(heatmap_data.index, rotation=0)
+# Adjust colorbar font
+cbar = axes[2].collections[0].colorbar
+cbar.ax.tick_params(labelsize=tick_size)
+cbar.set_label('Speedup Factor', fontsize=label_size)
+
+axes[2].set_title('(c) Speedup Factor', fontsize=title_size, weight='bold', pad=15)
+axes[2].set_xlabel('Database Size', fontsize=label_size)
+axes[2].set_ylabel('Clusters (nlist)', fontsize=label_size)
+axes[2].set_xticklabels(['1M', '2M', '4M'], fontsize=tick_size)
+axes[2].set_yticklabels(heatmap_data.index, rotation=0, fontsize=tick_size)
 
 # ==========================================
 # Save
 # ==========================================
-# Save figure to file
-plt.savefig(os.path.expanduser('~/ElasticIVF/hpdic/paper/TR2026/figures/performance_add.pdf'), format='pdf', dpi=300, bbox_inches='tight')
+output_path = os.path.expanduser('~/ElasticIVF/hpdic/paper/TR2026/figures/performance_add.pdf')
+os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
+plt.savefig(output_path, format='pdf', dpi=300, bbox_inches='tight')
+print(f"Figure saved to: {output_path}")
