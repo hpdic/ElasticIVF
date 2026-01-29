@@ -396,10 +396,11 @@ set_target_properties(test_sivf_delete PROPERTIES CUDA_ARCHITECTURES "75")
 add_executable(test_sivf_sensitivity ${PROJECT_SOURCE_DIR}/hpdic/experiment/test_sivf_sensitivity.cpp)
 target_link_libraries(test_sivf_sensitivity PRIVATE faiss CUDA::cudart CUDA::cublas)
 set_target_properties(test_sivf_sensitivity PROPERTIES CUDA_ARCHITECTURES "75")
-# MPI Insert
+# Multiple GPUs with MPI
 find_package(MPI REQUIRED)
-add_executable(test_sivf_mpi_insert ${PROJECT_SOURCE_DIR}/hpdic/experiment/test_sivf_mpi_insert.cpp)
 find_package(OpenMP REQUIRED)
+add_executable(test_sivf_mpi_insert ${PROJECT_SOURCE_DIR}/hpdic/experiment/test_sivf_mpi_insert.cpp)
+add_executable(test_sivf_mpi_delete ${PROJECT_SOURCE_DIR}/hpdic/experiment/test_sivf_mpi_delete.cpp)
 target_link_libraries(test_sivf_mpi_insert PRIVATE 
     faiss 
     CUDA::cudart 
@@ -407,4 +408,12 @@ target_link_libraries(test_sivf_mpi_insert PRIVATE
     MPI::MPI_CXX
     OpenMP::OpenMP_CXX
 )
+target_link_libraries(test_sivf_mpi_delete PRIVATE 
+    faiss 
+    CUDA::cudart 
+    CUDA::cublas 
+    MPI::MPI_CXX
+    OpenMP::OpenMP_CXX
+)
 set_target_properties(test_sivf_mpi_insert PROPERTIES CUDA_ARCHITECTURES "70")
+set_target_properties(test_sivf_mpi_delete PROPERTIES CUDA_ARCHITECTURES "70")

@@ -494,4 +494,80 @@ Clustering 163840 points in 128D to 4096 clusters, redo 1 times, 20 iterations
 | "    | "          | "          | Vanilla  | 0.7093          | 5697525         | 1.0x       |
 |------|------------|------------|----------|-----------------|-----------------|------------|
 (myenv) donzhao@node0:~/hpdic/ElasticIVF/build$ 
+
+
+
+
+(myenv) donzhao@node0:~/hpdic/ElasticIVF/build$ mpirun --allow-run-as-root -np 4 ./faiss/gpu/test_si
+vf_mpi_delete
+
+==========================================================
+[MPI Deletion] Ranks: 4 | GPUs: 4
+[Workload] Base: 1M vec/GPU | Delete: 10k vec/GPU
+[Logic] Vanilla: Try GPU delete -> Fallback to CPU if failed
+[HPDIC MOD] Faiss GPU initialized on device ID: 3
+[HPDIC MOD] Faiss GPU initialized on device ID: 1
+
+| GPUs | Del/GPU    | SIVF QPS        | Vanilla QPS     | Speedup    | Fallback?  |
+|------|------------|-----------------|-----------------|------------|------------|
+[HPDIC MOD] Faiss GPU initialized on device ID: 0
+[HPDIC MOD] Faiss GPU initialized on device ID: 2
+
+[HPDIC MEMORY FIX] Resizing:
+  > Slab Pool:   70692 -> 316596
+  > Data Buffer: 2000000 -> 10131072 vectors (Avoids Overflow)
+
+
+[HPDIC MEMORY FIX] Resizing:
+  > Slab Pool:   70692 -> 316596
+  > Data Buffer: 2000000 -> 10131072 vectors (Avoids Overflow)
+
+[SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...
+[SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...
+
+[HPDIC MEMORY FIX] Resizing:
+  > Slab Pool:   70692 -> 316596
+  > Data Buffer: 2000000 -> 10131072 vectors (Avoids Overflow)
+
+
+[HPDIC MEMORY FIX] Resizing:
+  > Slab Pool:   70692 -> 316596
+  > Data Buffer: 2000000 -> 10131072 vectors (Avoids Overflow)
+
+[SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...
+[SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...
+Clustering 65536 points in 128D to 4096 clusters, redo 1 times, 20 iterations
+  Preprocessing in 0.03 s
+WARNING clustering 65536 points to 4096 centroids: please provide at least 159744 training points
+WARNING clustering 65536 points to 4096 centroids: please provide at least 159744 training points
+Clustering 65536 points in 128D to 4096 clusters, redo 1 times, 20 iterations
+  Preprocessing in 0.03 s
+Clustering 65536 points in 128D to 4096 clusters, redo 1 times, 20 iterations
+  Preprocessing in 0.03 s
+WARNING clustering 65536 points to 4096 centroids: please provide at least 159744 training points
+WARNING clustering 65536 points to 4096 centroids: please provide at least 159744 training points
+Clustering 65536 points in 128D to 4096 clusters, redo 1 times, 20 iterations
+  Preprocessing in 0.03 s
+  Iteration 6 (0.35 s, search 0.12 s): objective=334205 imbalance=1.717 nsplit=2         
+  Converged at iteration 6: objective did not change
+
+
+  Converged at iteration 6: objective did not change
+
+[SIVF::train] GPU K-Means complete. Quantizer populated with 4096 centroids.
+[SIVF::train] GPU K-Means complete. Quantizer populated with 4096 centroids.
+  Iteration 6 (0.34 s, search 0.12 s): objective=334205 imbalance=1.717 nsplit=2       
+  Converged at iteration 6: objective did not change
+
+  Iteration 6 (0.35 s, search 0.12 s): objective=334205 imbalance=1.717 nsplit=2       
+  Converged at iteration 6: objective did not change
+
+[SIVF::train] GPU K-Means complete. Quantizer populated with 4096 centroids.
+[SIVF::train] GPU K-Means complete. Quantizer populated with 4096 centroids.
+WARNING clustering 65536 points to 4096 centroids: please provide at least 159744 training points
+WARNING clustering 65536 points to 4096 centroids: please provide at least 159744 training points
+WARNING clustering 65536 points to 4096 centroids: please provide at least 159744 training points
+WARNING clustering 65536 points to 4096 centroids: please provide at least 159744 training points
+| 4    | 10000      | 64006032        | 23883           | 2680.0    x | YES        |
+(myenv) donzhao@node0:~/hpdic/ElasticIVF/build$ 
 */

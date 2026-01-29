@@ -894,9 +894,12 @@ In contrast, SIVF emerges as the only architecture enabling holistic stream proc
 \subsection{Multi-GPU Scalability}
 \label{sec:eval_multigpu}
 
-While the previous sections demonstrate SIVF's efficiency on a single device, large-scale streaming analytics often requires horizontal scaling. In this section, we evaluate the scalability of SIVF on a multi-GPU node equipped with [Number] NVIDIA [Model] GPUs. We employ a sharding strategy where the dataset is partitioned across devices, and queries are broadcasted via MPI. Figure~\ref{fig:scaling} (to be added) shows the system throughput as we increase the number of GPUs from 1 to [N].
+We evaluate the scalability and performance of SIVF on CloudLab Wisconsin~\cite{cloudlab}. 
+Each node is equipped with dual-socket Intel Xeon E5-2667 v4 (Broadwell) CPUs running at 3.20 GHz, providing a total of 16 physical cores, and 128 GB of ECC RAM. 
+It has four NVIDIA Tesla V100-SXM2 GPUs, each with 16 GB of HBM2 VRAM. 
+We employ a sharding strategy where the dataset is partitioned across devices, and queries are broadcasted via MPI. 
 
-\don{TODO}
+Figure~\ref{fig:multi_gpu} shows the system throughput as we increase the number of GPUs from 1 to 4.\don{TODO}
 
 \section{Conclusion}
 \label{sec:conclusion}
