@@ -428,10 +428,10 @@ The address table $\mathcal{T}$ maps a vector id $u$ to a coordinate $(s,o)$ enc
 \begin{theorem}[Parallel ingestion is safe and linearizable]
 \label{thm:ingestion}
 Consider any concurrent execution of Algorithm~\ref{alg:sivf_ingestion}.
-For every insertion that returns successfully, there exists a unique slot $(s,o)$ such that
-(i) the insertion writes the payload and id into that slot, then sets bit $o$ in \texttt{validity\_bitmap} exactly once,
+For every insertion that returns successfully, there exists a unique slot $(s,o)$ such that:
+(i) the insertion operation writes the payload and id into that slot, then sets bit $o$ in \textup{\texttt{validity\_bitmap}} exactly once,
 (ii) once the bit is set, the slot contains a fully initialized payload and id, and
-(iii) the insertion can be linearized at the atomic bit set operation \texttt{atomicOr} that makes the slot visible.
+(iii) the insertion can be linearized at the atomic bit set operation \textup{\texttt{atomicOr}} that makes the slot visible.
 \end{theorem}
 
 \begin{proof}
@@ -491,7 +491,7 @@ Consider any concurrent execution of Algorithms~\ref{alg:sivf_search} and \ref{a
 For any delete request on id $u$ such that $\mathcal{T}[u]\neq\texttt{INVALID}$ and decodes to
 $(\text{idx}_{slab},\text{idx}_{slot})$, define
 \[
-mask = \sim(1 \ll \text{idx}_{slot}).
+mask =~\sim(1 \ll \text{idx}_{slot}).
 \]
 Then the atomic operation
 \texttt{old = atomicAnd(\&$\mathcal{B}_{\text{idx}_{slab}}$, mask)}
