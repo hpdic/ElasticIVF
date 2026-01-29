@@ -694,7 +694,7 @@ Figure~\ref{fig:sivf_sensitivity_lat} analyzes the end-to-end latency for index 
 \subsection{Real-world Datasets}
 \label{sec:eval_real_world}
 
-We benchmark SIVF using four popular real-world datasets representing diverse modalities: Deep1B~\cite{babenko2016efficient} (96 dimensions, deep features), SIFT1M~\cite{jegou2011product} (128 dimensions, vision), T2I-1B~\cite{simhadri2025results} (200 dimensions, multimodal/RAG), and GIST1M~\cite{jegou2011product} (960 dimensions, high-dim features). While the subset size (1M vectors) fits within GPU memory, these experiments validate performance within the \textit{active window} of streaming applications. Section~\ref{sec:eval_streaming} will report their stability under high-churn workloads.
+We benchmark SIVF using four popular real-world datasets representing diverse modalities and varying degrees of cluster skewness: Deep1B~\cite{babenko2016efficient} (96 dimensions, deep features, imbalance factor $\mathcal{I}=1.23$), SIFT1M~\cite{jegou2011product} (128 dimensions, vision, $\mathcal{I}=1.24$), T2I-1B~\cite{simhadri2025results} (200 dimensions, multimodal/RAG, $\mathcal{I}=1.21$), and GIST1M~\cite{jegou2011product} (960 dimensions, high-dim features, $\mathcal{I}=1.76$). The high imbalance factor of GIST1M, in particular, stresses the allocator's ability to handle non-uniform distributions. While the subset size (1M vectors) fits within GPU memory, these experiments validate performance within the \textit{active window} of streaming applications. Section~\ref{sec:eval_streaming} will report their stability under high-churn workloads.
 
 \begin{figure*}[t]
     \centering
@@ -890,6 +890,13 @@ CPU-based graph indices (HNSW, NSG) suffer catastrophic performance degradation 
 While GPU Flat achieves high ingestion throughput by bypassing indexing overhead, it incurs prohibitive deletion latencies ($>$ 1s) due to $O(N)$ data compaction and CPU-GPU synchronization.
 Notably, the state-of-the-art GPU graph index, CAGRA, exhibits severe rigidity in streaming scenarios; enforcing true physical deletion to prevent memory leaks necessitates full index reconstruction, causing latencies to spike to over 10 seconds on GIST1M.
 In contrast, SIVF emerges as the only architecture enabling holistic stream processing: it sustains GPU-class ingestion rates (e.g., 853K vec/s on GIST1M, $8.8\times$ faster than CAGRA) while providing sub-millisecond physical slot reclamation ($\approx 0.89$ ms). This effectively bridges the gap between static high-throughput search and dynamic mutability, outperforming graph reconstruction latencies by four orders of magnitude.
+
+\subsection{Multi-GPU Scalability}
+\label{sec:eval_multigpu}
+
+While the previous sections demonstrate SIVF's efficiency on a single device, large-scale streaming analytics often requires horizontal scaling. In this section, we evaluate the scalability of SIVF on a multi-GPU node equipped with [Number] NVIDIA [Model] GPUs. We employ a sharding strategy where the dataset is partitioned across devices, and queries are broadcasted via MPI. Figure~\ref{fig:scaling} (to be added) shows the system throughput as we increase the number of GPUs from 1 to [N].
+
+\don{TODO}
 
 \section{Conclusion}
 \label{sec:conclusion}
