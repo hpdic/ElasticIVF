@@ -30,10 +30,10 @@ def plot_grid():
     gist_sivf_q = [23315, 5132, 2642, 1336, 841, 671, 442, 353, 289, 230]
 
     datasets = [
-        {"name": "Deep1B (96d)", "br": deep_base_r, "bq": deep_base_q, "sr": deep_sivf_r, "sq": deep_sivf_q},
-        {"name": "SIFT1M (128d)", "br": sift_base_r, "bq": sift_base_q, "sr": sift_sivf_r, "sq": sift_sivf_q},
-        {"name": "T2I-1M (200d)", "br": t2i_base_r, "bq": t2i_base_q, "sr": t2i_sivf_r, "sq": t2i_sivf_q},
-        {"name": "GIST1M (960d)", "br": gist_base_r, "bq": gist_base_q, "sr": gist_sivf_r, "sq": gist_sivf_q}
+        {"name": "Deep1B (96D)", "br": deep_base_r, "bq": deep_base_q, "sr": deep_sivf_r, "sq": deep_sivf_q},
+        {"name": "SIFT1M (128D)", "br": sift_base_r, "bq": sift_base_q, "sr": sift_sivf_r, "sq": sift_sivf_q},
+        {"name": "T2I-1B (200D)", "br": t2i_base_r, "bq": t2i_base_q, "sr": t2i_sivf_r, "sq": t2i_sivf_q},
+        {"name": "GIST1M (960D)", "br": gist_base_r, "bq": gist_base_q, "sr": gist_sivf_r, "sq": gist_sivf_q}
     ]
 
     # ================= PLOTTING CONFIG =================

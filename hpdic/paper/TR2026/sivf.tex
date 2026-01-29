@@ -192,9 +192,10 @@ Finally, DARTH~\cite{10.1145/3749160} introduces declarative recall targets thro
 
 While these techniques reduce storage footprints or distribute load, they predominantly operate on static memory layouts that are brittle under frequent updates. SIVF addresses a complementary challenge: it provides the dynamic memory substrate that allows these scalable architectures to support real-time streams without succumbing to VRAM fragmentation or locking overheads.
 
-\paragraph{GPU Acceleration Techniques}
+\subsection{GPU Acceleration}
 Recent HPC work highlights how careful kernel and data-layout design can unlock GPU performance across data-intensive workloads. FZ-GPU demonstrates a fully parallel compression pipeline with both warp-aware bitwise operations and shared-memory efficiency~\cite{10.1145/3588195.3592994}. For sparse linear algebra, SpMV designs reduce preprocessing overhead while improving load balance and memory access locality~\cite{10.1145/3588195.3593002}, and GPU-aware preconditioning further emphasizes locality and coalescence as first-order concerns on modern GPU architectures~\cite{10.1145/3625549.3658683}. Beyond compute kernels, GPU-enabled asynchronous checkpoint caching and prefetching treat GPU memory as a first-class tier to improve end-to-end throughput for I/O-heavy workflows~\cite{10.1145/3588195.3592987}. Format choices and composition are also critical for irregular workloads, as shown by automatic sparse format composition for SpMM that avoids expensive autotuning while delivering strong performance~\cite{10.1145/3731545.3731574}.
-Another line of work focuses on reliability, debugging, and cluster-scale GPU management, which together shape how GPU-centric systems are built and operated. GPU-FPX provides low-overhead floating-point exception tracking for NVIDIA GPUs~\cite{10.1145/3588195.3592991}, FPBOXer improves scalable input generation for triggering floating-point exceptions in GPU programs~\cite{10.1145/3625549.3658660}, and FloatGuard extends whole-program exception detection to AMD GPUs and highlights cross-vendor portability concerns~\cite{10.1145/3731545.3731586}. At the application and cluster level, SIMCoV-GPU studies multi-node, multi-GPU acceleration for irregular agent-based simulations~\cite{10.1145/3625549.3658692}, FASOP automates fast search for near-optimal transformer parallelization on heterogeneous GPU clusters~\cite{10.1145/3625549.3658687}, and serverless platforms motivate GPU sharing and scheduling mechanisms such as ESG and FluidFaaS~\cite{10.1145/3625549.3658657,10.1145/3731545.3731580}. These works reinforce the importance of aligning work granularity with warps, minimizing synchronization overhead, and designing memory layouts that preserve locality, which are relevant to GPU-resident indexing under dynamic updates.
+Another line of work focuses on reliability, debugging, and cluster-scale GPU management, which together shape how GPU-centric systems are built and operated. GPU-FPX provides low-overhead floating-point exception tracking for NVIDIA GPUs~\cite{10.1145/3588195.3592991}, FPBOXer improves scalable input generation for triggering floating-point exceptions in GPU programs~\cite{10.1145/3625549.3658660}, and FloatGuard extends whole-program exception detection to AMD GPUs and highlights cross-vendor portability concerns~\cite{10.1145/3731545.3731586}. At the application and cluster level, SIMCoV-GPU studies multi-node, multi-GPU acceleration for irregular agent-based simulations~\cite{10.1145/3625549.3658692}, FASOP automates fast search for near-optimal transformer parallelization on heterogeneous GPU clusters~\cite{10.1145/3625549.3658687}, and serverless platforms motivate GPU sharing and scheduling mechanisms such as ESG and FluidFaaS~\cite{10.1145/3625549.3658657,10.1145/3731545.3731580}. 
+% These works reinforce the importance of aligning work granularity with warps, minimizing synchronization overhead, and designing memory layouts that preserve locality, which are relevant to GPU-resident indexing under dynamic updates.
 
 However, applying these general-purpose HPC optimizations to vector search remains non-trivial due to the irregular memory access patterns of IVF traversal. SIVF bridges this gap by tailoring these micro-architectural principles, specifically warp-aligned slabs and lock-free synchronization, to construct the first GPU-resident index capable of sustaining high-velocity updates without compromising retrieval integrity.
 
@@ -586,7 +587,7 @@ To ensure a comprehensive evaluation, we adopt a two-tiered baseline strategy.
 First, our primary baseline is the standard Faiss GPU IVF, which serves as a direct architectural counterpart; this allows us to isolate the performance gains specifically attributable to our proposed memory management innovations, excluding confounding factors from differing algorithmic paradigms. 
 Second, to position SIVF within the broader indexing landscape, we in Section~\ref{sec:eval_non_ivf} compare against representative non-IVF indices, including GPU CAGRA~\cite{10597683} (dynamic graph), GPU Flat (brute-force), HNSW~\cite{malkov2018efficient} (dynamic graph), NSG~\cite{10.14778/3303753.3303754} (static graph), and LSH~\cite{10.1145/997817.997857} (hashing).
 
-All experiments were conducted on a bare-metal node from the Chameleon Cloud testbed~\cite{keahey2020lessons} (CHI@UC site). The platform is equipped with dual-socket Intel Xeon Gold 6126 CPUs (Skylake microarchitecture), providing a total of 24 physical cores (48 threads with Hyper-Threading) clocked at 2.60 GHz. The host memory consists of 192 GiB of RAM. 
+Most experiments were conducted on a bare-metal node from the Chameleon Cloud testbed~\cite{keahey2020lessons} (CHI@UC site). The platform is equipped with dual-socket Intel Xeon Gold 6126 CPUs (Skylake microarchitecture), providing a total of 24 physical cores (48 threads with Hyper-Threading) clocked at 2.60 GHz. The host memory consists of 192 GiB of RAM. 
 For acceleration, the node features an NVIDIA Quadro RTX 6000 GPU with 24 GB of GDDR6 VRAM. The system runs on a Ubuntu 24.04 environment with the CUDA toolkit installed: Driver ver. 560.35.05 and CUDA ver. 12.2.
 
 Each reported data point represents the average of at least three independent executions. Error bars are omitted in figures where the standard deviation is negligible to maintain visual clarity. 
@@ -732,12 +733,13 @@ As shown in Figure~\ref{fig:eval_ingestion}, SIVF dominates ingestion scalabilit
 Figure~\ref{fig:eval_deletion} highlights the critical performance divergence. Baseline latency scales poorly due to CPU-GPU roundtrips, varying from 1.2s (Deep1B) to 11.8s (GIST1M). In contrast, SIVF's in-place bitmap updates decouple latency from dimension, maintaining sub-millisecond performance ($<0.9$ ms) across all datasets. Notably on GIST1M, SIVF reduces latency from 11,843 ms to 0.89 ms, a $13,307\times$ improvement, validating its feasibility for real-time streams.
 
 \paragraph{Search Performance and Trade-offs}
-Figure~\ref{fig:eval_search} compares query throughput (QPS). SIVF exhibits a lower-dimension advantage: on Deep1B, it outperforms the baseline by $2.07\times$ (59.8K vs. 28.9K QPS) while maintaining comparable recall (91.9\% vs 92.0\%, not shown in the figure). On SIFT1M, it retains a $1.5\times$ lead. Performance parity is observed on T2I-1B (17.8K vs 18.6K QPS). A trade-off appears on high-dimensional GIST1M, where SIVF achieves 37\% of baseline QPS. This results from reduced memory coalescing efficiency when traversing non-contiguous slabs with large vectors, which is a necessary compromise to enable instant, lock-free mutability. A plausible solution to mitigate this gap is to apply a nearest-neighbor-aware dimensionan reduction method; one recent approach called Order-Preserving Dimension Reduction (OPDR)~\cite{cgong_aaai26} has demonstrated promising results in preserving search accuracy while reducing dimensionality. Integrating such techniques with SIVF is a promising direction for future work.
+Figure~\ref{fig:eval_search} compares query throughput (QPS). SIVF exhibits a lower-dimension advantage: on Deep1B, it outperforms the baseline by $2.07\times$ (59.8K vs. 28.9K QPS) while maintaining comparable recall (91.9\% vs 92.0\%, not shown in the figure). On SIFT1M, it retains a $1.5\times$ lead. Performance parity is observed on T2I-1B (17.8K vs 18.6K QPS). A trade-off appears on high-dimensional GIST1M, where SIVF achieves 37\% of baseline QPS. This results from reduced memory coalescing efficiency when traversing non-contiguous slabs with large vectors, which is a necessary compromise to enable instant, lock-free mutability. A plausible solution to mitigate this gap is to apply a nearest-neighbor-aware dimension reduction method; one recent approach called Order-Preserving Dimension Reduction (OPDR)~\cite{cgong_aaai26} has demonstrated promising results in preserving search accuracy while reducing dimensionality. Integrating such techniques with SIVF is a promising direction for future work.
 
 \begin{figure}[t]
     \centering
     \includegraphics[width=\linewidth]{figures/pareto.pdf}
     \caption{QPS-Recall Pareto frontier analysis across four datasets (Deep1B, SIFT1M, T2I-1B, and GIST1M).}
+    \Description{Four line graphs comparing QPS vs Recall@10 for SIVF and Vanilla Faiss across four datasets.}
     \label{fig:pareto}
 \end{figure}
 
@@ -755,6 +757,7 @@ We evaluate real-time applicability using a \textit{Sliding Window} benchmark th
     \centering
     \includegraphics[width=1.0\linewidth]{figures/eval_sliding.pdf}
     \caption{End-to-End Streaming Performance.}
+    \Description{Two bar graphs comparing sliding window update latency between SIVF and Vanilla Faiss on SIFT1M and GIST1M datasets.}
     \label{fig:eval_sliding}
 \end{figure}
 
@@ -863,7 +866,7 @@ We verified the efficacy of our memory reclamation strategy. In a stress test (n
 To position SIVF within the broader indexing landscape, we benchmarked it against five representative non-IVF architectures: GPU CAGRA~\cite{10597683} (graphs), Faiss GPU Flat (brute-force baseline, i.e., no index), HNSW~\cite{malkov2018efficient} (dynamic graphs), (3) LSH~\cite{10.1145/997817.997857} (legacy hash-based approaches), and (4) NSG~\cite{10.14778/3303753.3303754} (static graphs). Table~\ref{tab:landscape_full} summarizes ingestion throughput and deletion latency across three datasets: SIFT1M, T2I-1B, and GIST1M.
 
 \begin{table}[t]
-\caption{Comparison of ingestion throughput (K vec/s) and deletion latency (ms) across different datasets.}
+\caption{Comparison of I/O throughput.}
 \label{tab:landscape_full}
 \centering
 \resizebox{\linewidth}{!}{
@@ -884,7 +887,7 @@ LSH~\cite{10.1145/997817.997857} & 787 & 14.6 & 428 & 16.3 & 36.6 & 9.2 \\
 \end{table}
 
 Table~\ref{tab:landscape_full} reports the results of vector ingestion and deletion in a streaming context across three datasets.
-CPU-based graph indices (HNSW, NSG) suffer catastrophic performance degradation on high-dimensional data, dropping to merely 600 vec/s on GIST1M due to cache thrashing, and lack support for native deletion.
+CPU-based graph indices (HNSW, NSG) suffer catastrophic performance degradation on high-dimensional data, dropping to merely 600 vec/s on GIST1M due to cache thrashing, and lack support for deletion (`N/A').
 While GPU Flat achieves high ingestion throughput by bypassing indexing overhead, it incurs prohibitive deletion latencies ($>$ 1s) due to $O(N)$ data compaction and CPU-GPU synchronization.
 Notably, the state-of-the-art GPU graph index, CAGRA, exhibits severe rigidity in streaming scenarios; enforcing true physical deletion to prevent memory leaks necessitates full index reconstruction, causing latencies to spike to over 10 seconds on GIST1M.
 In contrast, SIVF emerges as the only architecture enabling holistic stream processing: it sustains GPU-class ingestion rates (e.g., 853K vec/s on GIST1M, $8.8\times$ faster than CAGRA) while providing sub-millisecond physical slot reclamation ($\approx 0.89$ ms). This effectively bridges the gap between static high-throughput search and dynamic mutability, outperforming graph reconstruction latencies by four orders of magnitude.
@@ -892,7 +895,7 @@ In contrast, SIVF emerges as the only architecture enabling holistic stream proc
 \subsection{Multi-GPU Scalability}
 \label{sec:eval_multigpu}
 
-We evaluate the scalability and performance of SIVF on CloudLab Wisconsin~\cite{cloudlab}. 
+We evaluated the scalability performance of SIVF on CloudLab Wisconsin~\cite{cloudlab}. 
 Each node is equipped with dual-socket Intel Xeon E5-2667 v4 (Broadwell) CPUs running at 3.20 GHz, providing a total of 16 physical cores, 128 GB of ECC RAM, 
 and NVIDIA Tesla V100-SXM2 GPUs, each of which has 16 GB of HBM2 VRAM. 
 We employ a sharding strategy where the dataset is partitioned across devices, and queries are broadcasted via MPI.
@@ -932,11 +935,10 @@ This work addresses the immutability issus in GPU-accelerated Inverted File (IVF
 % \subsection{Limitations and Future Directions}
 % \label{sec:limitations}
 
-% Despite the orders-of-magnitude improvement in mutation latency, current SIVF design entails specific trade-offs. 
+Despite the orders-of-magnitude improvement in mutation latency, current SIVF design entails specific trade-offs. 
 % First, the \textit{pointer-chasing overhead} inherent in the linked-slab architecture reduces memory coalescing efficiency for those high-dimensional vectors. 
 % First, as observed in the GIST1M (960 dimensions) evaluation, this results in a $37\%$ reduction in raw search QPS compared to contiguous static indices. While acceptable for write-heavy streaming scenarios, future work will address this by exploring \textit{adaptive super-slabs} that enforce page-aligned storage to restore memory bandwidth utilization.
-% The current implementation operates on a single GPU, bounding the maximum active window size to the available VRAM. While our sliding window experiments demonstrate stability under infinite streams, scaling the \textit{simultaneous} index capacity to larger datasets will require extending SIVF with \textit{multi-GPU sharding} via NVLink and unified memory prefetching techniques.
-% The consistency model of SIVF prioritizes throughput over strict linearizability. While sufficient for the probabilistic nature of approximate nearest neighbor search, future work will investigate lightweight snapshot isolation mechanisms to support transactional semantics without compromising the lock-free ingestion speed.
+For example, the consistency model of SIVF prioritizes throughput over strict linearizability. While sufficient for the probabilistic nature of approximate nearest neighbor search, future work will investigate lightweight snapshot isolation mechanisms to support transactional semantics without compromising the lock-free ingestion speed.
 
 % \section*{Acknowledgment}
 % Results presented in this paper were obtained using the Chameleon testbed supported by the National Science Foundation.
