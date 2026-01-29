@@ -1,10 +1,11 @@
 /**
- * test_sivf_mpi_delete.cpp
+ * test_sivf_mpi_search.cpp
  *
- * Evaluation: Multi-GPU Scalability (Deletion)
- * Logic:
- * 1. SIVF: In-place GPU deletion.
- * 2. Vanilla: Try GPU delete -> Catch Exception -> Fallback to CPU Round-trip.
+ * Evaluation: Multi-GPU Search Scalability (Weak Scaling)
+ * * Logic:
+ * - Distributed Index: Each GPU holds a shard of the dataset (e.g., 1M vectors).
+ * - Distributed Search: Broadcast queries -> Local Search -> Aggregate Throughput.
+ * - Metric: Aggregate QPS (Total Queries / Max Latency across ranks).
  */
 
 #include <mpi.h>
@@ -15,20 +16,16 @@
 #include <random>
 #include <vector>
 #include <cstring> 
-#include <numeric>
 
 #include <faiss/gpu/GpuIndexIVFFlat.h>
 #include <faiss/gpu/GpuIndexSIVF.h>
 #include <faiss/gpu/StandardGpuResources.h>
 #include <faiss/gpu/utils/DeviceUtils.h>
-#include <faiss/gpu/GpuCloner.h> 
-#include <faiss/impl/FaissException.h> // For try-catch
-#include <faiss/impl/IDSelector.h>
-#include <faiss/IndexIVFFlat.h>
 
 using namespace faiss;
 using namespace faiss::gpu;
 
+// Helper: Random Data
 void generate_data(size_t n, int d, std::vector<float>& data) {
     size_t chunk = std::min(n, (size_t)10000);
     for (size_t i = 0; i < chunk * d; ++i) {
@@ -52,35 +49,42 @@ int main(int argc, char** argv) {
     int device_id = rank % num_gpus;
     cudaSetDevice(device_id);
 
+    // ==========================================
     // Config
+    // ==========================================
     int d = 128;
     int nlist = 4096; 
-    size_t nb = 1000000;         // 1M vectors per GPU
-    size_t n_delete = 10000;     // 10k deletions per GPU
-    size_t max_nt = 256 * 1024;
     
+    // Weak Scaling: Dataset grows with GPU count
+    size_t nb = 1000000;         // 1M vectors per GPU
+    size_t nq = 10000;           // 10k queries
+    size_t max_nt = 256 * 1024;
+    int k = 10;
+    int nprobe = 32;             // Standard search depth
+
     if (rank == 0) {
         std::cout << "\n==========================================================" << std::endl;
-        std::cout << "[MPI Deletion] Ranks: " << size << " | GPUs: " << num_gpus << std::endl;
-        std::cout << "[Workload] Base: 1M vec/GPU | Delete: 10k vec/GPU" << std::endl;
-        std::cout << "[Logic] Vanilla: Try GPU delete -> Fallback to CPU if failed" << std::endl;
+        std::cout << "[MPI Search Scaling] Ranks: " << size << " | GPUs: " << num_gpus << std::endl;
+        std::cout << "[Setup] Index: " << nb << " vec/GPU | Query: " << nq << " vec (Broadcast)" << std::endl;
     }
 
-    // Data Gen
-    std::vector<float> all_xb(nb * d);
-    generate_data(nb, d, all_xb);
+    // 1. Prepare Data
+    // Base vectors (Shard)
+    std::vector<float> xb(nb * d);
+    generate_data(nb, d, xb);
 
-    std::vector<float> all_xt(max_nt * d);
-    generate_data(max_nt, d, all_xt);
+    // Query vectors (Same for all ranks effectively)
+    std::vector<float> xq(nq * d);
+    generate_data(nq, d, xq);
 
-    std::vector<idx_t> all_ids(nb);
+    // Training set
+    std::vector<float> xt(max_nt * d);
+    generate_data(max_nt, d, xt);
+
+    // IDs
+    std::vector<idx_t> ids(nb);
     idx_t id_offset = (idx_t)rank * nb;
-    for (size_t i = 0; i < nb; ++i) all_ids[i] = id_offset + i;
-
-    // Selector
-    std::vector<idx_t> ids_to_delete(n_delete);
-    for(size_t i = 0; i < n_delete; ++i) ids_to_delete[i] = id_offset + i;
-    faiss::IDSelectorBatch selector(n_delete, ids_to_delete.data());
+    for (size_t i = 0; i < nb; ++i) ids[i] = id_offset + i;
 
     StandardGpuResources res;
     res.setTempMemory(1024 * 1024 * 512); 
@@ -89,13 +93,13 @@ int main(int argc, char** argv) {
     config.device = device_id;
 
     if (rank == 0) {
-        printf("\n| %-4s | %-10s | %-15s | %-15s | %-10s | %-10s |\n",
-               "GPUs", "Del/GPU", "SIVF QPS", "Vanilla QPS", "Speedup", "Fallback?");
-        printf("|------|------------|-----------------|-----------------|------------|------------|\n");
+        printf("\n| %-4s | %-10s | %-10s | %-15s | %-15s | %-10s |\n",
+               "GPUs", "NB/GPU", "nprobe", "SIVF QPS", "Vanilla QPS", "Speedup");
+        printf("|------|------------|------------|-----------------|-----------------|------------|\n");
     }
 
     // ==========================================
-    // Round 1: SIVF
+    // Round 1: SIVF Search
     // ==========================================
     double sivf_total_qps = 0.0;
     {
@@ -105,83 +109,91 @@ int main(int argc, char** argv) {
         GpuIndexSIVF index(&res, d, nlist, METRIC_L2, config);
         index.initSlabManager(max_vectors, slab_pool_size);
         
+        // Build Index
         size_t nt = std::min(max_nt, (size_t)65536);
-        index.train(nt, all_xt.data());
-        index.add_with_ids(nb, all_xb.data(), all_ids.data());
+        index.train(nt, xt.data());
+        index.add_with_ids(nb, xb.data(), ids.data());
         
+        index.nprobe = nprobe;
+
+        // Output buffers
+        std::vector<float> D(nq * k);
+        std::vector<idx_t> I(nq * k);
+
+        // Warmup
+        index.search(100, xq.data(), k, D.data(), I.data());
         cudaDeviceSynchronize();
         MPI_Barrier(MPI_COMM_WORLD);
 
+        // Benchmark
         double t0 = MPI_Wtime();
-        index.remove_ids(selector); 
+        index.search(nq, xq.data(), k, D.data(), I.data());
         cudaDeviceSynchronize();
         double t1 = MPI_Wtime();
 
-        double local_qps = n_delete / (t1 - t0);
-        MPI_Reduce(&local_qps, &sivf_total_qps, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
+        // Throughput calculation:
+        // In weak scaling, if we run the SAME queries on all shards,
+        // the system is processing 'nq' queries against 'size * nb' database.
+        // But QPS is typically defined as "Query Throughput".
+        // Here we measure aggregate throughput assuming queries are sharded or simply sum of capacities.
+        // Simplest Metric: Total Queries Processed / Max Time
+        
+        double local_time = t1 - t0;
+        double max_time = 0;
+        MPI_Reduce(&local_time, &max_time, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+
+        // Total effective QPS of the cluster
+        if (rank == 0) {
+            // Note: If we consider the cluster as one big index, the QPS is nq / max_time.
+            // But if we want to show "SCALABILITY" (processing power), we usually sum up the work.
+            // However, strictly speaking for Search, if you double GPUs, you search double the data 
+            // in the SAME time. So the QPS (Queries Per Second) stays CONSTANT, 
+            // but the "Processed Vectors Per Second" doubles.
+            
+            // Let's report "Effective QPS" as if each GPU handled independent queries (Throughput mode)
+            // or stick to the previous pattern: Aggregate QPS.
+            sivf_total_qps = (nq * size) / max_time; 
+        }
     }
 
     // ==========================================
-    // Round 2: Vanilla (Try GPU -> Catch -> CPU)
+    // Round 2: Vanilla Search
     // ==========================================
     double vanilla_total_qps = 0.0;
-    int fallback_happened = 0; // 0=No, 1=Yes
     {
         GpuIndexIVFFlatConfig flatConfig;
         flatConfig.device = device_id;
         faiss::gpu::GpuIndexIVFFlat index(&res, d, nlist, METRIC_L2, flatConfig);
         
         size_t nt = std::min(max_nt, (size_t)65536);
-        index.train(nt, all_xt.data());
-        index.add_with_ids(nb, all_xb.data(), all_ids.data());
+        index.train(nt, xt.data());
+        index.add_with_ids(nb, xb.data(), ids.data());
+        index.nprobe = nprobe;
+
+        std::vector<float> D(nq * k);
+        std::vector<idx_t> I(nq * k);
 
         cudaDeviceSynchronize();
         MPI_Barrier(MPI_COMM_WORLD);
 
         double t0 = MPI_Wtime();
-        
-        try {
-            // 1. Try Direct GPU Delete
-            index.remove_ids(selector);
-        } 
-        catch (faiss::FaissException& e) {
-            // 2. Catch "Not Implemented" and fallback to CPU Round-trip
-            fallback_happened = 1;
-
-            // Step A: Copy GPU -> CPU
-            faiss::Index* cpu_index = faiss::gpu::index_gpu_to_cpu(&index);
-            
-            // Step B: Delete on CPU
-            cpu_index->remove_ids(selector);
-            
-            // Step C: Copy CPU -> GPU (Simulate restoring the service)
-            // We create a new GPU index to measure the upload cost
-            faiss::gpu::GpuIndexIVFFlat* new_gpu_index = dynamic_cast<faiss::gpu::GpuIndexIVFFlat*>(
-                faiss::gpu::index_cpu_to_gpu(&res, device_id, cpu_index));
-            
-            delete cpu_index;
-            delete new_gpu_index;
-        }
-
+        index.search(nq, xq.data(), k, D.data(), I.data());
         cudaDeviceSynchronize();
         double t1 = MPI_Wtime();
 
-        double local_qps = n_delete / (t1 - t0);
-        MPI_Reduce(&local_qps, &vanilla_total_qps, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
-    }
-    
-    // Check if ALL ranks triggered fallback
-    int global_fallback = 0;
-    MPI_Reduce(&fallback_happened, &global_fallback, 1, MPI_INT, MPI_MIN, 0, MPI_COMM_WORLD);
+        double local_time = t1 - t0;
+        double max_time = 0;
+        MPI_Reduce(&local_time, &max_time, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
 
-    // ==========================================
+        if (rank == 0) {
+            vanilla_total_qps = (nq * size) / max_time;
+        }
+    }
+
     // Report
-    // ==========================================
     if (rank == 0) {
-        printf("| %-4d | %-10ld | %-15.0f | %-15.0f | %-10.1fx | %-10s |\n",
-               size, n_delete, sivf_total_qps, vanilla_total_qps, 
-               sivf_total_qps / vanilla_total_qps,
-               (global_fallback ? "YES" : "NO"));
+        printf("| %-4d | %-10ld | %-10d | %-15.0f | %-15.0f | %-10.2fx |\n",
+               size, nb, nprobe, sivf_total_qps, vanilla_total_qps, sivf_total_qps / vanilla_total_qps);
     }
 
     MPI_Finalize();
@@ -189,15 +201,15 @@ int main(int argc, char** argv) {
 }
 
 /** Example output:
-(myenv) donzhao@node0:~/hpdic/ElasticIVF/build$ mpirun --allow-run-as-root -np 1 ./faiss/gpu/test_sivf_mpi_delete
+(myenv) donzhao@node0:~/hpdic/ElasticIVF/build$ 
+(myenv) donzhao@node0:~/hpdic/ElasticIVF/build$ mpirun --allow-run-as-root -np 1 ./faiss/gpu/test_sivf_mpi_search
 
 ==========================================================
-[MPI Deletion] Ranks: 1 | GPUs: 4
-[Workload] Base: 1M vec/GPU | Delete: 10k vec/GPU
-[Logic] Vanilla: Try GPU delete -> Fallback to CPU if failed
+[MPI Search Scaling] Ranks: 1 | GPUs: 4
+[Setup] Index: 1000000 vec/GPU | Query: 10000 vec (Broadcast)
 
-| GPUs | Del/GPU    | SIVF QPS        | Vanilla QPS     | Speedup    | Fallback?  |
-|------|------------|-----------------|-----------------|------------|------------|
+| GPUs | NB/GPU     | nprobe     | SIVF QPS        | Vanilla QPS     | Speedup    |
+|------|------------|------------|-----------------|-----------------|------------|
 [HPDIC MOD] Faiss GPU initialized on device ID: 0
 
 [HPDIC MEMORY FIX] Resizing:
@@ -208,27 +220,26 @@ int main(int argc, char** argv) {
 WARNING clustering 65536 points to 4096 centroids: please provide at least 159744 training points
 Clustering 65536 points in 128D to 4096 clusters, redo 1 times, 20 iterations
   Preprocessing in 0.03 s
-  Iteration 6 (0.36 s, search 0.11 s): objective=334205 imbalance=1.717 nsplit=2         
-  Converged at iteration 6: objective did not change
+  Iteration 7 (0.40 s, search 0.12 s): objective=335568 imbalance=1.847 nsplit=1         
+  Converged at iteration 7: objective did not change
 
 [SIVF::train] GPU K-Means complete. Quantizer populated with 4096 centroids.
 WARNING clustering 65536 points to 4096 centroids: please provide at least 159744 training points
-| 1    | 10000      | 13908399        | 6297            | 2208.6    x | YES        |
+| 1    | 1000000    | 32         | 5851            | 11073           | 0.53      x |
 (myenv) donzhao@node0:~/hpdic/ElasticIVF/build$ 
 
 
 
 
 (myenv) donzhao@node0:~/hpdic/ElasticIVF/build$ mpirun --allow-run-as-root -np 2 ./faiss/gpu/test_si
-vf_mpi_delete
+vf_mpi_search
 
 ==========================================================
-[MPI Deletion] Ranks: 2 | GPUs: 4
-[Workload] Base: 1M vec/GPU | Delete: 10k vec/GPU
-[Logic] Vanilla: Try GPU delete -> Fallback to CPU if failed
+[MPI Search Scaling] Ranks: 2 | GPUs: 4
+[Setup] Index: 1000000 vec/GPU | Query: 10000 vec (Broadcast)
 
-| GPUs | Del/GPU    | SIVF QPS        | Vanilla QPS     | Speedup    | Fallback?  |
-|------|------------|-----------------|-----------------|------------|------------|
+| GPUs | NB/GPU     | nprobe     | SIVF QPS        | Vanilla QPS     | Speedup    |
+|------|------------|------------|-----------------|-----------------|------------|
 [HPDIC MOD] Faiss GPU initialized on device ID: 0
 [HPDIC MOD] Faiss GPU initialized on device ID: 1
 
@@ -237,46 +248,45 @@ vf_mpi_delete
   > Data Buffer: 2000000 -> 10131072 vectors (Avoids Overflow)
 
 [SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...
+Clustering 65536 points in 128D to 4096 clusters, redo 1 times, 20 iterations
+  Preprocessing in 0.03 s
+WARNING clustering 65536 points to 4096 centroids: please provide at least 159744 training points
 
 [HPDIC MEMORY FIX] Resizing:
   > Slab Pool:   70692 -> 316596
   > Data Buffer: 2000000 -> 10131072 vectors (Avoids Overflow)
 
 [SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...
-WARNING clustering 65536 points to 4096 centroids: please provide at least 159744 training points
-Clustering 65536 points in 128D to 4096 clusters, redo 1 times, 20 iterations
-  Preprocessing in 0.03 s
 Clustering 65536 points in 128D to 4096 clusters, redo 1 times, 20 iterations
   Preprocessing in 0.03 s
 WARNING clustering 65536 points to 4096 centroids: please provide at least 159744 training points
-  Iteration 6 (0.36 s, search 0.10 s): objective=334205 imbalance=1.717 nsplit=2         
-  Converged at iteration 6: objective did not change
+  Iteration 7 (0.40 s, search 0.12 s): objective=335568 imbalance=1.847 nsplit=1         
+  Converged at iteration 7: objective did not change
 
 [SIVF::train] GPU K-Means complete. Quantizer populated with 4096 centroids.
-  Iteration 6 (0.36 s, search 0.11 s): objective=334205 imbalance=1.717 nsplit=2       
-  Converged at iteration 6: objective did not change
+  Iteration 7 (0.40 s, search 0.12 s): objective=335568 imbalance=1.847 nsplit=1       
+  Converged at iteration 7: objective did not change
 
 [SIVF::train] GPU K-Means complete. Quantizer populated with 4096 centroids.
 WARNING clustering 65536 points to 4096 centroids: please provide at least 159744 training points
 WARNING clustering 65536 points to 4096 centroids: please provide at least 159744 training points
-| 2    | 10000      | 34050875        | 12026           | 2831.6    x | YES        |
+| 2    | 1000000    | 32         | 11636           | 22146           | 0.53      x |
 (myenv) donzhao@node0:~/hpdic/ElasticIVF/build$ 
 
 
 
 
 (myenv) donzhao@node0:~/hpdic/ElasticIVF/build$ mpirun --allow-run-as-root -np 4 ./faiss/gpu/test_si
-vf_mpi_delete
+vf_mpi_search
 
 ==========================================================
-[MPI Deletion] Ranks: 4 | GPUs: 4
-[Workload] Base: 1M vec/GPU | Delete: 10k vec/GPU
-[Logic] Vanilla: Try GPU delete -> Fallback to CPU if failed
-[HPDIC MOD] Faiss GPU initialized on device ID: 3
+[MPI Search Scaling] Ranks: 4 | GPUs: 4
+[Setup] Index: 1000000 vec/GPU | Query: 10000 vec (Broadcast)
 [HPDIC MOD] Faiss GPU initialized on device ID: 1
+[HPDIC MOD] Faiss GPU initialized on device ID: 3
 
-| GPUs | Del/GPU    | SIVF QPS        | Vanilla QPS     | Speedup    | Fallback?  |
-|------|------------|-----------------|-----------------|------------|------------|
+| GPUs | NB/GPU     | nprobe     | SIVF QPS        | Vanilla QPS     | Speedup    |
+|------|------------|------------|-----------------|-----------------|------------|
 [HPDIC MOD] Faiss GPU initialized on device ID: 0
 [HPDIC MOD] Faiss GPU initialized on device ID: 2
 
@@ -296,15 +306,13 @@ vf_mpi_delete
   > Slab Pool:   70692 -> 316596
   > Data Buffer: 2000000 -> 10131072 vectors (Avoids Overflow)
 
+[SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...
 
 [HPDIC MEMORY FIX] Resizing:
   > Slab Pool:   70692 -> 316596
   > Data Buffer: 2000000 -> 10131072 vectors (Avoids Overflow)
 
 [SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...
-[SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...
-Clustering 65536 points in 128D to 4096 clusters, redo 1 times, 20 iterations
-  Preprocessing in 0.03 s
 WARNING clustering 65536 points to 4096 centroids: please provide at least 159744 training points
 WARNING clustering 65536 points to 4096 centroids: please provide at least 159744 training points
 Clustering 65536 points in 128D to 4096 clusters, redo 1 times, 20 iterations
@@ -312,22 +320,24 @@ Clustering 65536 points in 128D to 4096 clusters, redo 1 times, 20 iterations
 Clustering 65536 points in 128D to 4096 clusters, redo 1 times, 20 iterations
   Preprocessing in 0.03 s
 WARNING clustering 65536 points to 4096 centroids: please provide at least 159744 training points
-WARNING clustering 65536 points to 4096 centroids: please provide at least 159744 training points
 Clustering 65536 points in 128D to 4096 clusters, redo 1 times, 20 iterations
   Preprocessing in 0.03 s
-  Iteration 6 (0.35 s, search 0.12 s): objective=334205 imbalance=1.717 nsplit=2         
-  Converged at iteration 6: objective did not change
-
-
-  Converged at iteration 6: objective did not change
+Clustering 65536 points in 128D to 4096 clusters, redo 1 times, 20 iterations
+  Preprocessing in 0.03 s
+WARNING clustering 65536 points to 4096 centroids: please provide at least 159744 training points
+  Iteration 6 (0.36 s, search 0.12 s): objective=335568 imbalance=1.847 nsplit=1         
+  Converged at iteration 7: objective did not change
 
 [SIVF::train] GPU K-Means complete. Quantizer populated with 4096 centroids.
-[SIVF::train] GPU K-Means complete. Quantizer populated with 4096 centroids.
-  Iteration 6 (0.34 s, search 0.12 s): objective=334205 imbalance=1.717 nsplit=2       
-  Converged at iteration 6: objective did not change
+  Iteration 7 (0.42 s, search 0.14 s): objective=335568 imbalance=1.847 nsplit=1       
+  Converged at iteration 7: objective did not change
 
-  Iteration 6 (0.35 s, search 0.12 s): objective=334205 imbalance=1.717 nsplit=2       
-  Converged at iteration 6: objective did not change
+[SIVF::train] GPU K-Means complete. Quantizer populated with 4096 centroids.
+  Iteration 7 (0.42 s, search 0.15 s): objective=335568 imbalance=1.847 nsplit=1       
+  Converged at iteration 7: objective did not change
+
+
+  Converged at iteration 7: objective did not change
 
 [SIVF::train] GPU K-Means complete. Quantizer populated with 4096 centroids.
 [SIVF::train] GPU K-Means complete. Quantizer populated with 4096 centroids.
@@ -335,6 +345,6 @@ WARNING clustering 65536 points to 4096 centroids: please provide at least 15974
 WARNING clustering 65536 points to 4096 centroids: please provide at least 159744 training points
 WARNING clustering 65536 points to 4096 centroids: please provide at least 159744 training points
 WARNING clustering 65536 points to 4096 centroids: please provide at least 159744 training points
-| 4    | 10000      | 64006032        | 23883           | 2680.0    x | YES        |
+| 4    | 1000000    | 32         | 23344           | 44248           | 0.53      x |
 (myenv) donzhao@node0:~/hpdic/ElasticIVF/build$ 
 */

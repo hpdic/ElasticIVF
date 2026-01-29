@@ -401,6 +401,7 @@ find_package(MPI REQUIRED)
 find_package(OpenMP REQUIRED)
 add_executable(test_sivf_mpi_insert ${PROJECT_SOURCE_DIR}/hpdic/experiment/test_sivf_mpi_insert.cpp)
 add_executable(test_sivf_mpi_delete ${PROJECT_SOURCE_DIR}/hpdic/experiment/test_sivf_mpi_delete.cpp)
+add_executable(test_sivf_mpi_search ${PROJECT_SOURCE_DIR}/hpdic/experiment/test_sivf_mpi_search.cpp)
 target_link_libraries(test_sivf_mpi_insert PRIVATE 
     faiss 
     CUDA::cudart 
@@ -415,5 +416,13 @@ target_link_libraries(test_sivf_mpi_delete PRIVATE
     MPI::MPI_CXX
     OpenMP::OpenMP_CXX
 )
+target_link_libraries(test_sivf_mpi_search PRIVATE 
+    faiss 
+    CUDA::cudart 
+    CUDA::cublas 
+    MPI::MPI_CXX
+    OpenMP::OpenMP_CXX
+)
 set_target_properties(test_sivf_mpi_insert PROPERTIES CUDA_ARCHITECTURES "70")
 set_target_properties(test_sivf_mpi_delete PROPERTIES CUDA_ARCHITECTURES "70")
+set_target_properties(test_sivf_mpi_search PROPERTIES CUDA_ARCHITECTURES "70")

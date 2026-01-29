@@ -87,13 +87,16 @@ Test SIVF on multiple GPUs:
 ```bash
 # SIVF add benchmark:
 cd ~/hpdic/ElasticIVF/build
-make -j test_sivf_mpi_insert test_sivf_mpi_delete
+make -j test_sivf_mpi_insert test_sivf_mpi_delete test_sivf_mpi_search
 mpirun --allow-run-as-root -np 1 ./faiss/gpu/test_sivf_mpi_insert
 mpirun --allow-run-as-root -np 2 ./faiss/gpu/test_sivf_mpi_insert
 mpirun --allow-run-as-root -np 4 ./faiss/gpu/test_sivf_mpi_insert
 mpirun --allow-run-as-root -np 1 ./faiss/gpu/test_sivf_mpi_delete
 mpirun --allow-run-as-root -np 2 ./faiss/gpu/test_sivf_mpi_delete
 mpirun --allow-run-as-root -np 4 ./faiss/gpu/test_sivf_mpi_delete
+mpirun --allow-run-as-root -np 1 ./faiss/gpu/test_sivf_mpi_search
+mpirun --allow-run-as-root -np 2 ./faiss/gpu/test_sivf_mpi_search
+mpirun --allow-run-as-root -np 4 ./faiss/gpu/test_sivf_mpi_search
 ```
 
 
