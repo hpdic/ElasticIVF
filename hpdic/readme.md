@@ -2,6 +2,7 @@
 
 ## CloudLab Setup
 
+Setup GPUs
 ```bash
 ln -s /hpdic ~/hpdic
 sudo apt update
@@ -45,7 +46,8 @@ Wed Jan 28 19:28:19 2026
 +---------------------------------------------------------------------------------------+
 donzhao@node0:~$ 
 ```
-Then
+
+Install SIVF
 ```bash
 sudo apt install python3.12-venv python3-dev -y
 pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
@@ -57,7 +59,7 @@ cd ElasticIVF
 python3 -m venv myenv
 source myenv/bin/activate
 python3 ~/hpdic/ElasticIVF/hpdic/script/test_gpu.py
-rm -rf build
+cd ~/hpdic/ElasticIVF
 cmake -B build . \
     -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
     -DCMAKE_CUDA_COMPILER_LAUNCHER=ccache \
@@ -78,6 +80,17 @@ g++ 4-GPU.cpp -o 4-GPU.bin \
     -Wl,-rpath=$(pwd)/../../build/faiss
 ./4-GPU.bin
 ```
+
+Test SIVF on multiple GPUs:
+```bash
+# SIVF add benchmark:
+cd ~/hpdic/ElasticIVF/build
+make -j test_sivf_mpi_insert
+mpirun --allow-run-as-root -np 1 ./faiss/gpu/test_sivf_mpi_insert
+mpirun --allow-run-as-root -np 2 ./faiss/gpu/test_sivf_mpi_insert
+mpirun --allow-run-as-root -np 4 ./faiss/gpu/test_sivf_mpi_insert
+```
+
 
 ## Chameleon Cloud Setup
 
