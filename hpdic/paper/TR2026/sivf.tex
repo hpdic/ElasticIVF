@@ -155,7 +155,7 @@ In summary, this paper makes the following contributions:
 \section{Related Work}
 \label{sec:related_work}
 
-Approximate Nearest Neighbor (ANN) search has been extensively studied, with a rich body of work spanning CPU-based dynamic indices, GPU-accelerated static indices, and hybrid approaches that integrate attribute filtering or quantization. This section reviews these developments, highlighting their respective strengths and limitations in the context of streaming vector analytics.
+% Approximate Nearest Neighbor (ANN) search has been extensively studied, with a rich body of work spanning CPU-based dynamic indices, GPU-accelerated static indices, and hybrid approaches that integrate attribute filtering or quantization. This section reviews these developments, highlighting their respective strengths and limitations in the context of streaming vector analytics.
 
 \subsection{Optimization of Graph-Based Indices}
 
@@ -203,16 +203,16 @@ However, applying these general-purpose HPC optimizations to vector search remai
 \section{Design and Implementation of SIVF}
 \label{sec:design_implementation}
 
-This section presents the design of SIVF for high-concurrency updates on GPUs. We first introduce the Slab-based Dynamic
-Memory Allocator (Section~\ref{sec:slab_memory_management}), which represents each IVF list as a linked chain of fixed-capacity
-slabs with per-list head pointers $H[\cdot]$ and per-slab metadata $(\texttt{next}, \texttt{valid\_count}, \texttt{validity\_bitmap})$
-(Algorithm~\ref{alg:sdma_core}). Building on SDMA, we describe the parallel ingestion kernel (Section~\ref{sec:lock_free_ingestion})
-in which each thread inserts one vector by reserving a slot via \texttt{atomicCAS} on \texttt{valid\_count} and publishing visibility
-by setting a validity bit after \verb|__threadfence()| (Algorithm~\ref{alg:sivf_ingestion}). We then present a warp-cooperative search
-kernel (Section~\ref{sec:methods_search_kernel}) that assigns one warp to one query and evaluates one slab per traversal step by
-consulting the validity bitmap before reading payloads (Algorithm~\ref{alg:sivf_search}). Finally, we detail lazy eviction
-(Section~\ref{sec:bitmap_lazy_eviction}), which performs constant-time deletion by looking up coordinates in the address table
-$\mathcal{T}$ and atomically clearing the corresponding bitmap bit (Algorithm~\ref{alg:sivf_delete}).
+% This section presents the design of SIVF for high-concurrency updates on GPUs. We first introduce the Slab-based Dynamic
+% Memory Allocator (Section~\ref{sec:slab_memory_management}), which represents each IVF list as a linked chain of fixed-capacity
+% slabs with per-list head pointers $H[\cdot]$ and per-slab metadata $(\texttt{next}, \texttt{valid\_count}, \texttt{validity\_bitmap})$
+% (Algorithm~\ref{alg:sdma_core}). Building on SDMA, we describe the parallel ingestion kernel (Section~\ref{sec:lock_free_ingestion})
+% in which each thread inserts one vector by reserving a slot via \texttt{atomicCAS} on \texttt{valid\_count} and publishing visibility
+% by setting a validity bit after \verb|__threadfence()| (Algorithm~\ref{alg:sivf_ingestion}). We then present a warp-cooperative search
+% kernel (Section~\ref{sec:methods_search_kernel}) that assigns one warp to one query and evaluates one slab per traversal step by
+% consulting the validity bitmap before reading payloads (Algorithm~\ref{alg:sivf_search}). Finally, we detail lazy eviction
+% (Section~\ref{sec:bitmap_lazy_eviction}), which performs constant-time deletion by looking up coordinates in the address table
+% $\mathcal{T}$ and atomically clearing the corresponding bitmap bit (Algorithm~\ref{alg:sivf_delete}).
 
 \subsection{Slab-based Memory Management}
 \label{sec:slab_memory_management}
@@ -577,9 +577,9 @@ Finally, we extended the SWIG interface files to expose the new \texttt{SIVF} cl
 \section{Evaluation}
 \label{sec:evaluation}
 
-Our evaluation benchmarks SIVF directly against the native Faiss GPU implementations, specifically targeting ingestion throughput and deletion latency under high-concurrency streaming workloads.
+% Our evaluation benchmarks SIVF directly against the native Faiss GPU implementations, specifically targeting ingestion throughput and deletion latency under high-concurrency streaming workloads.
 
-\don{Add multi-GPU results}
+% \don{Add multi-GPU results}
 
 \subsection{Experimental Setup}
 \label{sec:exp_setup}
@@ -734,6 +734,16 @@ Figure~\ref{fig:eval_deletion} highlights the critical performance divergence. B
 
 \paragraph{Search Performance and Trade-offs}
 Figure~\ref{fig:eval_search} compares query throughput (QPS). SIVF exhibits a lower-dimension advantage: on Deep1B, it outperforms the baseline by $2.07\times$ (59.8K vs. 28.9K QPS) while maintaining comparable recall (91.9\% vs 92.0\%, not shown in the figure). On SIFT1M, it retains a $1.5\times$ lead. Performance parity is observed on T2I-1B (17.8K vs 18.6K QPS). A trade-off appears on high-dimensional GIST1M, where SIVF achieves 37\% of baseline QPS. This results from reduced memory coalescing efficiency when traversing non-contiguous slabs with large vectors, which is a necessary compromise to enable instant, lock-free mutability. A plausible solution to mitigate this gap is to apply a nearest-neighbor-aware dimensionan reduction method; one recent approach called Order-Preserving Dimension Reduction (OPDR)~\cite{cgong_aaai26} has demonstrated promising results in preserving search accuracy while reducing dimensionality. Integrating such techniques with SIVF is a promising direction for future work.
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=\linewidth]{figures/pareto.pdf}
+    \caption{QPS-Recall Pareto frontier analysis across four datasets (Deep1B, SIFT1M, T2I-1B, and GIST1M).}
+    \label{fig:pareto}
+\end{figure}
+
+\paragraph{QPS-Recall Pareto Frontier}
+Figure~\ref{fig:pareto} illustrates the trade-off between query throughput (QPS) and retrieval quality (Recall@10). The results reveal three key architectural characteristics of SIVF. First, we observe strict recall parity: across all datasets, the SIVF curves converge to the same maximum recall as the contiguous baseline (e.g., 99.8\% on Deep1B and 95.5\% on T2I-1B), confirming that the non-contiguous slab layout incurs no loss in search accuracy. Second, SIVF exhibits dominance in the low-latency regime. At lower probe depths ($n_{probe}=1$), SIVF achieves up to $12\times$ higher throughput than the baseline on Deep1B and $9\times$ on SIFT1M. This performance gap highlights the efficiency of SIVF's lightweight kernel design for high-velocity streaming filtering. Third, a dimensionality-dependent trade-off is evident. While SIVF matches or exceeds the baseline on lower-dimensional data (Deep1B, SIFT1M, T2I-1B), it achieves approximately 37\% of the baseline's peak QPS on the 960-dimensional GIST1M. This attenuation stems from the reduced memory coalescing efficiency when traversing linked slabs with large vector payloads. To mitigate this, future iterations could integrate dimensionality reduction techniques, such as OPDR~\cite{cgong_aaai26}, to balance high-dimensional accuracy with pointer-chasing efficiency.
 
 \subsection{End-to-End Streaming Performance}
 \label{sec:eval_streaming}
