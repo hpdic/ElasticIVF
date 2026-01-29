@@ -1,4 +1,16 @@
 # HPDIC MOD of FAISS
+
+## CloudLab Setup
+
+```bash
+sudo apt update
+sudo apt install -y nvidia-driver-535 nvidia-utils-535 nvidia-cuda-toolkit
+sudo apt install -y openmpi-bin libopenmpi-dev
+sudo reboot
+```
+
+## Chameleon Cloud Setup
+
 We assume you are using (e.g., Chameleon Cloud `nc33` at U. Chicago) Ubuntu 24.04, NVIDIA RTX 6000 GPU (24 GB RAM, Driver 560.35.05, CUDA 12.6), 192 GB RAM, Intel(R) Xeon(R) Gold 6126 CPU @ 2.60GHz (48 Cores).
 
 ## Recompile C++
