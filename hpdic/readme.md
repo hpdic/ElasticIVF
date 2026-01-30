@@ -2,7 +2,30 @@
 
 ## CloudLab Setup
 
-My node: `c4130` @ CloudLab Wisc.
+### 5 nodes, each with 2 GPUs: `ibm8335` @ CloudLab Clem.
+```bash
+sudo chmod 777 /hpdic
+ln -s /hpdic ~/hpdic
+cd ~/hpdic
+git clone git@github.com:hpdic/ElasticIVF.git
+git config --global user.name "Dongfang Zhao"
+git config --global user.email "dzhao@uw.edu"
+# copy ssh key to ~/hpdic/ssh_cloudlab
+chmod 600 ~/hpdic/ssh_cloudlab
+cat <<EOF > ~/.ssh/config
+Host *
+    IdentityFile ~/hpdic/ssh_cloudlab
+    StrictHostKeyChecking no
+    UserKnownHostsFile /dev/null
+    LogLevel ERROR
+EOF
+for i in node1 node2 node3 node4; do
+    printf "Trying to reach %-8s ... " $i
+    ssh $i "hostname -s"
+done
+```
+
+### Single node with 4 GPUs: `c4130` @ CloudLab Wisc.
 
 Setup GPUs
 ```bash
