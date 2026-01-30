@@ -136,13 +136,12 @@ cmake -B build . \
     -DFAISS_ENABLE_PYTHON=OFF \
     -DBUILD_TESTING=OFF \
     -DCMAKE_CUDA_ARCHITECTURES="60" \
+# 60 (P100), 70 (V100), 75 (RTX6000), 80 (A100)
 make -C build -j
 cd ~/hpdic/ElasticIVF/build
-# Edit hpdic/ElasticIVF/faiss/gpu/CMakeLists.txt and update the cuda architectures to:
-# 60 (P100), 70 (V100), 75 (RTX6000), 80 (A100)
-# Then recompile:
-make -j test_sivf_mpi_insert
-./faiss/gpu/test_sivf_add
+make -j test_sivf_mpi_insert test_sivf_mpi_delete test_sivf_mpi_search
+mpirun --allow-run-as-root -np 1 ./build/faiss/gpu/test_sivf_mpi_insert
+mpirun --allow-run-as-root -np 2 ./build/faiss/gpu/test_sivf_mpi_insert
 
 parallel-scp -h ~/hpdic/workers ~/hpdic/cuda_11.4.4_470.82.01_linux_ppc64le.run ~/hpdic/
 parallel-ssh -h ~/hpdic/hosts -t 0 "sudo bash ~/hpdic/cuda_11.4.4_470.82.01_linux_ppc64le.run --silent --toolkit"

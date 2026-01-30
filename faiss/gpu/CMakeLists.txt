@@ -383,19 +383,19 @@ endif()
 # Add
 add_executable(test_sivf_add ${PROJECT_SOURCE_DIR}/hpdic/experiment/test_sivf_add.cpp)
 target_link_libraries(test_sivf_add PRIVATE faiss CUDA::cudart CUDA::cublas)
-set_target_properties(test_sivf_add PROPERTIES CUDA_ARCHITECTURES "75")
+# set_target_properties(test_sivf_add PROPERTIES CUDA_ARCHITECTURES "75")
 # Search
 add_executable(test_sivf_search ${PROJECT_SOURCE_DIR}/hpdic/experiment/test_sivf_search.cpp)
 target_link_libraries(test_sivf_search PRIVATE faiss CUDA::cudart CUDA::cublas)
-set_target_properties(test_sivf_search PROPERTIES CUDA_ARCHITECTURES "75")
+# set_target_properties(test_sivf_search PROPERTIES CUDA_ARCHITECTURES "75")
 # Delete
 add_executable(test_sivf_delete ${PROJECT_SOURCE_DIR}/hpdic/experiment/test_sivf_delete.cpp)
 target_link_libraries(test_sivf_delete PRIVATE faiss CUDA::cudart CUDA::cublas)
-set_target_properties(test_sivf_delete PROPERTIES CUDA_ARCHITECTURES "75")
+# set_target_properties(test_sivf_delete PROPERTIES CUDA_ARCHITECTURES "75")
 # Sensitivity
 add_executable(test_sivf_sensitivity ${PROJECT_SOURCE_DIR}/hpdic/experiment/test_sivf_sensitivity.cpp)
 target_link_libraries(test_sivf_sensitivity PRIVATE faiss CUDA::cudart CUDA::cublas)
-set_target_properties(test_sivf_sensitivity PROPERTIES CUDA_ARCHITECTURES "75")
+# set_target_properties(test_sivf_sensitivity PROPERTIES CUDA_ARCHITECTURES "75")
 # Multiple GPUs with MPI
 find_package(MPI REQUIRED)
 find_package(OpenMP REQUIRED)
@@ -423,6 +423,6 @@ target_link_libraries(test_sivf_mpi_search PRIVATE
     MPI::MPI_CXX
     OpenMP::OpenMP_CXX
 )
-set_target_properties(test_sivf_mpi_insert PROPERTIES CUDA_ARCHITECTURES "60")
-set_target_properties(test_sivf_mpi_delete PROPERTIES CUDA_ARCHITECTURES "70")
-set_target_properties(test_sivf_mpi_search PROPERTIES CUDA_ARCHITECTURES "70")
+# set_target_properties(test_sivf_mpi_insert PROPERTIES CUDA_ARCHITECTURES "60")
+# set_target_properties(test_sivf_mpi_delete PROPERTIES CUDA_ARCHITECTURES "70")
+# set_target_properties(test_sivf_mpi_search PROPERTIES CUDA_ARCHITECTURES "70")
