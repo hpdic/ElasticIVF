@@ -202,6 +202,8 @@ However, applying these general-purpose HPC optimizations to vector search remai
 \section{Design and Implementation of SIVF}
 \label{sec:design_implementation}
 
+\don{Proofread those algorithms with source-code}
+
 % This section presents the design of SIVF for high-concurrency updates on GPUs. We first introduce the Slab-based Dynamic
 % Memory Allocator (Section~\ref{sec:slab_memory_management}), which represents each IVF list as a linked chain of fixed-capacity
 % slabs with per-list head pointers $H[\cdot]$ and per-slab metadata $(\texttt{next}, \texttt{valid\_count}, \texttt{validity\_bitmap})$
@@ -733,6 +735,7 @@ As shown in Figure~\ref{fig:eval_ingestion}, SIVF dominates ingestion scalabilit
 Figure~\ref{fig:eval_deletion} highlights the critical performance divergence. Baseline latency scales poorly due to CPU-GPU roundtrips, varying from 1.2s (Deep1B) to 11.8s (GIST1M). In contrast, SIVF's in-place bitmap updates decouple latency from dimension, maintaining sub-millisecond performance ($<0.9$ ms) across all datasets. Notably on GIST1M, SIVF reduces latency from 11,843 ms to 0.89 ms, a $13,307\times$ improvement, validating its feasibility for real-time streams.
 
 \paragraph{Search Performance and Trade-offs}
+\don{TODO: Tune the parameters to accelerate SIVF searching on GIST}
 Figure~\ref{fig:eval_search} compares query throughput (QPS). SIVF exhibits a lower-dimension advantage: on Deep1B, it outperforms the baseline by $2.07\times$ (59.8K vs. 28.9K QPS) while maintaining comparable recall (91.9\% vs 92.0\%, not shown in the figure). On SIFT1M, it retains a $1.5\times$ lead. Performance parity is observed on T2I-1B (17.8K vs 18.6K QPS). A trade-off appears on high-dimensional GIST1M, where SIVF achieves 37\% of baseline QPS. This results from reduced memory coalescing efficiency when traversing non-contiguous slabs with large vectors, which is a necessary compromise to enable instant, lock-free mutability. A plausible solution to mitigate this gap is to apply a nearest-neighbor-aware dimension reduction method; one recent approach called Order-Preserving Dimension Reduction (OPDR)~\cite{cgong_aaai26} has demonstrated promising results in preserving search accuracy while reducing dimensionality. Integrating such techniques with SIVF is a promising direction for future work.
 
 \begin{figure}[t]
@@ -894,6 +897,8 @@ In contrast, SIVF emerges as the only architecture enabling holistic stream proc
 
 \subsection{Multi-GPU Scalability}
 \label{sec:eval_multigpu}
+
+\don{TODO: add cross-node results}
 
 We evaluated the scalability performance of SIVF on CloudLab Wisconsin~\cite{cloudlab}. 
 Each node is equipped with dual-socket Intel Xeon E5-2667 v4 (Broadwell) CPUs running at 3.20 GHz, providing a total of 16 physical cores, 128 GB of ECC RAM, 
