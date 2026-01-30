@@ -34,6 +34,15 @@ EOF
 grep -v "node0" ~/hpdic/hosts > ~/hpdic/workers
 parallel-ssh -h ~/hpdic/workers "sudo mkdir -p /hpdic && sudo chmod 777 /hpdic && ln -s /hpdic ~/hpdic"
 parallel-scp -h ~/hpdic/workers ~/hpdic/hosts ~/hpdic/
+wget https://us.download.nvidia.com/tesla/470.161.03/NVIDIA-Linux-ppc64le-470.161.03.run
+parallel-scp -h workers ~/hpdic/NVIDIA-Linux-ppc64le-470.161.03.run ~/hpdic/
+echo "blacklist nouveau" | sudo tee /etc/modprobe.d/blacklist-nvidia-nouveau.conf
+echo "options nouveau modeset=0" | sudo tee -a /etc/modprobe.d/blacklist-nvidia-nouveau.conf
+sudo update-initramfs -u
+sudo reboot
+# After reboot, run the following command to install NVIDIA driver:
+mkdir -p ~/hpdic/tmp
+sudo bash ~/hpdic/NVIDIA-Linux-ppc64le-470.161.03.run --silent --dkms --no-x-check --no-nouveau-check --tmpdir=/hpdic/tmp
 ```
 
 ### Single node with 4 GPUs: `c4130` @ CloudLab Wisc.
