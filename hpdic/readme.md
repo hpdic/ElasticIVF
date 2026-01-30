@@ -19,10 +19,21 @@ Host *
     UserKnownHostsFile /dev/null
     LogLevel ERROR
 EOF
-for i in node1 node2 node3 node4; do
+for i in node0 node1 node2 node3 node4; do
     printf "Trying to reach %-8s ... " $i
     ssh $i "hostname -s"
 done
+parallel-ssh -h ~/hpdic/hosts -i "hostname"
+cat <<EOF > ~/hpdic/hosts
+node0
+node1
+node2
+node3
+node4
+EOF
+grep -v "node0" ~/hpdic/hosts > ~/hpdic/workers
+parallel-ssh -h ~/hpdic/workers "sudo mkdir -p /hpdic && sudo chmod 777 /hpdic && ln -s /hpdic ~/hpdic"
+parallel-scp -h ~/hpdic/workers ~/hpdic/hosts ~/hpdic/
 ```
 
 ### Single node with 4 GPUs: `c4130` @ CloudLab Wisc.
