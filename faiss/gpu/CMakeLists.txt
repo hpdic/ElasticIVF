@@ -423,6 +423,6 @@ target_link_libraries(test_sivf_mpi_search PRIVATE
     MPI::MPI_CXX
     OpenMP::OpenMP_CXX
 )
-set_target_properties(test_sivf_mpi_insert PROPERTIES CUDA_ARCHITECTURES "70")
+set_target_properties(test_sivf_mpi_insert PROPERTIES CUDA_ARCHITECTURES "60")
 set_target_properties(test_sivf_mpi_delete PROPERTIES CUDA_ARCHITECTURES "70")
 set_target_properties(test_sivf_mpi_search PROPERTIES CUDA_ARCHITECTURES "70")

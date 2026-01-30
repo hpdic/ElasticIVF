@@ -3,6 +3,8 @@
 ## CloudLab Setup
 
 ### 5 nodes, each with 2 GPUs: `ibm8335` @ CloudLab Clem.
+
+It's a bit tedious to setup 5 nodes with 10 GPUs each on CloudLab Clem. First we need to setup the cluster and smoke-test master node `node0`:
 ```bash
 sudo chmod 777 /hpdic
 ln -s /hpdic ~/hpdic
@@ -32,17 +34,118 @@ node3
 node4
 EOF
 grep -v "node0" ~/hpdic/hosts > ~/hpdic/workers
-parallel-ssh -h ~/hpdic/workers "sudo mkdir -p /hpdic && sudo chmod 777 /hpdic && ln -s /hpdic ~/hpdic"
-parallel-scp -h ~/hpdic/workers ~/hpdic/hosts ~/hpdic/
 wget https://us.download.nvidia.com/tesla/470.161.03/NVIDIA-Linux-ppc64le-470.161.03.run
-parallel-scp -h workers ~/hpdic/NVIDIA-Linux-ppc64le-470.161.03.run ~/hpdic/
 echo "blacklist nouveau" | sudo tee /etc/modprobe.d/blacklist-nvidia-nouveau.conf
 echo "options nouveau modeset=0" | sudo tee -a /etc/modprobe.d/blacklist-nvidia-nouveau.conf
 sudo update-initramfs -u
 sudo reboot
-# After reboot, run the following command to install NVIDIA driver:
+# After reboot (wait for ~5 minutes), run the following command to install NVIDIA driver:
 mkdir -p ~/hpdic/tmp
 sudo bash ~/hpdic/NVIDIA-Linux-ppc64le-470.161.03.run --silent --dkms --no-x-check --no-nouveau-check --tmpdir=/hpdic/tmp
+nvidia-smi # Then you'll see something like the following:
+donzhao@node0:~$ nvidia-smi 
+Thu Jan 29 23:00:40 2026       
++-----------------------------------------------------------------------------+
+| NVIDIA-SMI 470.161.03   Driver Version: 470.161.03   CUDA Version: 11.4     |
+|-------------------------------+----------------------+----------------------+
+| GPU  Name        Persistence-M| Bus-Id        Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp  Perf  Pwr:Usage/Cap|         Memory-Usage | GPU-Util  Compute M. |
+|                               |                      |               MIG M. |
+|===============================+======================+======================|
+|   0  Tesla P100-SXM2...  Off  | 00000002:01:00.0 Off |                    0 |
+| N/A   27C    P0    41W / 300W |      0MiB / 16280MiB |      0%      Default |
+|                               |                      |                  N/A |
++-------------------------------+----------------------+----------------------+
+|   1  Tesla P100-SXM2...  Off  | 00000003:01:00.0 Off |                    0 |
+| N/A   25C    P0    30W / 300W |      0MiB / 16280MiB |      2%      Default |
+|                               |                      |                  N/A |
++-------------------------------+----------------------+----------------------+
+                                                                               
++-----------------------------------------------------------------------------+
+| Processes:                                                                  |
+|  GPU   GI   CI        PID   Type   Process name                  GPU Memory |
+|        ID   ID                                                   Usage      |
+|=============================================================================|
+|  No running processes found                                                 |
++-----------------------------------------------------------------------------+
+donzhao@node0:~$ 
+```
+
+Then install NVIDIA drivers on worker nodes
+```bash
+parallel-ssh -h ~/hpdic/workers "echo 'blacklist nouveau' | sudo tee /etc/modprobe.d/blacklist-nvidia-nouveau.conf && echo 'options nouveau modeset=0' | sudo tee -a /etc/modprobe.d/blacklist-nvidia-nouveau.conf"
+parallel-ssh -h ~/hpdic/workers -t 0 "sudo update-initramfs -u"
+parallel-ssh -h ~/hpdic/workers "sudo reboot"
+# Wait for ~5 minutes for works to reboot
+parallel-ssh -h ~/hpdic/workers "sudo mkdir -p /hpdic && sudo chmod 777 /hpdic && ln -s /hpdic ~/hpdic && mkdir -p ~/hpdic/tmp"
+parallel-scp -h ~/hpdic/workers ~/hpdic/NVIDIA-Linux-ppc64le-470.161.03.run ~/hpdic/
+parallel-ssh -h ~/hpdic/workers -t 0 "sudo sh /hpdic/NVIDIA-Linux-ppc64le-470.161.03.run --silent --dkms --no-x-check --no-nouveau-check --tmpdir=/hpdic/tmp"
+parallel-ssh -h ~/hpdic/hosts -i "nvidia-smi -L" # Then you should see something like this on each worker:
+donzhao@node0:~/hpdic$ parallel-ssh -h ~/hpdic/hosts -i "nvidia-smi -L" # Then you should see something like this on each worker:
+[1] 23:30:41 [SUCCESS] node0
+GPU 0: Tesla P100-SXM2-16GB (UUID: GPU-7344c36b-49e2-e2dd-ee41-747e5fb6378a)
+GPU 1: Tesla P100-SXM2-16GB (UUID: GPU-7d830700-a263-c7a3-3562-f318060d56b8)
+[2] 23:30:41 [SUCCESS] node1
+GPU 0: Tesla P100-SXM2-16GB (UUID: GPU-3d7cc14a-4cfb-c00f-121a-45212c8a8764)
+GPU 1: Tesla P100-SXM2-16GB (UUID: GPU-48cc4dcc-e87d-6f63-9053-8dfa96431426)
+[3] 23:30:48 [SUCCESS] node3
+GPU 0: Tesla P100-SXM2-16GB (UUID: GPU-4903be71-0134-478a-a43c-b9bb6072201f)
+GPU 1: Tesla P100-SXM2-16GB (UUID: GPU-3006099e-4332-c5cc-37b4-b2ab9990b27d)
+[4] 23:30:48 [SUCCESS] node2
+GPU 0: Tesla P100-SXM2-16GB (UUID: GPU-5e134fe8-0bdb-16ff-b379-bf4059fd402e)
+GPU 1: Tesla P100-SXM2-16GB (UUID: GPU-9803c684-90dc-e1d6-18e2-e1b91ef80b6d)
+[5] 23:30:48 [SUCCESS] node4
+GPU 0: Tesla P100-SXM2-16GB (UUID: GPU-7c660ff8-6cd6-7d07-eecd-d280f3a337a6)
+GPU 1: Tesla P100-SXM2-16GB (UUID: GPU-2ff7cceb-c8df-c77c-79e6-58acbb1ef658)
+donzhao@node0:~/hpdic$ 
+```
+
+Install tools (e.g., cuda, MPI) and SIVF on all nodes
+```bash
+cd ~/hpdic
+wget https://developer.download.nvidia.com/compute/cuda/11.4.4/local_installers/cuda_11.4.4_470.82.01_linux_ppc64le.run
+sudo mkdir -p /hpdic/usr_local
+sudo cp -a /usr/local/* /hpdic/usr_local/
+sudo mount --bind /hpdic/usr_local /usr/local
+sudo bash ~/hpdic/cuda_11.4.4_470.82.01_linux_ppc64le.run --silent --toolkit --tmpdir=/hpdic/tmp
+echo 'export PATH=/usr/local/cuda/bin:$PATH' >> ~/.bashrc
+echo 'export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH' >> ~/.bashrc
+source ~/.bashrc
+nvcc --version
+sudo apt update
+sudo apt install -y openmpi-bin libopenmpi-dev build-essential cmake git
+which mpic++ && which nvcc
+cd ~/hpdic/ElasticIVF
+mkdir -p build && cd build
+sudo apt install -y ccache swig libopenblas-dev
+pip3 install numpy
+sudo apt install -y libssl-dev
+cd ~/hpdic
+wget https://github.com/Kitware/CMake/releases/download/v3.28.3/cmake-3.28.3.tar.gz
+tar -zxvf cmake-3.28.3.tar.gz
+cd cmake-3.28.3
+./bootstrap --parallel=$(nproc) && make -j$(nproc)
+sudo make install
+hash -r
+cmake --version
+cd ~/hpdic/ElasticIVF
+cmake -B build . \
+    -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+    -DCMAKE_CUDA_COMPILER_LAUNCHER=ccache \
+    -DFAISS_ENABLE_GPU=ON \
+    -DFAISS_ENABLE_PYTHON=OFF \
+    -DBUILD_TESTING=OFF \
+    -DCMAKE_CUDA_ARCHITECTURES="60" \
+make -C build -j
+cd ~/hpdic/ElasticIVF/build
+# Edit hpdic/ElasticIVF/faiss/gpu/CMakeLists.txt and update the cuda architectures to:
+# 60 (P100), 70 (V100), 75 (RTX6000), 80 (A100)
+# Then recompile:
+make -j test_sivf_mpi_insert
+./faiss/gpu/test_sivf_add
+
+parallel-scp -h ~/hpdic/workers ~/hpdic/cuda_11.4.4_470.82.01_linux_ppc64le.run ~/hpdic/
+parallel-ssh -h ~/hpdic/hosts -t 0 "sudo bash ~/hpdic/cuda_11.4.4_470.82.01_linux_ppc64le.run --silent --toolkit"
 ```
 
 ### Single node with 4 GPUs: `c4130` @ CloudLab Wisc.
