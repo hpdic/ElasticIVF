@@ -4,7 +4,9 @@
 
 ### 5 nodes, each with 2 GPUs: `ibm8335` @ CloudLab Clem.
 
-It's a bit tedious to setup 5 nodes with 10 GPUs each on CloudLab Clem. First we need to setup the cluster and smoke-test master node `node0`:
+It's a bit tedious to setup 5 nodes with 10 GPUs each on CloudLab Clem. In fact, it's a bit challenging to install on IBM Power9 architecture. Among many other issues, here's a list of warnings I have for you: (i) You cannot use the default VS Code editor because Power9 is compatible with VS Code. (2) You will need to manually install a lot of dependencies (e.g., cmake 3.28+) since the default Ubuntu 20.04 apt repository is too old.
+
+First we need to setup the cluster and smoke-test master node `node0`:
 ```bash
 sudo chmod 777 /hpdic
 ln -s /hpdic ~/hpdic
@@ -143,8 +145,17 @@ make -j test_sivf_mpi_insert test_sivf_mpi_delete test_sivf_mpi_search
 mpirun --allow-run-as-root -np 1 ./build/faiss/gpu/test_sivf_mpi_insert
 mpirun --allow-run-as-root -np 2 ./build/faiss/gpu/test_sivf_mpi_insert
 
+parallel-ssh -h ~/hpdic/workers -t 0 "sudo apt update && sudo apt install -y openmpi-bin libopenmpi-dev libopenblas-dev python3-numpy"
 parallel-scp -h ~/hpdic/workers ~/hpdic/cuda_11.4.4_470.82.01_linux_ppc64le.run ~/hpdic/
-parallel-ssh -h ~/hpdic/hosts -t 0 "sudo bash ~/hpdic/cuda_11.4.4_470.82.01_linux_ppc64le.run --silent --toolkit"
+parallel-ssh -h ~/hpdic/workers -t 0 "sudo bash /hpdic/cuda_11.4.4_470.82.01_linux_ppc64le.run --silent --toolkit --tmpdir=/hpdic/tmp"
+parallel-scp -h ~/hpdic/workers -r ~/hpdic/ElasticIVF /hpdic/
+mpirun --allow-run-as-root \
+    -np 2 \
+    --host node0,node3 \
+    --map-by node \
+    --mca opal_cuda_support 0 \
+    -x NCCL_P2P_DISABLE=1 \
+    ./build/faiss/gpu/test_sivf_mpi_insert
 ```
 
 ### Single node with 4 GPUs: `c4130` @ CloudLab Wisc.
