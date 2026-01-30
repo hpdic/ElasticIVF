@@ -151,11 +151,46 @@ parallel-ssh -h ~/hpdic/workers -t 0 "sudo bash /hpdic/cuda_11.4.4_470.82.01_lin
 parallel-scp -h ~/hpdic/workers -r ~/hpdic/ElasticIVF /hpdic/
 mpirun --allow-run-as-root \
     -np 2 \
-    --host node0,node3 \
+    --host node0,node1 \
     --map-by node \
     --mca opal_cuda_support 0 \
     -x NCCL_P2P_DISABLE=1 \
     ./build/faiss/gpu/test_sivf_mpi_insert
+mpirun --allow-run-as-root \
+    -np 1 \
+    --host node0 \
+    --map-by node \
+    --mca opal_cuda_support 0 \
+    -x NCCL_P2P_DISABLE=1 \
+    ./build/faiss/gpu/test_sivf_mpi_insert    
+mpirun --allow-run-as-root \
+    -np 2 \
+    --host node0,node1 \
+    --map-by node \
+    --mca opal_cuda_support 0 \
+    -x NCCL_P2P_DISABLE=1 \
+    ./build/faiss/gpu/test_sivf_mpi_delete
+mpirun --allow-run-as-root \
+    -np 1 \
+    --host node0 \
+    --map-by node \
+    --mca opal_cuda_support 0 \
+    -x NCCL_P2P_DISABLE=1 \
+    ./build/faiss/gpu/test_sivf_mpi_delete 
+mpirun --allow-run-as-root \
+    -np 2 \
+    --host node0,node1 \
+    --map-by node \
+    --mca opal_cuda_support 0 \
+    -x NCCL_P2P_DISABLE=1 \
+    ./build/faiss/gpu/test_sivf_mpi_search
+mpirun --allow-run-as-root \
+    -np 1 \
+    --host node0 \
+    --map-by node \
+    --mca opal_cuda_support 0 \
+    -x NCCL_P2P_DISABLE=1 \
+    ./build/faiss/gpu/test_sivf_mpi_search     
 ```
 
 ### Single node with 4 GPUs: `c4130` @ CloudLab Wisc.
