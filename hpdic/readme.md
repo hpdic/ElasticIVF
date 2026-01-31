@@ -157,6 +157,12 @@ mpirun --allow-run-as-root \
     -x NCCL_P2P_DISABLE=1 \
     ./build/faiss/gpu/test_sivf_mpi_insert
 mpirun --allow-run-as-root \
+    -np 2 \
+    --host node0:2 \
+    --mca opal_cuda_support 0 \
+    -x NCCL_P2P_DISABLE=1 \
+    ./build/faiss/gpu/test_sivf_mpi_insert    
+mpirun --allow-run-as-root \
     -np 1 \
     --host node0 \
     --map-by node \
@@ -171,6 +177,12 @@ mpirun --allow-run-as-root \
     -x NCCL_P2P_DISABLE=1 \
     ./build/faiss/gpu/test_sivf_mpi_delete
 mpirun --allow-run-as-root \
+    -np 2 \
+    --host node0:2 \
+    --mca opal_cuda_support 0 \
+    -x NCCL_P2P_DISABLE=1 \
+    ./build/faiss/gpu/test_sivf_mpi_delete 
+mpirun --allow-run-as-root \
     -np 1 \
     --host node0 \
     --map-by node \
@@ -184,6 +196,12 @@ mpirun --allow-run-as-root \
     --mca opal_cuda_support 0 \
     -x NCCL_P2P_DISABLE=1 \
     ./build/faiss/gpu/test_sivf_mpi_search
+mpirun --allow-run-as-root \
+    -np 2 \
+    --host node0:2 \
+    --mca opal_cuda_support 0 \
+    -x NCCL_P2P_DISABLE=1 \
+    ./build/faiss/gpu/test_sivf_mpi_search      
 mpirun --allow-run-as-root \
     -np 1 \
     --host node0 \
