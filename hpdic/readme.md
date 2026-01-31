@@ -337,9 +337,8 @@ echo "Sync Complete!"
 cd ~/hpdic/ElasticIVF
 mpirun --allow-run-as-root \
     -np 8 \
-    --host gpu0,gpu1 \
+    --host gpu0:4,gpu1:4 \
     --oversubscribe \
-    --map-by ppr:4:node \
     -x LD_LIBRARY_PATH \
     ~/hpdic/ElasticIVF/build/faiss/gpu/test_sivf_mpi_insert
 ```
