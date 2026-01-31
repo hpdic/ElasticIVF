@@ -334,7 +334,7 @@ done
 wait
 echo "Sync Complete!"
 
-# MPI execution across multiple GPU nodes:
+# MPI execution (synthetic data) across multiple GPU nodes:
 cd ~/hpdic/ElasticIVF
 mpirun --allow-run-as-root \
     -np 10 \
@@ -351,6 +351,16 @@ mpirun --allow-run-as-root \
     --host gpu0:4,gpu1:4,gpu2:2 \
     -x LD_LIBRARY_PATH \
     ~/hpdic/ElasticIVF/build/faiss/gpu/test_sivf_mpi_search    
+
+# MPI of DINO10B on 10 GPUs across 3 nodes:
+bash ~/hpdic/ElasticIVF/hpdic/script/download_dino.sh
+cd ~/ElasticIVF/build
+make -j test_sivf_dino_add
+mpirun --allow-run-as-root \
+    -np 10 \
+    --host gpu0:4,gpu1:4,gpu2:2 \
+    -x LD_LIBRARY_PATH \
+    ~/hpdic/ElasticIVF/build/test_sivf_dino_add 
 ```
 
 ## Single-Node GPUs
