@@ -1,5 +1,5 @@
-% \documentclass[sigconf,nonacm]{acmart}
-\documentclass[sigconf,nonacm,anonymous]{acmart}
+\documentclass[sigconf,nonacm]{acmart}
+% \documentclass[sigconf,nonacm,anonymous]{acmart}
 
 \setlength{\marginparwidth}{2cm}
 
@@ -63,15 +63,15 @@
 
 \title{SIVF: GPU-Resident IVF Index for Streaming Vector Analytics}
 
-\author{Dongfang Zhao}
-\email{dzhao@uw.edu}
-\affiliation{%
-  \institution{High-Performance Data-Intelligence Computing (HPDIC) Lab}
+\author{Dongfang Zhao (dzhao@uw.edu)}
+% \email{dzhao@uw.edu}
+% \affiliation{%
+%   \institution{High-Performance Data-Intelligence Computing (HPDIC) Lab}
 %   \city{University of Washington}
 %   \state{WA}
 %   \country{University of Washington, USA}
-    \country{\url{https://hpdic.github.io/}}
-}
+    % \country{\url{https://hpdic.github.io/}}
+% }
 
 \begin{abstract}
 GPU-accelerated Inverted File (IVF) index is one of the industry standards for large-scale vector analytics but relies on static VRAM layouts that hinder real-time mutability. Our benchmark and analysis reveal that existing designs of GPU IVF necessitate expensive CPU-GPU data transfers for index updates, causing system latency (at the granularity of 10K 128-dimensional vectors) to spike from milliseconds to seconds in streaming scenarios. We present SIVF, a GPU-native index that enables high-velocity, in-place mutation via a series of new data structures and algorithms, such as conflict-free slab allocation and coalesced search on non-contiguous memory. SIVF has been implemented and integrated into the open-source vector search library, Faiss. Evaluation against 6 baselines (GPU IVF, GPU CAGRA, GPU Flat, HNSW, NSG, LSH) with 5 vector datasets (synthetic, Deep1B, SIFT1M, T2I-1B, GIST1M) demonstrates that SIVF reduces deletion latency by up to 1765x compared to the baseline. Furthermore, distributed experiments on a multi-node GPU cluster reveal that SIVF exhibits near perfect linear scalability, achieving an aggregate deletion throughput of 77.7 million QPS on 10 GPUs. These results confirm that SIVF effectively removes the I/O bottleneck of GPU indices, transforming vector search from a static retrieval task into an integral component of real-time, scalable vector data analytics.
@@ -625,27 +625,27 @@ While the baseline throughput degrades monotonically as $n_{list}$ increases (dr
 \paragraph{Overall Speedup (Fig.~\ref{fig:add_perf}c)}
 SIVF outperforms the baseline across all configurations, with speedups typically ranging from 2.4$\times$ to 2.9$\times$. Even under maximum contention (4M vectors, $n_{list}=1024$), SIVF retains a 1.79$\times$ advantage, confirming the efficiency of the non-blocking, slab-based pipeline for streaming scenarios.
 
-\subsubsection{Search}
-\label{sec:eval_search_performance}
+% \subsubsection{Search}
+% \label{sec:eval_search_performance}
 
-We evaluate query performance against the Vanilla Faiss GPU baseline. While SIVF trades memory contiguity for mutability, Figure~\ref{fig:search_perf} confirms competitive efficiency, reaching up to 91\% of baseline performance in optimized configurations.
+% We evaluate query performance against the Vanilla Faiss GPU baseline. While SIVF trades memory contiguity for mutability, Figure~\ref{fig:search_perf} confirms competitive efficiency, reaching up to 91\% of baseline performance in optimized configurations.
 
-\begin{figure}[t]
-    \centering
-    \includegraphics[width=\linewidth]{./figures/performance_search.pdf}
-    \caption{Microbenchmark performance of vector search.}
-    \label{fig:search_perf}
-    \Description{Three performance graphs comparing SIVF and Vanilla Faiss.}
-\end{figure}
+% \begin{figure}[t]
+%     \centering
+%     \includegraphics[width=\linewidth]{./figures/performance_search.pdf}
+%     \caption{Microbenchmark performance of vector search.}
+%     \label{fig:search_perf}
+%     \Description{Three performance graphs comparing SIVF and Vanilla Faiss.}
+% \end{figure}
 
-\paragraph{Scalability (Fig.~\ref{fig:search_perf}a)}
-SIVF throughput scales predictably from $\approx$383K to 118K QPS as database size grows (100K--500K, $n_{list}=4096$). The trend closely mirrors the baseline, validating the stability of our slab traversal logic under increasing load.
+% \paragraph{Scalability (Fig.~\ref{fig:search_perf}a)}
+% SIVF throughput scales predictably from $\approx$383K to 118K QPS as database size grows (100K--500K, $n_{list}=4096$). The trend closely mirrors the baseline, validating the stability of our slab traversal logic under increasing load.
 
-\paragraph{Granularity Impact (Fig.~\ref{fig:search_perf}b)}
-Increasing $n_{list}$ from 1024 to 4096 boosts SIVF throughput by $69\%$ (70K $\to$ 118K QPS), effectively balancing the reduced search space per probe against memory access overhead. However, at finer granularity ($n_{list}=16384$), performance slightly regresses to 100K QPS. This indicates that while finer clusters reduce distance computations within lists, the overhead of managing excessive lists and reduced memory locality eventually begins to diminish returns.
+% \paragraph{Granularity Impact (Fig.~\ref{fig:search_perf}b)}
+% Increasing $n_{list}$ from 1024 to 4096 boosts SIVF throughput by $69\%$ (70K $\to$ 118K QPS), effectively balancing the reduced search space per probe against memory access overhead. However, at finer granularity ($n_{list}=16384$), performance slightly regresses to 100K QPS. This indicates that while finer clusters reduce distance computations within lists, the overhead of managing excessive lists and reduced memory locality eventually begins to diminish returns.
 
-\paragraph{Query Efficiency (Fig.~\ref{fig:search_perf}c)}
-The efficiency ratio, which is defined as ($QPS_{SIVF} / QPS_{Vanilla}$), highlights the effectiveness of warp-level optimizations. In sparse scenarios ($n_{list}=16384$, 100K vectors), SIVF achieves 0.91$\times$ efficiency, nearly matching contiguous arrays. As lists lengthen (500K vectors), the ratio stabilizes between 0.40$\times$ and 0.52$\times$, reflecting the necessary physical trade-off of pointer chasing for dynamic memory support in some senarios. However, as we will show in Section~\ref{sec:eval_real_world}, the query performance can be adjusted with the $nlist$ and $nprobe$ parameters that can result in competitive performance.
+% \paragraph{Query Efficiency (Fig.~\ref{fig:search_perf}c)}
+% The efficiency ratio, which is defined as ($QPS_{SIVF} / QPS_{Vanilla}$), highlights the effectiveness of warp-level optimizations. In sparse scenarios ($n_{list}=16384$, 100K vectors), SIVF achieves 0.91$\times$ efficiency, nearly matching contiguous arrays. As lists lengthen (500K vectors), the ratio stabilizes between 0.40$\times$ and 0.52$\times$, reflecting the necessary physical trade-off of pointer chasing for dynamic memory support in some senarios. However, as we will show in Section~\ref{sec:eval_real_world}, the query performance can be adjusted with the $nlist$ and $nprobe$ parameters that can result in competitive performance.
 
 \subsubsection{Deletion}
 \label{sec:eval_deletion_performance}
@@ -912,7 +912,7 @@ While GPU Flat achieves high ingestion throughput by bypassing indexing overhead
 Notably, the state-of-the-art GPU graph index, CAGRA, exhibits severe rigidity in streaming scenarios; enforcing true physical deletion to prevent memory leaks necessitates full index reconstruction, causing latencies to spike to over 10 seconds on GIST1M.
 In contrast, SIVF emerges as the only architecture enabling holistic stream processing: it sustains GPU-class ingestion rates (e.g., 853K vec/s on GIST1M, $8.8\times$ faster than CAGRA) while providing sub-millisecond physical slot reclamation ($\approx 0.89$ ms). This effectively bridges the gap between static high-throughput search and dynamic mutability, outperforming graph reconstruction latencies by four orders of magnitude.
 
-\subsection{Multi-GPU Scalability}
+\subsection{Scalability on Multi-Node GPU Clusters}
 \label{sec:eval_multigpu}
 
 We evaluated the scalability performance of SIVF on the Chameleon TACC site~\cite{keahey2020lessons}. 
