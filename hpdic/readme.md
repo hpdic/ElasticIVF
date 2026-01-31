@@ -317,6 +317,7 @@ After local compilation on the master node, sync the code to worker nodes and ru
 ```bash
 # Setup the network:
 parallel-ssh -h hosts -i 'sudo systemctl stop firewalld && sudo systemctl disable firewalld'
+parallel-ssh -h hosts -i 'sudo apt install -y cmake ccache swig libopenblas-dev libmkl-dev'
 MY_CIDR=$(ip -o -4 addr show | grep "10.52" | awk '{print $4}')
 echo "export OMPI_MCA_btl=tcp,self" >> ~/.bashrc
 echo "export OMPI_MCA_btl_tcp_if_include=$MY_CIDR" >> ~/.bashrc
@@ -340,6 +341,11 @@ mpirun --allow-run-as-root \
     --host gpu0:4,gpu1:4 \
     -x LD_LIBRARY_PATH \
     ~/hpdic/ElasticIVF/build/faiss/gpu/test_sivf_mpi_insert
+mpirun --allow-run-as-root \
+    -np 8 \
+    --host gpu0:4,gpu1:4 \
+    -x LD_LIBRARY_PATH \
+    ~/hpdic/ElasticIVF/build/faiss/gpu/test_sivf_mpi_delete
 ```
 
 ## Single-Node GPUs
