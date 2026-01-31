@@ -337,8 +337,8 @@ echo "Sync Complete!"
 # MPI execution across multiple GPU nodes:
 cd ~/hpdic/ElasticIVF
 mpirun --allow-run-as-root \
-    -np 8 \
-    --host gpu0:4,gpu1:4 \
+    -np 10 \
+    --host gpu0:4,gpu1:4,gpu2:2 \
     -x LD_LIBRARY_PATH \
     ~/hpdic/ElasticIVF/build/faiss/gpu/test_sivf_mpi_insert
 mpirun --allow-run-as-root \
