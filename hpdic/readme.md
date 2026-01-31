@@ -414,17 +414,19 @@ make -j test_sivf_sift_pareto
 cd ~/ElasticIVF/build
 make test_sivf_gist_add test_sivf_gist_search test_sivf_gist_delete test_sivf_gist_pareto -j
 ./test_sivf_gist_add
-./test_sivf_gist_search
 ./test_sivf_gist_delete
 ./test_sivf_gist_pareto
+# ./test_sivf_gist_search
+bash ~/ElasticIVF/hpdic/script/search_gist.sh
 
 # Dataset T2I-1B:
 cd ~/ElasticIVF/build
 make test_sivf_t2i_add test_sivf_t2i_search test_sivf_t2i_delete test_sivf_t2i_pareto -j
 ./test_sivf_t2i_add
-./test_sivf_t2i_search
 ./test_sivf_t2i_delete
 ./test_sivf_t2i_pareto
+# ./test_sivf_t2i_search
+bash ~/ElasticIVF/hpdic/script/search_t2i.sh
 
 # Sliding window:
 cd ~/ElasticIVF/build

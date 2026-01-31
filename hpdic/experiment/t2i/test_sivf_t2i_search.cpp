@@ -1,16 +1,17 @@
 /**
  * test_sivf_t2i_search.cpp
- * 
- * Author: Dongfang Zhao
+ * * Author: Dongfang Zhao
  * Email:  dzhao@uw.edu
  *
  * Benchmark: T2I Search Performance (Latency & Recall)
+ * Usage: ./test_sivf_t2i_search [nlist=1024] [nprobe=20] [nb_load=1000000] [temp_mem_mb=512]
  */
 
 #include <iostream>
 #include <vector>
 #include <chrono>
 #include <algorithm>
+#include <string>
 
 #include <faiss/IndexFlat.h> 
 #include <faiss/gpu/GpuIndexIVFFlat.h>
@@ -33,8 +34,9 @@ double calc_recall(int nq, int k, const int* I, const int* gt, int gt_dim) {
     return (double)ok / nq;
 }
 
-void bench(const char* name, GpuIndexIVF* index, int nq, float* xq, int k, int* gt, int gt_dim) {
-    index->nprobe = 20; 
+// [MODIFIED] Added nprobe as an argument
+void bench(const char* name, GpuIndexIVF* index, int nq, float* xq, int k, int* gt, int gt_dim, int nprobe) {
+    index->nprobe = nprobe; 
     
     std::vector<float> D(nq * k);
     std::vector<faiss::idx_t> I(nq * k);
@@ -54,18 +56,32 @@ void bench(const char* name, GpuIndexIVF* index, int nq, float* xq, int k, int* 
     for(size_t i=0; i<I.size(); ++i) I_int[i] = (int)I[i];
     
     double recall = calc_recall(nq, k, I_int.data(), gt, gt_dim);
-    std::cout << "[" << name << "] QPS: " << (size_t)(nq/time) 
+    
+    // [MODIFIED] Output format to match GIST script parsing
+    // Format: [SIVF] nprobe: 20 | QPS: 12345 | Recall@10: 85.123%
+    std::cout << "[" << name << "] nprobe: " << nprobe 
+              << " | QPS: " << (size_t)(nq/time) 
               << " | Recall@10: " << recall * 100.0 << "%" << std::endl;
 }
 
-int main() {
-    std::string dir = "/home/cc/ElasticIVF/hpdic/data/t2i/";
-    size_t nb_load = 1000000;
-    int nlist = 1024;
-    int k = 10;
+int main(int argc, char* argv[]) {
+    // [MODIFIED] Parse command line arguments
+    int nlist = (argc > 1) ? atoi(argv[1]) : 1024;
+    int nprobe = (argc > 2) ? atoi(argv[2]) : 20;
+    size_t nb_load = (argc > 3) ? atol(argv[3]) : 1000000;
+    long temp_mem_mb = (argc > 4) ? atol(argv[4]) : 512;
 
+    std::string dir = "/home/cc/ElasticIVF/hpdic/data/t2i/";
+    int k = 10;
     size_t d, nb, nq, d_xq, ngt_dim, ngt_num;
     
+    std::cout << "------------------------------------------------" << std::endl;
+    std::cout << "Configuration: nlist=" << nlist 
+              << ", nprobe=" << nprobe 
+              << ", nb_load=" << nb_load 
+              << ", temp_mem=" << temp_mem_mb << "MB" << std::endl;
+    std::cout << "------------------------------------------------" << std::endl;
+
     std::cout << "Loading T2I Data..." << std::endl;
     float* xb = fbin_read((dir + "t2i_base_1M.fbin").c_str(), &d, &nb);
     if(nb_load > nb) nb_load = nb;
@@ -77,15 +93,20 @@ int main() {
     int* gt   = ibin_read((dir + "t2i_1M_gt.bin").c_str(), &ngt_dim, &ngt_num);
 
     StandardGpuResources res;
-    res.setTempMemory(512 * 1024 * 1024); 
+    res.setTempMemory(temp_mem_mb * 1024 * 1024); 
 
     // Baseline
     {
         faiss::IndexFlatL2 quantizer(d);
         faiss::gpu::GpuIndexIVFFlat index(&res, &quantizer, d, nlist, faiss::METRIC_L2);
-        index.train(50000, xb); 
+        
+        // Train with a subset (e.g., 50k or 10% of data)
+        int nt_train = 50000; 
+        if (nt_train > nb_load) nt_train = nb_load;
+
+        index.train(nt_train, xb); 
         index.add(nb_load, xb);
-        bench("Baseline", &index, nq, xq, k, gt, ngt_dim);
+        bench("Baseline", &index, nq, xq, k, gt, ngt_dim, nprobe);
     }
 
     // SIVF
@@ -96,32 +117,14 @@ int main() {
         
         index.initSlabManager(nb_load, d); // Exact capacity
 
-        index.train(50000, xb);
+        int nt_train = 50000;
+        if (nt_train > nb_load) nt_train = nb_load;
+
+        index.train(nt_train, xb);
         index.add(nb_load, xb);
-        bench("SIVF", &index, nq, xq, k, gt, ngt_dim);
+        bench("SIVF", &index, nq, xq, k, gt, ngt_dim, nprobe);
     }
 
     delete[] xb; delete[] xq; delete[] gt;
     return 0;
 }
-
-/** Example output:
-cc@rtx6000:~/ElasticIVF/build$ ./test_sivf_t2i_search 
-Loading T2I Data...
-[Loader] Header info -> N: 1000000, D: 200
-[Loader] Header info -> N: 100000, D: 200
-[HPDIC MOD] Faiss GPU initialized on device ID: 0
-[Baseline] QPS: 18635 | Recall@10: 84.152%
-
-[HPDIC MEMORY FIX] Resizing:
-  > Slab Pool:   200 -> 160346
-  > Data Buffer: 1000000 -> 5131072 vectors (Avoids Overflow)
-
-[SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...
-Clustering 50000 points in 200D to 1024 clusters, redo 1 times, 20 iterations
-  Preprocessing in 0.05 s
-  Iteration 19 (0.32 s, search 0.23 s): objective=22642.1 imbalance=1.206 nsplit=0       
-[SIVF::train] GPU K-Means complete. Quantizer populated with 1024 centroids.
-[SIVF] QPS: 17796 | Recall@10: 84.355%
-cc@rtx6000:~/ElasticIVF/build$ 
- */

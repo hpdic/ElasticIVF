@@ -1,15 +1,15 @@
 #!/bin/bash
 
 # =============================================================================
-# Script Name: grid_search_gist.sh
+# Script Name: search_gist.sh
 # Description: Automated grid search script for SIVF on the GIST dataset.
 #              It iterates through specified nlist and nprobe parameters
 #              to benchmark QPS and Recall performance against Baselines.
 # =============================================================================
 
 # ================= Configuration =================
-EXEC="~/ElasticIVF/build/faiss/gpu/test_sivf_gist_search"
-LOG_FILE="~/ElasticIVF/hpdic/result/grid_search_gist"
+EXEC="$HOME/ElasticIVF/build/test_sivf_gist_search"
+LOG_FILE="$HOME/ElasticIVF/hpdic/result/grid_search_gist"
 
 # 1. Training Data Size (Keep large enough to ensure clustering quality)
 NT_TRAIN=1000000
