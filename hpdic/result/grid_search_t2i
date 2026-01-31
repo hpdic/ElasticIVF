@@ -1,1 +1,9 @@
 Timestamp, Method, nlist, nprobe, QPS, Recall
+07:25:58, [Baseline] nprobe: 16 , QPS: 8616 , Recall@10: 74.275%, nlist: 4096
+07:25:58, [SIVF] nprobe: 16 , QPS: 69431 , Recall@10: 74.289%, nlist: 4096
+07:29:01, [Baseline] nprobe: 32 , QPS: 8076 , Recall@10: 83.046%, nlist: 4096
+07:29:01, [SIVF] nprobe: 32 , QPS: 37955 , Recall@10: 83.078%, nlist: 4096
+07:32:08, [Baseline] nprobe: 64 , QPS: 7140 , Recall@10: 89.592%, nlist: 4096
+07:32:08, [SIVF] nprobe: 64 , QPS: 20207 , Recall@10: 89.603%, nlist: 4096
+07:35:24, [Baseline] nprobe: 128 , QPS: 5490 , Recall@10: 94.034%, nlist: 4096
+07:35:24, [SIVF] nprobe: 128 , QPS: 10751 , Recall@10: 94.045%, nlist: 4096
