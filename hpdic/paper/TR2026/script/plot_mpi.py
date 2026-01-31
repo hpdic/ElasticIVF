@@ -1,114 +1,70 @@
-"""
-plot_mpi_split.py
-
-Author: Dongfang Zhao
-Email:  dzhao@uw.edu
-
-Visualization for HPDC Evaluation (SIVF Scalability Only).
-Generates two compact figures for Single-Column Side-by-Side layout:
-1. mpi_io.pdf: SIVF Insertion & Deletion Throughput
-2. mpi_search.pdf: SIVF Search Throughput
-"""
-
 import matplotlib.pyplot as plt
 import numpy as np
 import os
-import matplotlib.ticker as ticker
 
-# ============================================================
-# 1. Experimental Data (SIVF Only)
-# ============================================================
-gpus = [1, 2, 4]
+# GPU counts: 1, 2, 3, 4, 6, 8, 10
+gpus = np.array([1, 2, 3, 4, 6, 8, 10])
 
-# I/O Data (Million QPS)
-sivf_insert = [4.425, 11.027, 17.749]
-sivf_delete = [13.908, 34.050, 64.006]
+# Ingestion Total QPS (Millions)
+# Aggregated from n1g1, n1g2/n2g2, n3g3, n1g4/n2g4, n3g6, n2g8, n3g10
+insert_qps = np.array([2.81, 5.65, 8.72, 13.61, 24.93, 31.56, 37.63])
 
-# Search Data (Thousands QPS - k QPS)
-sivf_search = [5.851, 11.636, 23.344]
+# Search Total QPS (Thousands)
+# Aggregated from n1g1, n1g2/n2g2, n3g3, n1g4/n2g4, n3g6, n2g8, n3g10
+search_qps = np.array([2.64, 5.27, 7.92, 10.53, 15.79, 21.05, 26.35])
 
-# ============================================================
-# 2. Plotting Configuration
-# ============================================================
-plt.rcParams['font.family'] = 'sans-serif'
-# Large fonts for small figure sizes
-plt.rcParams['font.size'] = 14
-plt.rcParams['axes.labelsize'] = 16
-plt.rcParams['axes.titlesize'] = 16
-plt.rcParams['xtick.labelsize'] = 14
-plt.rcParams['ytick.labelsize'] = 14
-plt.rcParams['legend.fontsize'] = 14
-plt.rcParams['lines.linewidth'] = 3
-plt.rcParams['lines.markersize'] = 9
-plt.rcParams['pdf.fonttype'] = 42
-plt.rcParams['ps.fonttype'] = 42
+# Deletion Total QPS (Millions)
+# Aggregated from n1g1, n1g2/n2g2, n3g3, n1g4/n2g4, n3g6, n2g8, n3g10
+delete_qps = np.array([7.68, 16.55, 23.04, 31.87, 51.54, 64.51, 77.73])
 
-save_dir = os.path.expanduser('~/hpdic/ElasticIVF/hpdic/paper/TR2026/figures/')
-if not os.path.exists(save_dir):
-    os.makedirs(save_dir)
+# Visualization configuration for single-column papers
+plt.rcParams.update({
+    'font.family': 'serif',
+    'font.size': 22,
+    'axes.labelsize': 24,
+    'axes.titlesize': 26,
+    'legend.fontsize': 20,
+    'xtick.labelsize': 18,
+    'ytick.labelsize': 18,
+    'pdf.fonttype': 42,
+    'ps.fonttype': 42
+})
 
-# Colors
-c_ins = '#1f77b4' # Blue
-c_del = '#d62728' # Red
-c_sch = '#ff7f0e' # Orange
+fig, axes = plt.subplots(1, 3, figsize=(22, 7))
 
-def plot_io():
-    fig, ax = plt.subplots(figsize=(4.5, 3.8))
-    
-    # Plot SIVF Lines
-    ax.plot(gpus, sivf_delete, marker='^', label='Deletion', color=c_del, linestyle='-')
-    ax.plot(gpus, sivf_insert, marker='o', label='Insertion', color=c_ins, linestyle='-')
-    
-    # Styling
-    ax.set_ylabel('Throughput (M QPS)', fontweight='bold')
-    ax.set_xlabel('# GPUs', fontweight='bold')
-    
-    # Ticks
+# 1. Ingestion Scaling
+axes[0].plot(gpus, insert_qps, 's-', color='#d62728', linewidth=4, markersize=12, label='SIVF')
+axes[0].plot(gpus, insert_qps[0] * gpus, '--', color='gray', alpha=0.6, label='Ideal')
+axes[0].set_title('Ingestion')
+axes[0].set_ylabel('M QPS')
+
+# 2. Search Scaling
+axes[1].plot(gpus, search_qps, 'o-', color='#d62728', linewidth=4, markersize=12, label='SIVF')
+axes[1].plot(gpus, search_qps[0] * gpus, '--', color='gray', alpha=0.6, label='Ideal')
+axes[1].set_title('Search')
+axes[1].set_ylabel('K QPS')
+
+# 3. Deletion Scaling
+axes[2].plot(gpus, delete_qps, 'd-', color='#d62728', linewidth=4, markersize=12, label='SIVF')
+axes[2].plot(gpus, delete_qps[0] * gpus, '--', color='gray', alpha=0.6, label='Ideal')
+axes[2].set_title('Deletion')
+axes[2].set_ylabel('M QPS')
+
+for ax in axes:
+    ax.set_xlabel('Total GPUs')
     ax.set_xticks(gpus)
-    ax.set_xticklabels([str(g) for g in gpus])
-    
-    # Y-axis range padding for visual comfort
-    ax.set_ylim(0, 70)
-    
-    # Grid
-    ax.grid(True, axis='y', linestyle='--', alpha=0.5)
-    
-    # Legend
-    ax.legend(frameon=False, loc='upper left')
+    ax.grid(True, linestyle=':', alpha=0.5)
 
-    # Save
-    plt.tight_layout()
-    plt.savefig(os.path.join(save_dir, 'mpi_io.pdf'), bbox_inches='tight')
-    print("Saved mpi_io.pdf")
+# Add legend to the last plot only to save space
+axes[2].legend(loc='lower right', frameon=True)
 
-def plot_search():
-    fig, ax = plt.subplots(figsize=(4.5, 3.8))
-    
-    # Plot SIVF Line
-    ax.plot(gpus, sivf_search, marker='s', label='Search', color=c_sch, linestyle='-')
-    
-    # Styling
-    ax.set_ylabel('Throughput (K QPS)', fontweight='bold')
-    ax.set_xlabel('# GPUs', fontweight='bold')
-    
-    # Ticks
-    ax.set_xticks(gpus)
-    ax.set_xticklabels([str(g) for g in gpus])
-    
-    # Start Y from 0 to show true scaling
-    ax.set_ylim(0, 30)
-    
-    # Grid
-    ax.grid(True, axis='y', linestyle='--', alpha=0.5)
-    
-    # Legend
-    ax.legend(frameon=False, loc='upper left')
+plt.tight_layout()
 
-    # Save
-    plt.tight_layout()
-    plt.savefig(os.path.join(save_dir, 'mpi_search.pdf'), bbox_inches='tight')
-    print("Saved mpi_search.pdf")
+# Save to the specific project directory
+output_dir = os.path.expanduser('~/ElasticIVF/hpdic/paper/TR2026/figures/')
+if not os.path.exists(output_dir):
+    os.makedirs(output_dir)
 
-if __name__ == "__main__":
-    plot_io()
-    plot_search()
+output_file = os.path.join(output_dir, 'scalability.pdf')
+plt.savefig(output_file, bbox_inches='tight')
+print(f"Scalability figure saved to {output_file}")
