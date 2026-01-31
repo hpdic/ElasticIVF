@@ -52,8 +52,8 @@ del_base = [1182.0, 1626.0, 2416.2, 11843.0]
 del_sivf = [0.86,   0.86,   0.87,   0.89]
 
 # Search Throughput (Queries/sec)
-search_base = [28913, 26702, 18635, 3640]
-search_sivf = [59787, 40933, 17796, 1344]
+search_base = [28913, 26702, 18635, 1776]
+search_sivf = [59787, 40933, 17796, 1936]
 
 # ==========================================
 # 3. Core Plotting Function

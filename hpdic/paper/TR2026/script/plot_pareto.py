@@ -23,11 +23,18 @@ def plot_grid():
     t2i_sivf_r  = [31.68, 61.41, 72.54, 81.67, 86.47, 88.41, 91.79, 93.09, 94.33, 95.48]
     t2i_sivf_q  = [269092, 62524, 33439, 17782, 11486, 9354, 6005, 4855, 3917, 3083]
 
-    # 4. GIST1M (960d)
-    gist_base_r = [23.51, 56.63, 72.06, 85.85, 92.42, 94.46, 97.77, 98.77, 99.41, 99.72]
-    gist_base_q = [17210, 9000, 6094, 3612, 2478, 2007, 1339, 1107, 899, 722]
-    gist_sivf_r = [23.36, 56.35, 72.28, 86.05, 92.46, 94.66, 97.77, 98.69, 99.31, 99.69]
-    gist_sivf_q = [23315, 5132, 2642, 1336, 841, 671, 442, 353, 289, 230]
+    # 4. GIST1M (960d) - [UPDATED: Hybrid Pareto Frontier]
+    # Strategy: 
+    #   - Low Recall (30-60%): Use nlist=4096 (High QPS)
+    #   - High Recall (65-95%): Use nlist=8192 (Better Recall ceiling)
+    
+    # Baseline: Points from nlist=4096 (nprobe 2-64) + nlist=8192 (nprobe 128)
+    gist_base_r = [31.7, 43.8, 57.2, 70.2, 81.7, 91.8, 94.4]
+    gist_base_q = [4765, 4953, 4675, 4366, 3784, 2938, 1776]
+
+    # SIVF: Points from nlist=4096 (nprobe 2-8) + nlist=8192 (nprobe 16-128)
+    gist_sivf_r = [32.1, 44.1, 59.8, 66.4, 77.5, 87.0, 95.2]
+    gist_sivf_q = [57506, 30412, 14792, 14604, 7321, 3859, 1936]
 
     datasets = [
         {"name": "Deep1B (96D)", "br": deep_base_r, "bq": deep_base_q, "sr": deep_sivf_r, "sq": deep_sivf_q},
@@ -37,14 +44,12 @@ def plot_grid():
     ]
 
     # ================= PLOTTING CONFIG =================
-    # Serif font, No Bold
     plt.rcParams['font.family'] = 'serif'
     plt.rcParams['font.weight'] = 'normal'
     plt.rcParams['axes.labelweight'] = 'normal'
     plt.rcParams['axes.titleweight'] = 'normal'
     plt.rcParams['font.size'] = 14
     
-    # 2x2 Grid
     fig, axes = plt.subplots(2, 2, figsize=(12, 9))
     axes = axes.flatten()
 
@@ -59,18 +64,16 @@ def plot_grid():
         ax.plot(data["sr"], data["sq"], 's-', label='SIVF (Ours)', 
                 color='#d62728', linewidth=2, markersize=8, markerfacecolor='white', markeredgewidth=2)
         
-        # Titles & Labels
+        # Titles
         ax.set_title(data["name"], fontsize=18, pad=10)
         
-        # Only set Y-label for the left column, X-label for bottom row to save space (optional, but requested layout needs clarity)
-        # Actually for a 2x2 grid, it's safer to label all or just outer ones. 
-        # Let's label all but keep it clean.
+        # Labels
         if i >= 2:
             ax.set_xlabel('Recall@10 (%)', fontsize=16)
         if i % 2 == 0:
             ax.set_ylabel('QPS (log)', fontsize=16)
             
-        # Log Scale is CRITICAL here
+        # Log Scale
         ax.set_yscale('log')
         
         # Grid
@@ -80,11 +83,7 @@ def plot_grid():
         # Ticks formatting
         ax.tick_params(axis='both', which='major', labelsize=14)
         
-        # Legend (Only in the first plot to avoid clutter, or all if space permits)
-        # Given the curves move from top-left to bottom-right, legend usually fits in Top-Right or Bottom-Left.
-        # Let's put it in the first plot only? Or all? 
-        # Let's try putting it in Deep1B (Top-Left) and maybe GIST (Bottom-Right) or just once globally.
-        # For papers, usually one legend is enough if styles are consistent.
+        # Legend (Only in the first plot)
         if i == 0:
             ax.legend(fontsize=14, loc='upper right', frameon=True, framealpha=0.9)
 

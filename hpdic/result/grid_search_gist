@@ -1,0 +1,49 @@
+Timestamp, Method, nlist, nprobe, QPS, Recall
+19:39:14, [Baseline] nprobe: 2 , QPS: 13729 , Recall@10: 42%, nlist: 1024
+19:39:14, [SIVF] Allocating exact capacity: 1000000, nlist: 1024
+19:39:14, [SIVF] nprobe: 2 , QPS: 16424 , Recall@10: 41.8%, nlist: 1024
+19:41:54, [Baseline] nprobe: 4 , QPS: 11197 , Recall@10: 58.8%, nlist: 1024
+19:41:54, [SIVF] Allocating exact capacity: 1000000, nlist: 1024
+19:41:54, [SIVF] nprobe: 4 , QPS: 8422 , Recall@10: 58.2%, nlist: 1024
+19:44:33, [Baseline] nprobe: 8 , QPS: 8246 , Recall@10: 72.2%, nlist: 1024
+19:44:33, [SIVF] Allocating exact capacity: 1000000, nlist: 1024
+19:44:33, [SIVF] nprobe: 8 , QPS: 4292 , Recall@10: 72.3%, nlist: 1024
+19:52:37, [Baseline] nprobe: 2 , QPS: 8737 , Recall@10: 36.3%, nlist: 2048
+19:52:37, [SIVF] Allocating exact capacity: 1000000, nlist: 2048
+19:52:37, [SIVF] nprobe: 2 , QPS: 31213 , Recall@10: 36.5%, nlist: 2048
+20:00:42, [Baseline] nprobe: 4 , QPS: 8238 , Recall@10: 50.9%, nlist: 2048
+20:00:42, [SIVF] Allocating exact capacity: 1000000, nlist: 2048
+20:00:42, [SIVF] nprobe: 4 , QPS: 15796 , Recall@10: 50.4%, nlist: 2048
+20:08:49, [Baseline] nprobe: 8 , QPS: 7334 , Recall@10: 62.8%, nlist: 2048
+20:08:49, [SIVF] Allocating exact capacity: 1000000, nlist: 2048
+20:08:49, [SIVF] nprobe: 8 , QPS: 8185 , Recall@10: 62.7%, nlist: 2048
+20:35:37, [Baseline] nprobe: 2 , QPS: 4765 , Recall@10: 31.7%, nlist: 4096
+20:35:37, [SIVF] Allocating exact capacity: 1000000, nlist: 4096
+20:35:37, [SIVF] nprobe: 2 , QPS: 57506 , Recall@10: 32.1%, nlist: 4096
+21:02:44, [Baseline] nprobe: 4 , QPS: 4953 , Recall@10: 43.8%, nlist: 4096
+21:02:44, [SIVF] Allocating exact capacity: 1000000, nlist: 4096
+21:02:44, [SIVF] nprobe: 4 , QPS: 30412 , Recall@10: 44.1%, nlist: 4096
+21:29:33, [Baseline] nprobe: 8 , QPS: 4675 , Recall@10: 57.2%, nlist: 4096
+21:29:33, [SIVF] Allocating exact capacity: 1000000, nlist: 4096
+21:29:33, [SIVF] nprobe: 8 , QPS: 14792 , Recall@10: 59.8%, nlist: 4096
+22:18:40, [Baseline] nprobe: 16 , QPS: 4366 , Recall@10: 70.2%, nlist: 4096
+22:18:40, [SIVF] Allocating exact capacity: 1000000, nlist: 4096
+22:18:40, [SIVF] nprobe: 16 , QPS: 7844 , Recall@10: 71.7%, nlist: 4096
+22:45:40, [Baseline] nprobe: 32 , QPS: 3784 , Recall@10: 81.7%, nlist: 4096
+22:45:40, [SIVF] Allocating exact capacity: 1000000, nlist: 4096
+22:45:40, [SIVF] nprobe: 32 , QPS: 4162 , Recall@10: 83.1%, nlist: 4096
+23:12:25, [Baseline] nprobe: 64 , QPS: 2938 , Recall@10: 91.8%, nlist: 4096
+23:12:25, [SIVF] Allocating exact capacity: 1000000, nlist: 4096
+23:12:25, [SIVF] nprobe: 64 , QPS: 2129 , Recall@10: 92.1%, nlist: 4096
+00:05:30, [Baseline] nprobe: 16 , QPS: 2456 , Recall@10: 65.4%, nlist: 8192
+00:05:30, [SIVF] Allocating exact capacity: 1000000, nlist: 8192
+00:05:30, [SIVF] nprobe: 16 , QPS: 14604 , Recall@10: 66.4%, nlist: 8192
+00:59:25, [Baseline] nprobe: 32 , QPS: 2289 , Recall@10: 77.8%, nlist: 8192
+00:59:25, [SIVF] Allocating exact capacity: 1000000, nlist: 8192
+00:59:25, [SIVF] nprobe: 32 , QPS: 7321 , Recall@10: 77.5%, nlist: 8192
+01:52:43, [Baseline] nprobe: 64 , QPS: 2156 , Recall@10: 86.9%, nlist: 8192
+01:52:43, [SIVF] Allocating exact capacity: 1000000, nlist: 8192
+01:52:43, [SIVF] nprobe: 64 , QPS: 3859 , Recall@10: 87%, nlist: 8192
+05:36:23, [Baseline] nprobe: 128 , QPS: 1776 , Recall@10: 94.4%, nlist: 8192
+05:36:23, [SIVF] Allocating exact capacity: 1000000, nlist: 8192
+05:36:23, [SIVF] nprobe: 128 , QPS: 1936 , Recall@10: 95.2%, nlist: 8192
