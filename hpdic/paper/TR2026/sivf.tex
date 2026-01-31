@@ -590,7 +590,7 @@ First, our primary baseline is the standard Faiss GPU IVF, which serves as a dir
 Second, to position SIVF within the broader indexing landscape, we in Section~\ref{sec:eval_non_ivf} compare against representative non-IVF indices, including GPU CAGRA~\cite{10597683} (dynamic graph), GPU Flat (brute-force), HNSW~\cite{malkov2018efficient} (dynamic graph), NSG~\cite{10.14778/3303753.3303754} (static graph), and LSH~\cite{10.1145/997817.997857} (hashing).
 
 Most experiments were conducted on a bare-metal node from the Chameleon Cloud testbed~\cite{keahey2020lessons} (CHI@UC site). The platform is equipped with dual-socket Intel Xeon Gold 6126 CPUs (Skylake microarchitecture), providing a total of 24 physical cores (48 threads with Hyper-Threading) clocked at 2.60 GHz. The host memory consists of 192 GiB of RAM. 
-For acceleration, the node features an NVIDIA Quadro RTX 6000 GPU with 24 GB of GDDR6 VRAM. The system runs on a Ubuntu 24.04 environment with the CUDA toolkit installed: Driver ver. 560.35.05 and CUDA ver. 12.2.
+For acceleration, the node features an NVIDIA Quadro RTX 6000 GPU with 24 GB of GDDR6 VRAM. The system runs on a Ubuntu 24.04 environment with the CUDA toolkit installed: Driver ver. 560.35.05 and CUDA ver. 12.6.
 
 Each reported data point represents the average of at least three independent executions. Error bars are omitted in figures where the standard deviation is negligible to maintain visual clarity. 
 Unless explicitly stated (as in Section~\ref{sec:eval_real_world}), our experiments utilize synthetic datasets consisting of random 128-dimensional vectors generated from a uniform distribution. 

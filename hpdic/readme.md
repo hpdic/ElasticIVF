@@ -1,8 +1,8 @@
 # HPDIC MOD of FAISS
 
-## CloudLab Setup
+# CloudLab Setup
 
-### 5 nodes, each with 2 GPUs: `ibm8335` @ CloudLab Clem.
+## 5 nodes, each with 2 GPUs: `ibm8335` @ CloudLab Clem.
 
 It's a bit tedious to setup 5 nodes with 10 GPUs each on CloudLab Clem. In fact, it's a bit challenging to install on IBM Power9 architecture. Among many other issues, here's a list of warnings I have for you: (i) You cannot use the default VS Code editor because Power9 is compatible with VS Code. (2) You will need to manually install a lot of dependencies (e.g., cmake 3.28+) since the default Ubuntu 20.04 apt repository is too old.
 
@@ -23,11 +23,6 @@ Host *
     UserKnownHostsFile /dev/null
     LogLevel ERROR
 EOF
-for i in node0 node1 node2 node3 node4; do
-    printf "Trying to reach %-8s ... " $i
-    ssh $i "hostname -s"
-done
-parallel-ssh -h ~/hpdic/hosts -i "hostname"
 cat <<EOF > ~/hpdic/hosts
 node0
 node1
@@ -35,6 +30,12 @@ node2
 node3
 node4
 EOF
+for i in node0 node1 node2 node3 node4; do
+    printf "Trying to reach %-8s ... " $i
+    ssh $i "hostname -s"
+done
+sudo apt install pssh btop -y
+parallel-ssh -h ~/hpdic/hosts -i "hostname"
 grep -v "node0" ~/hpdic/hosts > ~/hpdic/workers
 wget https://us.download.nvidia.com/tesla/470.161.03/NVIDIA-Linux-ppc64le-470.161.03.run
 echo "blacklist nouveau" | sudo tee /etc/modprobe.d/blacklist-nvidia-nouveau.conf
@@ -137,7 +138,7 @@ cmake -B build . \
     -DFAISS_ENABLE_GPU=ON \
     -DFAISS_ENABLE_PYTHON=OFF \
     -DBUILD_TESTING=OFF \
-    -DCMAKE_CUDA_ARCHITECTURES="60" \
+    -DCMAKE_CUDA_ARCHITECTURES="60"
 # 60 (P100), 70 (V100), 75 (RTX6000), 80 (A100)
 make -C build -j
 cd ~/hpdic/ElasticIVF/build
@@ -145,10 +146,10 @@ make -j test_sivf_mpi_insert test_sivf_mpi_delete test_sivf_mpi_search
 mpirun --allow-run-as-root -np 1 ./build/faiss/gpu/test_sivf_mpi_insert
 mpirun --allow-run-as-root -np 2 ./build/faiss/gpu/test_sivf_mpi_insert
 
-parallel-ssh -h ~/hpdic/workers -t 0 "sudo apt update && sudo apt install -y openmpi-bin libopenmpi-dev libopenblas-dev python3-numpy"
+parallel-ssh -h ~/hpdic/workers -t 0 "sudo apt update && sudo apt install -y openmpi-bin libopenmpi-dev libopenblas-dev python3-numpy && mkdir -p ~/hpdic"
 parallel-scp -h ~/hpdic/workers ~/hpdic/cuda_11.4.4_470.82.01_linux_ppc64le.run ~/hpdic/
 parallel-ssh -h ~/hpdic/workers -t 0 "sudo bash /hpdic/cuda_11.4.4_470.82.01_linux_ppc64le.run --silent --toolkit --tmpdir=/hpdic/tmp"
-parallel-scp -h ~/hpdic/workers -r ~/hpdic/ElasticIVF /hpdic/
+parallel-scp -h ~/hpdic/workers -r ~/hpdic/ElasticIVF ~/hpdic/
 mpirun --allow-run-as-root \
     -np 2 \
     --host node0,node1 \
@@ -211,7 +212,7 @@ mpirun --allow-run-as-root \
     ./build/faiss/gpu/test_sivf_mpi_search     
 ```
 
-### Single node with 4 GPUs: `c4130` @ CloudLab Wisc.
+## Single node with 4 GPUs: `c4130` @ CloudLab Wisc.
 
 Setup GPUs
 ```bash
@@ -308,12 +309,46 @@ mpirun --allow-run-as-root -np 2 ./faiss/gpu/test_sivf_mpi_search
 mpirun --allow-run-as-root -np 4 ./faiss/gpu/test_sivf_mpi_search
 ```
 
+# Chameleon Cloud Setup
 
-## Chameleon Cloud Setup
+## Multi-Node GPU Cluster
+
+After local compilation on the master node, sync the code to worker nodes and run MPI:
+```bash
+# Setup the network:
+parallel-ssh -h hosts -i 'sudo systemctl stop firewalld && sudo systemctl disable firewalld'
+MY_CIDR=$(ip -o -4 addr show | grep "10.52" | awk '{print $4}')
+echo "export OMPI_MCA_btl=tcp,self" >> ~/.bashrc
+echo "export OMPI_MCA_btl_tcp_if_include=$MY_CIDR" >> ~/.bashrc
+echo "export OMPI_MCA_oob_tcp_if_include=$MY_CIDR" >> ~/.bashrc
+echo "export OMPI_MCA_opal_cuda_support=0" >> ~/.bashrc
+source ~/.bashrc
+
+# Sync code to worker nodes (faster than parallel-scp)
+cd ~/hpdic/ElasticIVF
+for host in $(cat ~/hpdic/workers); do
+    rsync -avz --exclude 'data/' --exclude '.git/' --exclude '*.o' \
+    ~/hpdic/ElasticIVF $host:~/hpdic/ &
+done
+wait
+echo "Sync Complete!"
+
+# MPI execution across multiple GPU nodes:
+cd ~/hpdic/ElasticIVF
+mpirun --allow-run-as-root \
+    -np 8 \
+    --host gpu0,gpu1 \
+    --oversubscribe \
+    --map-by ppr:4:node \
+    -x LD_LIBRARY_PATH \
+    ~/hpdic/ElasticIVF/build/faiss/gpu/test_sivf_mpi_insert
+```
+
+## Single-Node GPUs
 
 We assume you are using (e.g., Chameleon Cloud `nc33` at U. Chicago) Ubuntu 24.04, NVIDIA RTX 6000 GPU (24 GB RAM, Driver 560.35.05, CUDA 12.6), 192 GB RAM, Intel(R) Xeon(R) Gold 6126 CPU @ 2.60GHz (48 Cores).
 
-## Recompile C++
+### Recompile C++
 ```bash
 # Recompile Faiss with HPDIC modifications:
 cd ~/ElasticIVF
@@ -433,7 +468,7 @@ make -j test_sivf_mixed
 
 ```
 
-## Benchmarks
+### Benchmarks
 ```bash
 # Download SIFT1M dataset:
 bash ~/ElasticIVF/hpdic/script/download_sift.sh
@@ -457,7 +492,7 @@ g++ -O3 -std=c++17 -fopenmp benchmark_baseline.cpp -o benchmark_baseline.bin \
 ./benchmark_baseline.bin
 ```
 
-## Installation
+### Installation
 ```bash
 git config --global user.name "Dongfang Zhao"
 git config --global user.email "dzhao@uw.edu"
@@ -485,7 +520,7 @@ cd build/faiss/python
 python setup.py install
 ```
 
-## Test
+### Test
 ```bash
 cd ~/ElasticIVF/tutorial/cpp
 # For Intel MKL
@@ -511,7 +546,7 @@ g++ 4-GPU.cpp -o 4-GPU.bin \
 ./4-GPU.bin
 ```
 
-## Reinstall Python package
+### Reinstall Python package
 ```bash
 cd ~/ElasticIVF/build/faiss/python
 python setup.py install
