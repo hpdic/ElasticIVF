@@ -105,7 +105,7 @@ To quantify the gap between insertion and eviction performance, we conducted ben
 \begin{figure}[!t]
     \centering
     \includegraphics[width=.7\linewidth]{figures/motivation_bar_chart_comparison.pdf}
-    \caption{The asymmetry between insertion and deletion. 
+    \caption{The asymmetry between insertion and deletion.\don{Add a result of tombstone deletion: memory footprint vs. number of deletions for streaming vectors} 
     }
     \Description{A bar chart comparing insertion and deletion latency on GPU indices. The insertion bar is significantly shorter than the deletion bar, illustrating the performance asymmetry.}
     \label{fig:motivation}
@@ -207,6 +207,8 @@ However, applying these general-purpose HPC optimizations to vector search remai
 
 \section{Design and Implementation of SIVF}
 \label{sec:design_implementation}
+
+\don{Proofread the macthcing between algorithm description and the source code}
 
 % \don{Proofread those algorithms with source-code}
 
@@ -881,13 +883,13 @@ Figure~\ref{fig:eval_memory} illustrates the memory growth trends for both SIFT1
 
 We verified the efficacy of our memory reclamation strategy. In a stress test (not shown in the figure) involving the deletion of 50\% of the dataset followed by immediate re-insertion, SIVF maintained a constant memory footprint without triggering OS-level deallocation. The deletion operation completed in sub-millisecond time per batch (e.g., 4.04~ms for 100K GIST vectors), confirming that memory slots are logically reclaimed via bitmap toggling and immediately available for reuse. This zero-cost reclamation ensures that SIVF can sustain long-running streaming workloads without suffering from memory leaks or fragmentation-induced bloat.
 
-\subsection{Non-IVF Index for Streaming Vectors}
+\subsection{More Indexes for Streaming Vectors}
 \label{sec:eval_non_ivf}
 
 To position SIVF within the broader indexing landscape, we benchmarked it against five representative non-IVF architectures: GPU CAGRA~\cite{10597683} (graphs), Faiss GPU Flat (brute-force baseline, i.e., no index), HNSW~\cite{malkov2018efficient} (dynamic graphs), (3) LSH~\cite{10.1145/997817.997857} (legacy hash-based approaches), and (4) NSG~\cite{10.14778/3303753.3303754} (static graphs). Table~\ref{tab:landscape_full} summarizes ingestion throughput and deletion latency across three datasets: SIFT1M, T2I-1B, and GIST1M.
 
 \begin{table}[t]
-\caption{Comparison of I/O throughput.}
+\caption{Comparison of I/O throughput.\don{Replace N/As with real numbers from naive reconstruction cost}}
 \label{tab:landscape_full}
 \centering
 \resizebox{\linewidth}{!}{
@@ -930,8 +932,8 @@ We employ a sharding strategy where the dataset is partitioned across devices wi
   \label{fig:scalability}
 \end{figure}
 
-Figure~\ref{fig:scalability} reports the near linear throughput growth for all operations as the hardware resources increase. 
-Specifically, ingestion throughput reaches 37.6 million QPS on 10 GPUs, maintaining a steady growth curve despite the overhead of distributed synchronization. 
+Figure~\ref{fig:scalability} reports the near linear throughput growth of 128-dimensional syhtetic vectors for all operations as the resources increase. 
+Ingestion throughput reaches 37.6 million QPS on 10 GPUs, maintaining a steady growth curve despite the overhead of distributed synchronization. 
 Search performance exhibits remarkable efficiency reaching 26.3 thousand QPS on 10 GPUs, which represents approximately 99.8\% of the ideal linear scaling relative to the single card baseline. 
 Deletion throughput scales to 77.7 million QPS, benefiting from the lightweight bitmap based lazy update mechanism that minimizes inter card communication.
 Notably, certain configurations exhibit super-linear scaling, particularly in deletion operations where efficiency exceeds 100\%. 
@@ -942,12 +944,12 @@ In deletion scenarios, the super-linear effect stems from the reduced per-card m
 \begin{figure}[t]
   \centering
   \includegraphics[width=\linewidth]{figures/mpi_dino.pdf}
-  \caption{End-to-end performance on the high-dimensional DINO dataset (1024 dimensions) on a 10-GPU cluster.}
+  \caption{High-dimensional DINO10B dataset on 10 GPUs.}
   \Description{Two side-by-side charts illustrating performance on DINO 1024d. Left: Bar chart showing 2.27x speedup for ingestion and 1148x speedup for deletion (log scale). Right: Line chart showing overlapping Pareto frontiers for search recall vs QPS, indicating comparable performance.}
   \label{fig:dino_perf}
 \end{figure}
 
-We also evaluate SIVF's comparative performance against the primary baseline (Faiss IVFFlat) using the high-dimensional DINO dataset~\cite{9709990} (1024 dimensions) distributed across the 10-GPU cluster. As illustrated in Figure~\ref{fig:dino_perf}, SIVF demonstrates superior agility across the data lifecycle while maintaining search fidelity. Figure~\ref{fig:dino_perf}(a) highlights the efficiency of SIVF in handling data updates. For ingestion, SIVF achieves a 2.27$\times$ speedup over the baseline (3.4M QPS vs. 1.5M QPS). This advantage stems from SIVF's slab-based memory allocator, which avoids the costly contiguous memory reallocation and data copying used in static indexes. The most significant performance gap is observed in deletion operations. SIVF achieves a 1148$\times$ speedup, processing nearly $10^8$ deletions per second compared to the baseline's $10^4$. While the baseline requires $O(N)$ memory movement to maintain contiguous arrays after removal, SIVF leverages in-place bitmap manipulation ($O(1)$), making real-time data expiration feasible even at massive scales. On the 10-GPU cluster, this lock-free mechanism minimizes inter-card synchronization, allowing the system to fully exploit the aggregate parallelism of the distributed infrastructure. Figure~\ref{fig:dino_perf}(b) plots the Pareto frontier of Recall@10 versus QPS. SIVF exhibits zero recall loss, achieving identical accuracy to the static baseline. This confirms that the distributed computation and dynamic slab traversal maintain strict equivalence to static inverted lists. In terms of throughput, SIVF retains over 95\% of the baseline's QPS. The marginal performance overhead is attributed to the non-contiguous memory access patterns required for dynamic slab traversal.
+We also evaluate SIVF's comparative performance against the primary baseline (Faiss IVFFlat) using the high-dimensional DINO10B dataset~\cite{9709990} (1024 dimensions) distributed across the 10-GPU cluster. As illustrated in Figure~\ref{fig:dino_perf}, SIVF demonstrates superior agility across the data lifecycle while maintaining search fidelity. Figure~\ref{fig:dino_perf}(a) highlights the efficiency of SIVF in handling data updates. For ingestion, SIVF achieves a 2.27$\times$ speedup over the baseline (3.4M QPS vs. 1.5M QPS). This advantage stems from SIVF's slab-based memory allocator, which avoids the costly contiguous memory reallocation and data copying used in static indexes. The most significant performance gap is observed in deletion operations. SIVF achieves a 1148$\times$ speedup, processing nearly $10^8$ deletions per second compared to the baseline's $10^4$. While the baseline requires $O(N)$ memory movement to maintain contiguous arrays after removal, SIVF leverages in-place bitmap manipulation ($O(1)$), making real-time data expiration feasible even at massive scales. On the 10-GPU cluster, this lock-free mechanism minimizes inter-card synchronization, allowing the system to fully exploit the aggregate parallelism of the distributed infrastructure. Figure~\ref{fig:dino_perf}(b) plots the Pareto frontier of Recall@10 versus QPS. SIVF exhibits zero recall loss, achieving identical accuracy to the static baseline. This confirms that the distributed computation and dynamic slab traversal maintain strict equivalence to static inverted lists. In terms of throughput, SIVF retains over 95\% of the baseline's QPS. The marginal performance overhead is attributed to the non-contiguous memory access patterns required for dynamic slab traversal.
 
 \section{Conclusion}
 \label{sec:conclusion}
