@@ -258,3 +258,16 @@ target_link_libraries(test_sivf_mixed
     CUDA::cudart 
     CUDA::cublas
 )
+
+# --- Tombstone simulation ---
+add_executable(test_sivf_tombstone hpdic/experiment/test_sivf_tombstone.cpp)
+set_source_files_properties(
+    hpdic/experiment/test_sivf_tombstone.cpp
+    PROPERTIES LANGUAGE CUDA
+)
+target_link_libraries(test_sivf_tombstone 
+    faiss 
+    OpenMP::OpenMP_CXX 
+    CUDA::cudart 
+    CUDA::cublas
+)

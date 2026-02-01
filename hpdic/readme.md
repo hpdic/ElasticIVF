@@ -504,6 +504,10 @@ cd ~/ElasticIVF/build
 make -j test_sivf_mixed
 ./test_sivf_mixed
 
+# Tombstone simulation test:
+cd ~/ElasticIVF/build
+make -j test_sivf_tombstone
+./test_sivf_tombstone
 ```
 
 ### Benchmarks
