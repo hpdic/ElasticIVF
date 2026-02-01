@@ -381,7 +381,8 @@ mpirun --allow-run-as-root \
     -np 10 \
     --host gpu0:4,gpu1:4,gpu2:2 \
     -x LD_LIBRARY_PATH \
-    ~/hpdic/ElasticIVF/build/test_sivf_dino_search     
+    ~/hpdic/ElasticIVF/build/test_sivf_dino_search \
+    --nlist 30000 --probes 4,8,16,32,64,128 --nb 300000     
 ```
 
 ## Single-Node GPUs

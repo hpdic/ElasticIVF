@@ -3,6 +3,9 @@
  *
  * Evaluation: Distributed Search (Pareto Frontier: Recall vs QPS)
  * Dataset: DINO 10B (1024-dim, Subset)
+ * * Improvements:
+ * 1. Command-line arguments for nlist, nb, and probes.
+ * 2. GPU Ground Truth calculation.
  */
 
 #include <mpi.h>
@@ -14,11 +17,13 @@
 #include <cmath>
 #include <omp.h>
 #include <map>
+#include <string>
+#include <sstream>
 
 // Faiss Headers
 #include <faiss/gpu/GpuIndexIVFFlat.h>
 #include <faiss/gpu/GpuIndexSIVF.h>
-#include <faiss/gpu/GpuIndexFlat.h> // For GPU GT
+#include <faiss/gpu/GpuIndexFlat.h> 
 #include <faiss/gpu/StandardGpuResources.h>
 #include <faiss/index_io.h> 
 
@@ -26,7 +31,39 @@ using namespace faiss;
 using namespace faiss::gpu;
 
 // ---------------------------------------------------------
-// Helper: Read DINO file (Absolute Path Required)
+// Helper: Parse Command Line Arguments
+// ---------------------------------------------------------
+struct Args {
+    int nlist = 8192;
+    size_t nb_per_rank = 100000;
+    std::vector<int> probes = {8, 16, 32, 64, 128};
+};
+
+Args parse_args(int argc, char** argv) {
+    Args args;
+    for (int i = 1; i < argc; ++i) {
+        std::string arg = argv[i];
+        if (arg == "--nlist") {
+            if (i + 1 < argc) args.nlist = std::stoi(argv[++i]);
+        } else if (arg == "--nb") {
+            if (i + 1 < argc) args.nb_per_rank = std::stoll(argv[++i]);
+        } else if (arg == "--probes") {
+            if (i + 1 < argc) {
+                std::string list = argv[++i];
+                std::stringstream ss(list);
+                std::string item;
+                args.probes.clear();
+                while (std::getline(ss, item, ',')) {
+                    args.probes.push_back(std::stoi(item));
+                }
+            }
+        }
+    }
+    return args;
+}
+
+// ---------------------------------------------------------
+// Helper: Read DINO file
 // ---------------------------------------------------------
 void read_dino_file(const std::string& filename, size_t n, int d, std::vector<float>& out_buffer, size_t offset_vectors = 0) {
     std::ifstream file(filename, std::ios::binary);
@@ -44,7 +81,7 @@ void read_dino_file(const std::string& filename, size_t n, int d, std::vector<fl
     
     size_t read_count = file.gcount() / row_size;
     if (read_count < n) {
-        out_buffer.resize(read_count * d); // Handle EOF gracefully
+        out_buffer.resize(read_count * d); 
     } else {
         out_buffer.resize(n * d);
     }
@@ -67,33 +104,24 @@ void compute_ground_truth(int d, size_t nb, const float* xb,
                           std::vector<idx_t>& gt_ids, int k) {
     std::cout << "[GT] Computing Ground Truth for " << nb << " vectors on GPU..." << std::endl;
     
-    // Resource wrapper
     faiss::gpu::StandardGpuResources res;
-    res.setTempMemory(512 * 1024 * 1024); // 512MB Temp
+    res.setTempMemory(512 * 1024 * 1024); 
 
-    // Config to use device 0 (Rank 0's GPU)
     faiss::gpu::GpuIndexFlatConfig config;
     config.device = 0; 
 
-    // [FIX 1] Removed redundant faiss::METRIC_L2 argument
     faiss::gpu::GpuIndexFlatL2 index_flat(&res, d, config);
-    
-    // 1. Add data to GPU (Copy host -> device)
-    // 1M * 1024 * 4B = 4GB VRAM. P100 has 16GB, totally safe.
     index_flat.add(nb, xb); 
     
     std::vector<float> dists(nq * k);
     gt_ids.resize(nq * k);
     
-    // 2. Brute-force Search on GPU
     index_flat.search(nq, xq, k, dists.data(), gt_ids.data());
-    
-    // Index is destroyed here, freeing the VRAM immediately
     std::cout << "[GT] Done. VRAM freed." << std::endl;
 }
 
 // ---------------------------------------------------------
-// Helper: Merge Distributed Results (Map-Reduce style)
+// Helper: Merge Distributed Results
 // ---------------------------------------------------------
 void merge_results(int rank, int k, int nq, int world_size, 
                    const std::vector<float>& local_dists, 
@@ -101,7 +129,6 @@ void merge_results(int rank, int k, int nq, int world_size,
                    std::vector<float>& global_dists, 
                    std::vector<idx_t>& global_ids) {
     
-    // Gather all results to Rank 0
     std::vector<float> all_dists;
     std::vector<idx_t> all_ids;
 
@@ -125,10 +152,8 @@ void merge_results(int rank, int k, int nq, int world_size,
         global_dists.resize(nq * k);
         global_ids.resize(nq * k);
 
-        // For each query, merge K results from `world_size` workers
         #pragma omp parallel for
         for (int q = 0; q < nq; ++q) {
-            // Collect all (dist, id) pairs for this query
             std::vector<std::pair<float, idx_t>> candidates;
             candidates.reserve(world_size * k);
             
@@ -137,16 +162,11 @@ void merge_results(int rank, int k, int nq, int world_size,
                 for (int i = 0; i < k; ++i) {
                     float d = all_dists[base + i];
                     idx_t id = all_ids[base + i];
-                    if (id != -1) { // Filter invalid
-                        candidates.push_back({d, id});
-                    }
+                    if (id != -1) candidates.push_back({d, id});
                 }
             }
-
-            // Sort by distance (ASC for L2)
             std::sort(candidates.begin(), candidates.end());
 
-            // Take top k
             for (int i = 0; i < k && i < candidates.size(); ++i) {
                 global_dists[q * k + i] = candidates[i].first;
                 global_ids[q * k + i] = candidates[i].second;
@@ -161,6 +181,8 @@ int main(int argc, char** argv) {
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
 
+    Args args = parse_args(argc, argv);
+
     const char* local_rank_env = getenv("OMPI_COMM_WORLD_LOCAL_RANK");
     int local_rank = local_rank_env ? atoi(local_rank_env) : rank % 4;
     cudaSetDevice(local_rank);
@@ -169,69 +191,58 @@ int main(int argc, char** argv) {
     // Config
     // ==========================================
     int d = 1024;
-    int k = 10; // Recall@10
-    
-    // Absolute Paths
+    int k = 10; 
     std::string base_path = "/data/dino10b/chunk_0000.bvecs";
     std::string query_path = "/data/dino10b/queries_clean.bvecs"; 
 
-    int nlist = 4096;
-    // Safe memory limit: 100k per Rank = 1M Total
-    size_t nb_per_rank = 100000; 
-    size_t nq = 1000;            // Number of queries to test
+    int nlist = args.nlist;
+    size_t nb_per_rank = args.nb_per_rank;
+    size_t nq = 1000;            
+
+    if (rank == 0) {
+        printf("[Config] nlist=%d, nb_per_rank=%ld, probes=[", nlist, nb_per_rank);
+        for(size_t i=0; i<args.probes.size(); ++i) printf("%d%s", args.probes[i], i==args.probes.size()-1?"":",");
+        printf("]\n");
+    }
 
     // 1. Load Data & Compute GT (Rank 0)
     std::vector<float> local_xb(nb_per_rank * d);
     std::vector<float> host_full_buffer;
     std::vector<float> queries(nq * d);
-    std::vector<idx_t> gt_ids; // Global Ground Truth
+    std::vector<idx_t> gt_ids; 
 
     if (rank == 0) {
-        // Load Base
-        read_dino_file(base_path, nb_per_rank * size, d, host_full_buffer, 100000); // offset 100k
+        read_dino_file(base_path, nb_per_rank * size, d, host_full_buffer, 100000); 
         
-        // Load Queries (Check if exists first!)
         std::ifstream fq(query_path);
         if (!fq.good()) {
-             // Fallback: use first 1000 vectors from base as queries if file missing
-             std::cout << "[Warning] Query file not found. Using subset of base as queries." << std::endl;
+             std::cout << "[Warning] Query file not found. Using subset." << std::endl;
              queries.resize(nq * d);
              memcpy(queries.data(), host_full_buffer.data(), nq * d * sizeof(float));
         } else {
              read_dino_file(query_path, nq, d, queries, 0);
         }
-        
-        // Compute GT (GPU)
         compute_ground_truth(d, nb_per_rank * size, host_full_buffer.data(), nq, queries.data(), gt_ids, k);
     }
 
-    // Broadcast Queries to all
     MPI_Bcast(queries.data(), nq * d, MPI_FLOAT, 0, MPI_COMM_WORLD);
 
-    // Scatter Base Data
     MPI_Scatter(host_full_buffer.data(), nb_per_rank * d, MPI_FLOAT,
                 local_xb.data(), nb_per_rank * d, MPI_FLOAT,
                 0, MPI_COMM_WORLD);
     
-    // Free host buffer on Rank 0
     if (rank == 0) std::vector<float>().swap(host_full_buffer);
 
-    // Local IDs (Global Offset)
     std::vector<idx_t> local_ids(nb_per_rank);
     for(size_t i=0; i<nb_per_rank; ++i) local_ids[i] = rank * nb_per_rank + i;
 
-    // Train Data (Reuse local)
-    size_t nt = 65536;
-    std::vector<float> train_xt(nt * d);
-    memcpy(train_xt.data(), local_xb.data(), nt * d * sizeof(float));
+    // Use ALL local data for training
+    size_t nt = nb_per_rank; 
 
     StandardGpuResources res;
     res.setTempMemory(1024 * 1024 * 1024);
     GpuIndexIVFFlatConfig config;
     config.device = local_rank;
-
-    // List of probes to test
-    std::vector<int> probes = {1, 4, 8, 16, 32, 64};
 
     if (rank == 0) {
         printf("\n=================================================================================\n");
@@ -239,17 +250,14 @@ int main(int argc, char** argv) {
         printf("|----------|--------|--------------|--------------|--------------|\n");
     }
 
-    // --- Benchmark Function ---
     auto run_benchmark = [&](const char* name, GpuIndexIVF* index) {
-        index->train(nt, train_xt.data());
+        index->train(nt, local_xb.data());
         index->add_with_ids(nb_per_rank, local_xb.data(), local_ids.data());
         
-        // Sync before search phase
         cudaDeviceSynchronize();
         MPI_Barrier(MPI_COMM_WORLD);
 
-        for (int nprobe : probes) {
-            // [FIX 2] Use direct member assignment instead of setter
+        for (int nprobe : args.probes) {
             index->nprobe = nprobe; 
             
             std::vector<float> local_dists(nq * k);
@@ -264,13 +272,11 @@ int main(int argc, char** argv) {
             double t1 = MPI_Wtime();
             double local_lat = (t1 - t0);
 
-            // Merge Results on Rank 0
             std::vector<float> global_dists;
             std::vector<idx_t> global_indices;
             merge_results(rank, k, nq, size, local_dists, local_indices, global_dists, global_indices);
 
             if (rank == 0) {
-                // Calculate Recall
                 int correct = 0;
                 for (int q = 0; q < nq; ++q) {
                     std::vector<idx_t> gt_set;
@@ -287,8 +293,6 @@ int main(int argc, char** argv) {
                     }
                 }
                 float recall = (float)correct / (nq * k);
-                
-                // QPS Calculation (Total Queries / Max Latency)
                 double total_qps = nq / local_lat;
 
                 printf("| %-8s | %-6d | %-12.2f | %-12.0f | %-12.4f |\n", 
@@ -300,14 +304,14 @@ int main(int argc, char** argv) {
     // --- Round 1: SIVF ---
     {
         size_t capacity = nb_per_rank * 1.5;
-        GpuIndexSIVF sivf_index(&res, d, nlist, METRIC_L2, config);
+        GpuIndexSIVF sivf_index(&res, d, args.nlist, METRIC_L2, config);
         sivf_index.initSlabManager(capacity, d);
         run_benchmark("**SIVF**", &sivf_index);
     }
 
     // --- Round 2: Vanilla ---
     {
-        GpuIndexIVFFlat vanilla_index(&res, d, nlist, METRIC_L2, config);
+        GpuIndexIVFFlat vanilla_index(&res, d, args.nlist, METRIC_L2, config);
         run_benchmark("Vanilla", &vanilla_index);
     }
 
