@@ -354,7 +354,7 @@ mpirun --allow-run-as-root \
 
 # MPI of DINO10B on 10 GPUs across 3 nodes:
 bash ~/hpdic/ElasticIVF/hpdic/script/download_dino.sh
-cd ~/ElasticIVF/build
+cd ~/hpdic/ElasticIVF/build
 make -j test_sivf_dino_add
 mpirun --allow-run-as-root \
     -np 10 \
