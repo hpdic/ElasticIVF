@@ -200,6 +200,8 @@ target_link_libraries(test_sivf_t2i_pareto faiss OpenMP::OpenMP_CXX CUDA::cudart
 # --- DINO10B Benchmarks ---
 add_executable(test_sivf_dino_add hpdic/experiment/dino/test_sivf_dino_add.cpp)
 target_link_libraries(test_sivf_dino_add faiss MPI::MPI_CXX OpenMP::OpenMP_CXX CUDA::cudart CUDA::cublas)
+add_executable(test_sivf_dino_delete hpdic/experiment/dino/test_sivf_dino_delete.cpp)
+target_link_libraries(test_sivf_dino_delete faiss MPI::MPI_CXX OpenMP::OpenMP_CXX CUDA::cudart CUDA::cublas)
 
 # --- Sliding Window ---
 add_executable(test_sivf_sliding hpdic/experiment/test_sivf_sliding.cpp)

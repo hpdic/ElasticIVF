@@ -327,6 +327,15 @@ source ~/.bashrc
 
 # Sync code to worker nodes (faster than parallel-scp)
 cd ~/hpdic/ElasticIVF
+cmake -B build . \
+    -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+    -DCMAKE_CUDA_COMPILER_LAUNCHER=ccache \
+    -DFAISS_ENABLE_GPU=ON \
+    -DFAISS_ENABLE_PYTHON=OFF \
+    -DBUILD_TESTING=OFF \
+    -DCMAKE_CUDA_ARCHITECTURES="60"
+# 60 (P100), 70 (V100), 75 (RTX6000), 80 (A100)
+make -C build -j
 for host in $(cat ~/hpdic/workers); do
     rsync -avz --exclude 'data/' --exclude '.git/' --exclude '*.o' \
     ~/hpdic/ElasticIVF $host:~/hpdic/ &
@@ -361,6 +370,12 @@ mpirun --allow-run-as-root \
     --host gpu0:4,gpu1:4,gpu2:2 \
     -x LD_LIBRARY_PATH \
     ~/hpdic/ElasticIVF/build/test_sivf_dino_add 
+make -j test_sivf_dino_delete
+mpirun --allow-run-as-root \
+    -np 10 \
+    --host gpu0:4,gpu1:4,gpu2:2 \
+    -x LD_LIBRARY_PATH \
+    ~/hpdic/ElasticIVF/build/test_sivf_dino_delete     
 ```
 
 ## Single-Node GPUs
