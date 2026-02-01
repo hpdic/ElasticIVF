@@ -1,10 +1,8 @@
 /**
  * test_sivf_nonivf.cpp
- * 
- * Author: Dongfang Zhao
+ * * Author: Dongfang Zhao
  * Email:  dzhao@uw.edu
- * 
- * * Extended Landscape Analysis:
+ * * * Extended Landscape Analysis:
  * - GPU Flat (Baseline)
  * - CPU HNSW (Graph Baseline)
  * - CPU LSH (Hash Baseline)  
@@ -116,8 +114,20 @@ void run_dataset(std::string name, std::string path, StandardGpuResources& res, 
         auto t2 = std::chrono::high_resolution_clock::now();
         double sec = std::chrono::duration<double>(t2 - t1).count();
         std::cout << "      Add: " << (size_t)(limit_n/sec) << " vec/s" << std::endl;
-        try { index.remove_ids(sel); std::cout << "      Del: Success" << std::endl; } 
-        catch (...) { std::cout << "      Del: N/A (Not Supported)" << std::endl; }
+        
+        try { 
+            index.remove_ids(sel); 
+            std::cout << "      Del: Success (Native)" << std::endl; 
+        } 
+        catch (...) { 
+            // Fallback: Naive Reconstruction (Rebuild with N - del_bs vectors)
+            // This simulates the cost of deleting by rebuilding the graph
+            double rebuild_ms = measure_ms([&](){
+                faiss::IndexHNSWFlat temp_index(d, 32);
+                temp_index.add(limit_n - del_bs, xb); // Simulating keeping the rest
+            });
+            std::cout << "      Del: " << rebuild_ms << " ms (Naive Rebuild)" << std::endl; 
+        }
     }
 
     // --- 3. CPU LSH (New) ---
@@ -157,8 +167,18 @@ void run_dataset(std::string name, std::string path, StandardGpuResources& res, 
         double sec = std::chrono::duration<double>(t2 - t1).count();
         std::cout << "      Add: " << (size_t)(limit_n/sec) << " vec/s" << std::endl;
 
-        try { index.remove_ids(sel); std::cout << "      Del: Success" << std::endl; } 
-        catch (...) { std::cout << "      Del: N/A (Not Supported)" << std::endl; }
+        try { 
+            index.remove_ids(sel); 
+            std::cout << "      Del: Success" << std::endl; 
+        } 
+        catch (...) { 
+            // Fallback: Naive Reconstruction (Rebuild with N - del_bs vectors)
+            double rebuild_ms = measure_ms([&](){
+                faiss::IndexNSGFlat temp_index(d, 32, faiss::METRIC_L2);
+                temp_index.add(limit_n - del_bs, xb);
+            });
+            std::cout << "      Del: " << rebuild_ms << " ms (Naive Rebuild)" << std::endl; 
+        }
     }
 
     // --- 5. SIVF (Ours) ---
