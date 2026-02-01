@@ -377,12 +377,7 @@ mpirun --allow-run-as-root \
     -x LD_LIBRARY_PATH \
     ~/hpdic/ElasticIVF/build/test_sivf_dino_delete     
 make -j test_sivf_dino_search
-mpirun --allow-run-as-root \
-    -np 10 \
-    --host gpu0:4,gpu1:4,gpu2:2 \
-    -x LD_LIBRARY_PATH \
-    ~/hpdic/ElasticIVF/build/test_sivf_dino_search \
-    --nlist 30000 --probes 4,8,16,32,64,128 --nb 300000     
+bash ~/hpdic/ElasticIVF/hpdic/script/search_dino.sh    
 ```
 
 ## Single-Node GPUs
