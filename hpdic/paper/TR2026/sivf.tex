@@ -226,11 +226,10 @@ However, applying these general-purpose HPC optimizations to vector search remai
 This section presents the design and implementation of SIVF for high-concurrency updates on GPUs. We first introduce the Slab-based Dynamic
 Memory Allocator (SDMA) in Section~\ref{sec:slab_memory_management}, which represents each IVF list as a linked chain of fixed-capacity
 slabs with per-list head pointers $H[\cdot]$ and per-slab metadata 
-\[(\texttt{next}, \texttt{valid\_count}, \texttt{validity\_bitmap})\]
-in Algorithm~\ref{alg:sdma_core}. Building on SDMA, we describe the parallel ingestion kernel (Section~\ref{sec:lock_free_ingestion})
+\[(\texttt{next}, \texttt{valid\_count}, \texttt{validity\_bitmap}),\]
+summarized in Algorithm~\ref{alg:sdma_core}. Building on SDMA, we describe the parallel ingestion (Section~\ref{sec:lock_free_ingestion})
 in which each thread inserts one vector by reserving a slot via \texttt{atomicCAS} on \texttt{valid\_count} and publishing visibility
-by setting a validity bit after \verb|__threadfence()| (Algorithm~\ref{alg:sivf_ingestion}). We then present a warp-cooperative search
-kernel (Section~\ref{sec:methods_search_kernel}) that assigns one warp to one query and evaluates one slab per traversal step by
+by setting a validity bit after \verb|__threadfence()| (Algorithm~\ref{alg:sivf_ingestion}). We then present a warp-cooperative search (Section~\ref{sec:methods_search_kernel}) that assigns one warp to one query and evaluates one slab per traversal step by
 consulting the validity bitmap before reading payloads (Algorithm~\ref{alg:sivf_search}). We detail lazy eviction
 (Section~\ref{sec:bitmap_lazy_eviction}), which performs constant-time deletion by looking up coordinates in the address table
 $\mathcal{T}$ and atomically clearing the corresponding bitmap bit (Algorithm~\ref{alg:sivf_delete}).
@@ -289,7 +288,7 @@ summarizes these core operations.
 
 SIVF uses a fully parallel ingestion kernel in which each CUDA thread inserts one vector into its assigned IVF list $\ell$.
 Each list is a singly linked chain of fixed-capacity slabs, with head pointer $H[\ell]$ and per-slab metadata
-\texttt{valid\_count}, \texttt{validity\_bitmap}, and \texttt{next}. Insertion follows a reserve, write, publish protocol.
+\texttt{valid\_count}, \texttt{validity\_bitmap}, and \texttt{next}. Insertion follows a reserve-write-publish protocol.
 A thread first reads the current head slab $h=H[\ell]$ and attempts to reserve a slot by incrementing
 \texttt{slab\_meta[$h$].valid\_count} using \texttt{atomicCAS}; the reserved slot index is the old counter value $c$.
 On success, the thread writes the payload to \texttt{slab data[$h$][$c$]} and the id to \texttt{slab\_ids[$h$][$c$]}, updates
@@ -300,14 +299,14 @@ absent or full, the thread allocates a new slab id from the global pool via \tex
 metadata (\texttt{valid\_count}, \texttt{validity\_bitmap}, \texttt{next}), executes \verb|__threadfence()|, and attempts to
 publish it as the new head with \texttt{atomicCAS(\&H[$\ell$], h, s\_new)}. If head publication fails under contention, the
 thread retries without reclaiming the allocated slab, avoiding allocator-side synchronization in the hot path. The full
-per-thread protocol is given in Algorithm~\ref{alg:sivf_ingestion}.
+per-thread protocol is described in Algorithm~\ref{alg:sivf_ingestion}.
 
 \begin{algorithm}[t]
 \caption{Lock-free ingestion protocol in SIVF}
 \label{alg:sivf_ingestion}
 \begin{algorithmic}[1]
 \State Input: vector $x$, identifier $v_{id}$, list assignment $\ell$
-\State Global: head array $H[\cdot]$, slab metadata, slab data, free list, stack pointer $P_{top}$, Address Table $\mathcal{T}$
+\State Global: head array $H[\cdot]$, slab metadata, slab data, free list, stack pointer $P_{top}$, address table $\mathcal{T}$
 \State $attempts \gets 0$
 \While{$attempts < \textsc{MAX\_INSERT\_ATTEMPTS}$}
     \State $attempts \gets attempts + 1$
@@ -403,30 +402,35 @@ The ATT $\mathcal{T}$ maps each identifier $u$ to its physical coordinate in the
 $\mathcal{T}[u] = (\text{idx}_{slab} \ll 32)\ \mid\ \text{idx}_{slot}$,
 or \texttt{INVALID} if absent. Given $\mathcal{T}[u]$, a deletion thread decodes $(\text{idx}_{slab},\text{idx}_{slot})$ and
 clears the corresponding bit in the slab validity bitmap using an atomic read-modify-write
-(\texttt{atomicAnd} with $mask=\sim(1\ll \text{idx}_{slot})$). The payload is not moved or overwritten; search consults the bitmap
-and skips slots whose bits are cleared, so deletion removes a vector from the search space without compaction. To handle duplicates
-and races among deletions, the kernel uses the pre-update bitmap value returned by \texttt{atomicAnd} to detect a $1\rightarrow 0$
-transition and performs bookkeeping only on that transition (e.g., updating counters), then writes $\mathcal{T}[u]\gets\texttt{INVALID}$
-so repeated deletions become no-ops. Algorithm~\ref{alg:sivf_delete} summarizes the procedure.
+(\texttt{atomicAnd} with $mask=\sim(1\ll \text{idx}_{slot})$). To handle duplicates and races, the kernel uses the pre-update bitmap value
+to detect a $1\rightarrow 0$ transition. Bookkeeping and reclamation occur strictly on this transition: the thread decrements
+the slab's \texttt{valid\_count} and marks $\mathcal{T}[u]$ as \texttt{INVALID}. If the decremented \texttt{valid\_count}
+drops to zero, implying the slab has become fully empty, the thread atomically pushes the slab index back to the global free stack
+$P_{top}$. This immediate reclamation strategy allows SIVF to reuse memory for new insertions without requiring heavy background compaction.
+Algorithm~\ref{alg:sivf_delete} summarizes the procedure.
 
 \begin{algorithm}[t]
-\caption{Lazy eviction with ATT in SIVF}
+\caption{Lazy eviction with slab-wise reclamation in SIVF}
 \label{alg:sivf_delete}
 \begin{algorithmic}[1]
 \State Input: deletion identifiers $U=\{u_1,\ldots,u_m\}$
-\State Global: Address Table $\mathcal{T}$, slab metadata with bitmap $\mathcal{B}$ and counter \texttt{valid\_count}
+\State Global: Address Table $\mathcal{T}$, slab metadata, free list, stack pointer $P_{top}$
 
 \For{each $u$ in $U$ in parallel}
     \State $coord \gets \mathcal{T}[u]$
-    \If{$coord = \text{INVALID}$} \State continue \EndIf
+    \If{$coord = \text{INVALID}$} \State \textbf{continue} \EndIf
     \State $\text{idx}_{slab} \gets coord \gg 32$
     \State $\text{idx}_{slot} \gets coord \mathbin{\&} (2^{32}-1)$
     \State $mask \gets \quad \sim(1 \ll \text{idx}_{slot})$
-    \State $old \gets \texttt{atomicAnd}(\mathcal{B}_{\text{idx}_{slab}}, mask)$
-    \If{$((old \gg \text{idx}_{slot}) \mathbin{\&} 1) = 1$}
-        \State \texttt{atomicSub}(\&\texttt{valid\_count}, 1)
-        \State \texttt{atomicAdd}(\&\texttt{deleted\_count}, 1)
+    \State $old\_map \gets \texttt{atomicAnd}(\text{slab\_meta}[\text{idx}_{slab}].\text{bitmap}, mask)$
+    \If{$((old\_map \gg \text{idx}_{slot}) \mathbin{\&} 1) == 1$}
+        \State $\texttt{atomicSub}(\&\text{slab\_meta}[\text{idx}_{slab}].\text{valid\_count}, 1)$
         \State $\mathcal{T}[u] \gets \text{INVALID}$
+        \If{$\text{slab\_meta}[\text{idx}_{slab}].\text{valid\_count} == 0$}
+             \State $t \gets \texttt{atomicAdd}(P_{top}, 1)$
+             \State $\text{free\_list}[t] \gets \text{idx}_{slab}$
+             \State $\text{slab\_meta}[\text{idx}_{slab}].\text{bitmap} \gets 0$
+        \EndIf
     \EndIf
 \EndFor
 \end{algorithmic}

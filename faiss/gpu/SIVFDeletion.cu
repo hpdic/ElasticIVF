@@ -43,7 +43,6 @@ __global__ void sivf_delete_kernel(
 
     idx_t target_id = ids_to_remove[idx];
 
-    // [Critical Fix] Direct Pointer Cast
     // Ignore AddressTableEntry struct type and read directly as uint64_t.
     // This avoids overhead and ensures atomic-compatible access patterns.
     uint64_t* att_ptr = (uint64_t*)manager.address_table;
@@ -55,7 +54,6 @@ __global__ void sivf_delete_kernel(
     uint32_t slab_idx = (uint32_t)(coord >> 32);
     uint32_t slot_idx = (uint32_t)(coord & 0xFFFFFFFF);
 
-    // [Critical Fix] Direct Array Access
     // SlabManagerDevice is a POD struct and lacks accessor methods like get_metadata().
     // We access the metadata array directly via the slab index.
     SlabMetadata* md = &manager.slab_metadata[slab_idx];
@@ -68,11 +66,22 @@ __global__ void sivf_delete_kernel(
 
     // Check if the bit was previously 1 (i.e., we actually deleted something)
     if ((old_bitmap >> slot_idx) & 1u) {
+
         atomicSub(&(md->valid_count), 1);
         atomicAdd(deleted_count, 1);
 
         // Invalidate the address table entry to prevent future access
         att_ptr[target_id] = INVALID_COORD;
+
+        // Reclaim slab if empty
+        if (md->valid_count == 0) {
+            int old_top = atomicAdd(manager.free_list_top, 1);
+            if (old_top < manager.slab_pool_size) {
+                manager.free_list[old_top] = slab_idx;
+            }
+            md->validity_bitmap = 0;
+        }
+
     }
 }
 
