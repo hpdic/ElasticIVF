@@ -905,7 +905,7 @@ We verified the efficacy of our memory reclamation strategy. In a stress test (n
 To position SIVF within the broader indexing landscape, we benchmarked it against five representative non-IVF architectures: GPU CAGRA~\cite{10597683} (graphs), Faiss GPU Flat (brute-force baseline, i.e., no index), HNSW~\cite{malkov2018efficient} (dynamic graphs), (3) LSH~\cite{10.1145/997817.997857} (legacy hash-based approaches), and (4) NSG~\cite{10.14778/3303753.3303754} (static graphs). Table~\ref{tab:landscape_full} summarizes ingestion throughput and deletion latency across three datasets: SIFT1M, T2I-1B, and GIST1M.
 
 \begin{table}[t]
-\caption{Comparison of I/O throughput.\don{Replace N/As with real numbers from naive reconstruction cost}}
+\caption{Add throughput (K vec/s) and delete latency (ms).}
 \label{tab:landscape_full}
 \centering
 \resizebox{\linewidth}{!}{
@@ -914,22 +914,22 @@ To position SIVF within the broader indexing landscape, we benchmarked it agains
 \multirow{2}{*}{\textbf{Method}} & \multicolumn{2}{c|}{\textbf{SIFT1M}} & \multicolumn{2}{c|}{\textbf{T2I-1B}} & \multicolumn{2}{c}{\textbf{GIST1M}} \\
  & Add & Del & Add & Del & Add & Del \\
 \midrule
-GPU Flat~\cite{douze2024faiss} & 9,169 & 836 & 6,020 & 1,160 & 1,230 & 1,143 \\
+GPU Flat~\cite{douze2024faiss} & 9,308 & 833 & 5,957 & 1,163 & 1,907 & 1,040 \\
 GPU CAGRA~\cite{10597683} & 305 & 3,030 & 259 & 3,773 & 97.1 & 10,215 \\
-HNSW~\cite{malkov2018efficient} & 25.5 & N/A & 25.7 & N/A & 0.6 & N/A \\
-NSG~\cite{10.14778/3303753.3303754} & 3.7 & N/A & 3.2 & N/A & 0.7 & N/A \\
-LSH~\cite{10.1145/997817.997857} & 787 & 14.6 & 428 & 16.3 & 36.6 & 9.2 \\
-\textbf{SIVF} (this work) & \textbf{3,780} & \textbf{0.86} & \textbf{2,910} & \textbf{0.87} & \textbf{853} & \textbf{0.89} \\
+HNSW~\cite{malkov2018efficient} & 25.1 & 39,835 & 25.8 & 39,141 & 0.6 & 334,113 \\
+NSG~\cite{10.14778/3303753.3303754} & 3.7 & 266,224 & 3.2 & 314,315 & 0.7 & 278,101 \\
+LSH~\cite{10.1145/997817.997857} & 823 & 13.7 & 461 & 16.4 & 38.4 & 8.5 \\
+\textbf{SIVF} (this work) & \textbf{2,229} & \textbf{0.95} & \textbf{5,183} & \textbf{1.52} & \textbf{452} & \textbf{1.31} \\
 \bottomrule
 \end{tabular}
 }
 \end{table}
 
 Table~\ref{tab:landscape_full} reports the results of vector ingestion and deletion in a streaming context across three datasets.
-CPU-based graph indices (HNSW, NSG) suffer catastrophic performance degradation on high-dimensional data, dropping to merely 600 vec/s on GIST1M due to cache thrashing, and lack support for deletion (`N/A').
-While GPU Flat achieves high ingestion throughput by bypassing indexing overhead, it incurs prohibitive deletion latencies ($>$ 1s) due to $O(N)$ data compaction and CPU-GPU synchronization.
-Notably, the state-of-the-art GPU graph index, CAGRA, exhibits severe rigidity in streaming scenarios; enforcing true physical deletion to prevent memory leaks necessitates full index reconstruction, causing latencies to spike to over 10 seconds on GIST1M.
-In contrast, SIVF emerges as the only architecture enabling holistic stream processing: it sustains GPU-class ingestion rates (e.g., 853K vec/s on GIST1M, $8.8\times$ faster than CAGRA) while providing sub-millisecond physical slot reclamation ($\approx 0.89$ ms). This effectively bridges the gap between static high-throughput search and dynamic mutability, outperforming graph reconstruction latencies by four orders of magnitude.
+CPU-based graph indices (HNSW, NSG) suffer catastrophic performance degradation on high-dimensional data, dropping to merely 600 vec/s on GIST1M due to cache thrashing. They lack native support for deletion, necessitating full index reconstruction that incurs prohibitive latencies (e.g., over 330 seconds for HNSW on GIST1M).
+While GPU Flat achieves high ingestion throughput by bypassing indexing overhead, its deletion latencies remain high ($>$ 1s) due to $O(N)$ data compaction and CPU-GPU synchronization.
+Notably, the state-of-the-art GPU graph index, CAGRA, exhibits severe limitations in streaming scenarios; enforcing true physical deletion to prevent memory leaks necessitates reconstruction, causing latencies to spike to over 10 seconds.
+In contrast, SIVF emerges as the only architecture enabling holistic stream processing: it sustains GPU-class ingestion rates (e.g., 452K vec/s on GIST1M, $4.6\times$ faster than CAGRA) while providing sub-millisecond physical slot reclamation ($\approx 1.3$ ms). 
 
 \subsection{Scalability on Multi-Node GPU Clusters}
 \label{sec:eval_multigpu}

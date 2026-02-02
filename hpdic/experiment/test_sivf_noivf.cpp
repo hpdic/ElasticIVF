@@ -229,7 +229,7 @@ int main() {
 }
 
 /** Example output:
-cc@rtx6000:~/ElasticIVF/build$ ./test_sivf_nonivf
+(myenv) cc@rtx6000:~/ElasticIVF/build$ ./test_sivf_nonivf
 
 ----------------------------------------------------------
  Dataset: SIFT1M (/home/cc/ElasticIVF/hpdic/data/sift/sift_base.fvecs)
@@ -237,17 +237,17 @@ cc@rtx6000:~/ElasticIVF/build$ ./test_sivf_nonivf
   -> Loaded Limit: N=1000000, D=128
   [1] GPU Flat
 [HPDIC MOD] Faiss GPU initialized on device ID: 0
-      Add: 9169323 vec/s
-      Del: 835.772 ms (Roundtrip)
+      Add: 9308369 vec/s
+      Del: 833.184 ms (Roundtrip)
   [2] CPU HNSW (M=32)
-      Add: 25505 vec/s
-      Del: N/A (Not Supported)
+      Add: 25144 vec/s
+      Del: 39834.5 ms (Naive Rebuild)
   [3] CPU LSH (nbits=256)
-      Add: 787134 vec/s
-      Del: 14.6407 ms
+      Add: 823225 vec/s
+      Del: 13.7067 ms
   [4] CPU NSG (R=32)
-      Add: 3712 vec/s
-      Del: N/A (Not Supported)
+      Add: 3716 vec/s
+      Del: 266224 ms (Naive Rebuild)
   [5] SIVF
 
 [HPDIC MEMORY FIX] Resizing:
@@ -256,28 +256,28 @@ cc@rtx6000:~/ElasticIVF/build$ ./test_sivf_nonivf
 
 [SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...
 Clustering 50000 points in 128D to 1024 clusters, redo 1 times, 20 iterations
-  Preprocessing in 0.04 s
-  Iteration 19 (0.25 s, search 0.18 s): objective=2.42526e+09 imbalance=1.242 nsplit=0       
+  Preprocessing in 0.03 s
+  Iteration 19 (0.25 s, search 0.18 s): objective=2.42526e+09 imbalance=1.242 nsplit=0
 [SIVF::train] GPU K-Means complete. Quantizer populated with 1024 centroids.
-      Add: 1714218 vec/s
-      Del: 0.936983 ms (Native)
+      Add: 2229360 vec/s
+      Del: 0.951172 ms (Native)
 
 ----------------------------------------------------------
  Dataset: T2I-1M (/home/cc/ElasticIVF/hpdic/data/t2i/t2i_base_1M.fbin)
 ----------------------------------------------------------
   -> Loaded Limit: N=1000000, D=200
   [1] GPU Flat
-      Add: 6020397 vec/s
-      Del: 1160.55 ms (Roundtrip)
+      Add: 5957467 vec/s
+      Del: 1162.89 ms (Roundtrip)
   [2] CPU HNSW (M=32)
-      Add: 25733 vec/s
-      Del: N/A (Not Supported)
+      Add: 25812 vec/s
+      Del: 39141.2 ms (Naive Rebuild)
   [3] CPU LSH (nbits=400)
-      Add: 427558 vec/s
-      Del: 16.3462 ms
+      Add: 461116 vec/s
+      Del: 16.4305 ms
   [4] CPU NSG (R=32)
-      Add: 3179 vec/s
-      Del: N/A (Not Supported)
+      Add: 3176 vec/s
+      Del: 314315 ms (Naive Rebuild)
   [5] SIVF
 
 [HPDIC MEMORY FIX] Resizing:
@@ -286,28 +286,28 @@ Clustering 50000 points in 128D to 1024 clusters, redo 1 times, 20 iterations
 
 [SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...
 Clustering 50000 points in 200D to 1024 clusters, redo 1 times, 20 iterations
-  Preprocessing in 0.04 s
-  Iteration 19 (0.45 s, search 0.25 s): objective=22642.1 imbalance=1.206 nsplit=0       
+  Preprocessing in 0.03 s
+  Iteration 19 (0.26 s, search 0.18 s): objective=22642.1 imbalance=1.206 nsplit=0
 [SIVF::train] GPU K-Means complete. Quantizer populated with 1024 centroids.
-      Add: 1853782 vec/s
-      Del: 1.54933 ms (Native)
+      Add: 5182787 vec/s
+      Del: 1.52021 ms (Native)
 
 ----------------------------------------------------------
  Dataset: GIST1M (/home/cc/ElasticIVF/hpdic/data/gist/gist_base.fvecs)
 ----------------------------------------------------------
   -> Loaded Limit: N=200000, D=960
   [1] GPU Flat
-      Add: 1230089 vec/s
-      Del: 1143.16 ms (Roundtrip)
+      Add: 1906689 vec/s
+      Del: 1040.03 ms (Roundtrip)
   [2] CPU HNSW (M=32)
-      Add: 561 vec/s
-      Del: N/A (Not Supported)
+      Add: 564 vec/s
+      Del: 334113 ms (Naive Rebuild)
   [3] CPU LSH (nbits=1920)
-      Add: 36602 vec/s
-      Del: 9.17549 ms
+      Add: 38405 vec/s
+      Del: 8.54033 ms
   [4] CPU NSG (R=32)
-      Add: 680 vec/s
-      Del: N/A (Not Supported)
+      Add: 685 vec/s
+      Del: 278101 ms (Naive Rebuild)
   [5] SIVF
 
 [HPDIC MEMORY FIX] Resizing:
@@ -316,10 +316,10 @@ Clustering 50000 points in 200D to 1024 clusters, redo 1 times, 20 iterations
 
 [SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...
 Clustering 50000 points in 960D to 1024 clusters, redo 1 times, 20 iterations
-  Preprocessing in 0.23 s
-  Iteration 19 (1.48 s, search 1.02 s): objective=53878.4 imbalance=1.762 nsplit=0       
+  Preprocessing in 0.22 s
+  Iteration 19 (1.20 s, search 0.74 s): objective=53878.4 imbalance=1.762 nsplit=0
 [SIVF::train] GPU K-Means complete. Quantizer populated with 1024 centroids.
-      Add: 427728 vec/s
-      Del: 1.39925 ms (Native)
-cc@rtx6000:~/ElasticIVF/build$ 
+      Add: 452388 vec/s
+      Del: 1.30824 ms (Native)
+(myenv) cc@rtx6000:~/ElasticIVF/build$ vim ~/.tmux.conf
  */
