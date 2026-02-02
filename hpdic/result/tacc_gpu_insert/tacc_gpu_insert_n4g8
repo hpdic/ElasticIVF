@@ -1,0 +1,318 @@
+cc@gpu0:~/hpdic/ElasticIVF$ mpirun --allow-run-as-root \
+    -np 8 \
+    --host gpu0:2,gpu1:2,gpu2:2,gpu3:2 \
+    -x LD_LIBRARY_PATH \
+    ~/hpdic/ElasticIVF/build/faiss/gpu/test_sivf_mpi_insert
+
+==========================================================
+[MPI Scaling] Ranks: 8 | GPUs: 4
+[Setup] Generating Synthetic Data (10000000 vectors)...
+[HPDIC MOD] Faiss GPU initialized on device ID: 1
+
+[HPDIC MEMORY FIX] Resizing:
+  > Slab Pool:   64548 -> 316596
+  > Data Buffer: 2000000 -> 10131072 vectors (Avoids Overflow)
+
+[SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...
+Clustering 65536 points in 128D to 1024 clusters, redo 1 times, 20 iterations
+  Preprocessing in 0.03 s
+  Iteration 11 (0.26 s, search 0.13 s): objective=553137 imbalance=1.923 nsplit=0       
+  Converged at iteration 11: objective did not change
+
+[SIVF::train] GPU K-Means complete. Quantizer populated with 1024 centroids.
+[HPDIC MOD] Faiss GPU initialized on device ID: 0
+
+[HPDIC MEMORY FIX] Resizing:
+  > Slab Pool:   64548 -> 316596
+  > Data Buffer: 2000000 -> 10131072 vectors (Avoids Overflow)
+
+[SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...
+Clustering 65536 points in 128D to 1024 clusters, redo 1 times, 20 iterations
+  Preprocessing in 0.03 s
+  Iteration 11 (0.28 s, search 0.16 s): objective=553137 imbalance=1.923 nsplit=0       
+  Converged at iteration 11: objective did not change
+
+[SIVF::train] GPU K-Means complete. Quantizer populated with 1024 centroids.
+[HPDIC MOD] Faiss GPU initialized on device ID: 0
+[HPDIC MOD] Faiss GPU initialized on device ID: 1
+[HPDIC MOD] Faiss GPU initialized on device ID: 3
+[HPDIC MOD] Faiss GPU initialized on device ID: 2
+
+[HPDIC MEMORY FIX] Resizing:
+  > Slab Pool:   64548 -> 316596
+  > Data Buffer: 2000000 -> 10131072 vectors (Avoids Overflow)
+
+[SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...
+
+[HPDIC MEMORY FIX] Resizing:
+  > Slab Pool:   64548 -> 316596
+  > Data Buffer: 2000000 -> 10131072 vectors (Avoids Overflow)
+
+Clustering 65536 points in 128D to 1024 clusters, redo 1 times, 20 iterations
+  Preprocessing in 0.04 s
+[SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...
+
+[HPDIC MEMORY FIX] Resizing:
+  > Slab Pool:   64548 -> 316596
+  > Data Buffer: 2000000 -> 10131072 vectors (Avoids Overflow)
+
+Clustering 65536 points in 128D to 1024 clusters, redo 1 times, 20 iterationst=52       
+  Preprocessing in 0.04 s
+[SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...
+  Iteration 2 (0.08 s, search 0.04 s): objective=555369 imbalance=1.949 nsplit=0       
+[HPDIC MEMORY FIX] Resizing:
+  > Slab Pool:   64548 -> 316596
+  > Data Buffer: 2000000 -> 10131072 vectors (Avoids Overflow)
+
+  Iteration 0 (0.04 s, search 0.02 s): objective=886926 imbalance=2.415 nsplit=52       
+| GPUs | NB/GPU     | nlist      | System   | Avg Latency(s)  | Total QPS       | Speedup    |
+|------|------------|------------|----------|-----------------|-----------------|------------|
+[HPDIC MOD] Faiss GPU initialized on device ID: 0
+Clustering 65536 points in 128D to 1024 clusters, redo 1 times, 20 iterations
+  Preprocessing in 0.04 s
+[SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...lit=0       
+Clustering 65536 points in 128D to 1024 clusters, redo 1 times, 20 iterationst=0        
+  Preprocessing in 0.11 s
+  Iteration 7 (0.15 s, search 0.09 s): objective=553199 imbalance=1.923 nsplit=0        
+  Converged at iteration 11: objective did not change
+
+[SIVF::train] GPU K-Means complete. Quantizer populated with 1024 centroids.
+  Iteration 9 (0.22 s, search 0.11 s): objective=553140 imbalance=1.923 nsplit=0       
+[HPDIC MEMORY FIX] Resizing:
+  > Slab Pool:   64548 -> 316596
+  > Data Buffer: 2000000 -> 10131072 vectors (Avoids Overflow)
+
+[SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...plit=0       
+  Iteration 11 (0.25 s, search 0.13 s): objective=553137 imbalance=1.923 nsplit=0       
+  Converged at iteration 11: objective did not change
+
+[SIVF::train] GPU K-Means complete. Quantizer populated with 1024 centroids.
+  Iteration 11 (0.23 s, search 0.13 s): objective=553137 imbalance=1.923 nsplit=0       
+  Converged at iteration 11: objective did not change
+
+[SIVF::train] GPU K-Means complete. Quantizer populated with 1024 centroids.
+Clustering 65536 points in 128D to 1024 clusters, redo 1 times, 20 iterationst=0       
+  Preprocessing in 0.04 s
+  Iteration 11 (0.23 s, search 0.13 s): objective=553137 imbalance=1.923 nsplit=0       
+  Converged at iteration 11: objective did not change
+
+[SIVF::train] GPU K-Means complete. Quantizer populated with 1024 centroids.
+  Iteration 11 (0.22 s, search 0.12 s): objective=553137 imbalance=1.923 nsplit=0       
+  Converged at iteration 11: objective did not change
+
+[SIVF::train] GPU K-Means complete. Quantizer populated with 1024 centroids.
+[HPDIC MOD] Faiss GPU initialized on device ID: 1
+
+[HPDIC MEMORY FIX] Resizing:
+  > Slab Pool:   64548 -> 316596
+  > Data Buffer: 2000000 -> 10131072 vectors (Avoids Overflow)
+
+[SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...
+Clustering 65536 points in 128D to 1024 clusters, redo 1 times, 20 iterations
+  Preprocessing in 0.04 s
+  Iteration 11 (0.23 s, search 0.13 s): objective=553137 imbalance=1.923 nsplit=0       
+  Converged at iteration 11: objective did not change
+
+[SIVF::train] GPU K-Means complete. Quantizer populated with 1024 centroids.
+| 8    | 1000000    | 1024       | **SIVF** | 0.3535          | 26828878        | -          |
+
+[HPDIC MEMORY FIX] Resizing:
+  > Slab Pool:   66596 -> 316596
+  > Data Buffer: 2000000 -> 10131072 vectors (Avoids Overflow)
+
+[SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...
+Clustering 81920 points in 128D to 2048 clusters, redo 1 times, 20 iterations
+  Preprocessing in 0.04 s
+
+[HPDIC MEMORY FIX] Resizing:
+  > Slab Pool:   66596 -> 316596
+  > Data Buffer: 2000000 -> 10131072 vectors (Avoids Overflow)
+
+[SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...
+
+[HPDIC MEMORY FIX] Resizing:
+  > Slab Pool:   66596 -> 316596
+  > Data Buffer: 2000000 -> 10131072 vectors (Avoids Overflow)
+
+[SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...
+
+[HPDIC MEMORY FIX] Resizing:
+  > Slab Pool:   66596 -> 316596
+  > Data Buffer: 2000000 -> 10131072 vectors (Avoids Overflow)
+
+[SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...
+
+[HPDIC MEMORY FIX] Resizing:
+  > Slab Pool:   66596 -> 316596
+  > Data Buffer: 2000000 -> 10131072 vectors (Avoids Overflow)
+
+[SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...
+Clustering 81920 points in 128D to 2048 clusters, redo 1 times, 20 iterationst=173       
+  Preprocessing in 0.05 s
+Clustering 81920 points in 128D to 2048 clusters, redo 1 times, 20 iterationst=21       
+  Preprocessing in 0.05 s
+Clustering 81920 points in 128D to 2048 clusters, redo 1 times, 20 iterations
+  Preprocessing in 0.05 s
+Clustering 81920 points in 128D to 2048 clusters, redo 1 times, 20 iterations
+  Preprocessing in 0.05 s
+| "    | "          | "          | Vanilla  | 0.8478          | 11273558        | 1.0x       |
+|------|------------|------------|----------|-----------------|-----------------|------------|
+  Iteration 1 (0.08 s, search 0.03 s): objective=611339 imbalance=2.314 nsplit=21        
+[HPDIC MEMORY FIX] Resizing:
+  > Slab Pool:   66596 -> 316596
+  > Data Buffer: 2000000 -> 10131072 vectors (Avoids Overflow)
+
+[SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...
+
+[HPDIC MEMORY FIX] Resizing:
+  > Slab Pool:   66596 -> 316596
+  > Data Buffer: 2000000 -> 10131072 vectors (Avoids Overflow)
+
+  Iteration 4 (0.16 s, search 0.08 s): objective=594811 imbalance=2.248 nsplit=0       
+[HPDIC MEMORY FIX] Resizing:
+  > Slab Pool:   66596 -> 316596
+  > Data Buffer: 2000000 -> 10131072 vectors (Avoids Overflow)
+
+[SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...
+[SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...
+Clustering 81920 points in 128D to 2048 clusters, redo 1 times, 20 iterationst=1        
+  Preprocessing in 0.05 s
+Clustering 81920 points in 128D to 2048 clusters, redo 1 times, 20 iterations
+  Preprocessing in 0.05 s
+  Iteration 7 (0.25 s, search 0.13 s): objective=594647 imbalance=2.248 nsplit=0       
+  Converged at iteration 7: objective did not change
+
+[SIVF::train] GPU K-Means complete. Quantizer populated with 2048 centroids.
+Clustering 81920 points in 128D to 2048 clusters, redo 1 times, 20 iterationst=21        
+  Preprocessing in 0.13 s
+  Iteration 7 (0.24 s, search 0.12 s): objective=594647 imbalance=2.248 nsplit=0       
+  Converged at iteration 7: objective did not change
+
+[SIVF::train] GPU K-Means complete. Quantizer populated with 2048 centroids.
+  Iteration 7 (0.24 s, search 0.12 s): objective=594647 imbalance=2.248 nsplit=0       
+  Converged at iteration 7: objective did not change
+
+[SIVF::train] GPU K-Means complete. Quantizer populated with 2048 centroids.
+  Iteration 7 (0.25 s, search 0.13 s): objective=594647 imbalance=2.248 nsplit=0       
+  Converged at iteration 7: objective did not change
+
+[SIVF::train] GPU K-Means complete. Quantizer populated with 2048 centroids.
+  Iteration 7 (0.25 s, search 0.13 s): objective=594647 imbalance=2.248 nsplit=0       
+  Converged at iteration 7: objective did not change
+
+[SIVF::train] GPU K-Means complete. Quantizer populated with 2048 centroids.
+  Iteration 7 (0.24 s, search 0.12 s): objective=594647 imbalance=2.248 nsplit=0         
+  Converged at iteration 7: objective did not change
+
+[SIVF::train] GPU K-Means complete. Quantizer populated with 2048 centroids.
+  Iteration 7 (0.29 s, search 0.16 s): objective=594647 imbalance=2.248 nsplit=0       
+  Converged at iteration 7: objective did not change
+
+[SIVF::train] GPU K-Means complete. Quantizer populated with 2048 centroids.
+  Iteration 7 (0.24 s, search 0.12 s): objective=594647 imbalance=2.248 nsplit=0       
+  Converged at iteration 7: objective did not change
+
+[SIVF::train] GPU K-Means complete. Quantizer populated with 2048 centroids.
+| 8    | 1000000    | 2048       | **SIVF** | 0.2693          | 34855746        | -          |
+
+[HPDIC MEMORY FIX] Resizing:
+  > Slab Pool:   70692 -> 316596
+  > Data Buffer: 2000000 -> 10131072 vectors (Avoids Overflow)
+
+[SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...
+| "    | "          | "          | Vanilla  | 0.8208          | 10384391        | 1.0x       |
+|------|------------|------------|----------|-----------------|-----------------|------------|
+
+[HPDIC MEMORY FIX] Resizing:
+  > Slab Pool:   70692 -> 316596
+  > Data Buffer: 2000000 -> 10131072 vectors (Avoids Overflow)
+
+[SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...
+
+[HPDIC MEMORY FIX] Resizing:
+  > Slab Pool:   70692 -> 316596
+  > Data Buffer: 2000000 -> 10131072 vectors (Avoids Overflow)
+
+[SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...
+
+[HPDIC MEMORY FIX] Resizing:
+  > Slab Pool:   70692 -> 316596
+  > Data Buffer: 2000000 -> 10131072 vectors (Avoids Overflow)
+
+[SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...
+
+[HPDIC MEMORY FIX] Resizing:
+  > Slab Pool:   70692 -> 316596
+  > Data Buffer: 2000000 -> 10131072 vectors (Avoids Overflow)
+
+[SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...
+
+[HPDIC MEMORY FIX] Resizing:
+  > Slab Pool:   70692 -> 316596
+  > Data Buffer: 2000000 -> 10131072 vectors (Avoids Overflow)
+
+[SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...
+
+[HPDIC MEMORY FIX] Resizing:
+  > Slab Pool:   70692 -> 316596
+  > Data Buffer: 2000000 -> 10131072 vectors (Avoids Overflow)
+
+[SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...
+Clustering 163840 points in 128D to 4096 clusters, redo 1 times, 20 iterations
+  Preprocessing in 0.10 s
+
+[HPDIC MEMORY FIX] Resizing:
+  > Slab Pool:   70692 -> 316596
+  > Data Buffer: 2000000 -> 10131072 vectors (Avoids Overflow)
+
+[SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...
+Clustering 163840 points in 128D to 4096 clusters, redo 1 times, 20 iterations
+  Preprocessing in 0.10 s
+Clustering 163840 points in 128D to 4096 clusters, redo 1 times, 20 iterations
+  Preprocessing in 0.10 s
+Clustering 163840 points in 128D to 4096 clusters, redo 1 times, 20 iterations
+  Preprocessing in 0.11 s
+Clustering 163840 points in 128D to 4096 clusters, redo 1 times, 20 iterations
+  Preprocessing in 0.10 s
+Clustering 163840 points in 128D to 4096 clusters, redo 1 times, 20 iterations
+  Preprocessing in 0.11 s
+Clustering 163840 points in 128D to 4096 clusters, redo 1 times, 20 iterations
+  Preprocessing in 0.12 s
+Clustering 163840 points in 128D to 4096 clusters, redo 1 times, 20 iterationssplit=725       
+  Preprocessing in 0.27 s
+  Iteration 7 (0.70 s, search 0.36 s): objective=842149 imbalance=1.872 nsplit=2              
+  Converged at iteration 7: objective did not change
+
+[SIVF::train] GPU K-Means complete. Quantizer populated with 4096 centroids.
+  Iteration 7 (0.72 s, search 0.35 s): objective=842149 imbalance=1.872 nsplit=2       
+  Converged at iteration 7: objective did not change
+
+[SIVF::train] GPU K-Means complete. Quantizer populated with 4096 centroids.
+  Iteration 7 (0.72 s, search 0.36 s): objective=842149 imbalance=1.872 nsplit=2       
+  Converged at iteration 7: objective did not change
+
+[SIVF::train] GPU K-Means complete. Quantizer populated with 4096 centroids.
+  Iteration 7 (0.72 s, search 0.36 s): objective=842149 imbalance=1.872 nsplit=2       
+  Converged at iteration 7: objective did not change
+
+[SIVF::train] GPU K-Means complete. Quantizer populated with 4096 centroids.
+  Iteration 7 (0.78 s, search 0.43 s): objective=842149 imbalance=1.872 nsplit=2       
+  Converged at iteration 7: objective did not change
+
+[SIVF::train] GPU K-Means complete. Quantizer populated with 4096 centroids.
+  Iteration 7 (0.72 s, search 0.35 s): objective=842149 imbalance=1.872 nsplit=2       
+  Converged at iteration 7: objective did not change
+
+[SIVF::train] GPU K-Means complete. Quantizer populated with 4096 centroids.
+  Iteration 7 (0.74 s, search 0.37 s): objective=842149 imbalance=1.872 nsplit=2       
+  Converged at iteration 7: objective did not change
+
+[SIVF::train] GPU K-Means complete. Quantizer populated with 4096 centroids.
+  Iteration 7 (0.72 s, search 0.35 s): objective=842149 imbalance=1.872 nsplit=2       
+  Converged at iteration 7: objective did not change
+
+[SIVF::train] GPU K-Means complete. Quantizer populated with 4096 centroids.
+| 8    | 1000000    | 4096       | **SIVF** | 0.4974          | 24743944        | -          |
+| "    | "          | "          | Vanilla  | 0.9254          | 9171587         | 1.0x       |
+|------|------------|------------|----------|-----------------|-----------------|------------|
+cc@gpu0:~/hpdic/ElasticIVF$ 
