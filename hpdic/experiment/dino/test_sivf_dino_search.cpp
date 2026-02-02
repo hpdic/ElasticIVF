@@ -192,8 +192,8 @@ int main(int argc, char** argv) {
     // ==========================================
     int d = 1024;
     int k = 10; 
-    std::string base_path = "/data/dino10b/chunk_0000.bvecs";
-    std::string query_path = "/data/dino10b/queries_clean.bvecs"; 
+    std::string base_path = "/home/cc/hpdic/data/dino10b/chunk_0000.bvecs";
+    std::string query_path = "/home/cc/hpdic/data/dino10b/queries_clean.bvecs"; 
 
     int nlist = args.nlist;
     size_t nb_per_rank = args.nb_per_rank;
@@ -318,3 +318,84 @@ int main(int argc, char** argv) {
     MPI_Finalize();
     return 0;
 }
+
+/** Example output:
+ * 
+cc@p100x2:~$ cat << 'EOF' > run_gpu3.sh
+#!/bin/bash
+EXE_PATH="/home/cc/hpdic/ElasticIVF/build/test_sivf_dino_search"
+NLIST=30000
+NB=200000
+PROBES="4,8,16,32,64,128"
+
+echo "-----------------------------------------------------------------------"
+echo ">>> STARTING LOCAL TEST ON GPU3: nlist=$NLIST | nb=$NB"
+echo "-----------------------------------------------------------------------"
+
+mpirun --allow-run-as-root \
+    -np 2 \
+    --host localhost:2 \
+    -x LD_LIBRARY_PATH \
+    $EXE_PATH \
+    --nlist $NLIST \
+    --nb $NB \
+    --probes $PROBES
+EOF
+cc@p100x2:~$ chmod +x run_gpu3.sh 
+cc@p100x2:~$ ./run_gpu3.sh
+-----------------------------------------------------------------------
+>>> STARTING LOCAL TEST ON GPU3: nlist=30000 | nb=200000
+-----------------------------------------------------------------------
+[Config] nlist=30000, nb_per_rank=200000, probes=[4,8,16,32,64,128]
+[Warning] Query file not found. Using subset.
+[GT] Computing Ground Truth for 400000 vectors on GPU...
+[HPDIC MOD] Faiss GPU initialized on device ID: 0
+[GT] Done. VRAM freed.
+[HPDIC MOD] Faiss GPU initialized on device ID: 1
+
+=================================================================================
+| System   | nprobe | Latency(ms)  | QPS          | Recall@10    |
+|----------|--------|--------------|--------------|--------------|
+[HPDIC MOD] Faiss GPU initialized on device ID: 0
+
+[HPDIC MEMORY FIX] Resizing:
+  > Slab Pool:   1024 -> 50971
+  > Data Buffer: 300000 -> 1631072 vectors (Avoids Overflow)
+
+[SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...
+
+[HPDIC MEMORY FIX] Resizing:
+  > Slab Pool:   1024 -> 50971
+  > Data Buffer: 300000 -> 1631072 vectors (Avoids Overflow)
+
+[SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...
+Clustering 200000 points in 1024D to 30000 clusters, redo 1 times, 20 iterations
+  Preprocessing in 0.84 s
+WARNING clustering 200000 points to 30000 centroids: please provide at least 1170000 training points
+WARNING clustering 200000 points to 30000 centroids: please provide at least 1170000 training points
+Clustering 200000 points in 1024D to 30000 clusters, redo 1 times, 20 iterations
+  Preprocessing in 0.83 s
+  Iteration 14 (32.95 s, search 23.45 s): objective=3.13129e+10 imbalance=1.519 nsplit=0       
+  Converged at iteration 14: objective did not change
+
+[SIVF::train] GPU K-Means complete. Quantizer populated with 30000 centroids.
+  Iteration 14 (33.62 s, search 23.59 s): objective=3.13028e+10 imbalance=1.529 nsplit=0       
+  Converged at iteration 14: objective did not change
+
+[SIVF::train] GPU K-Means complete. Quantizer populated with 30000 centroids.
+| **SIVF** | 4      | 13.26        | 75423        | 0.7116       |
+| **SIVF** | 8      | 13.46        | 74274        | 0.8160       |
+| **SIVF** | 16     | 17.53        | 57057        | 0.8925       |
+| **SIVF** | 32     | 25.52        | 39190        | 0.9442       |
+| **SIVF** | 64     | 41.30        | 24211        | 0.9741       |
+| **SIVF** | 128    | 70.42        | 14200        | 0.9895       |
+WARNING clustering 200000 points to 30000 centroids: please provide at least 1170000 training points
+WARNING clustering 200000 points to 30000 centroids: please provide at least 1170000 training points
+| Vanilla  | 4      | 11.70        | 85483        | 0.7116       |
+| Vanilla  | 8      | 12.85        | 77842        | 0.8160       |
+| Vanilla  | 16     | 16.51        | 60577        | 0.8925       |
+| Vanilla  | 32     | 24.08        | 41529        | 0.9442       |
+| Vanilla  | 64     | 39.16        | 25536        | 0.9741       |
+| Vanilla  | 128    | 69.49        | 14391        | 0.9895       |
+cc@p100x2:~$ 
+ */
