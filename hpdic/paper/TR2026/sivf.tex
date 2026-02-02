@@ -560,44 +560,11 @@ Comparing this to standard dynamic arrays, which often reserve up to $2 \times N
 
 \subsection{System Implementation}
 
-We implement SIVF by extending the GPU components of the widely-adopted Faiss library~\cite{douze2024faiss}, integrating our proposed data structures and algorithms into its core indexing architecture. We have open-sourced our complete implementation and evaluation scripts on GitHub.
+We implement SIVF as a fully integrated extension to the GPU components of the widely-adopted Faiss library~\cite{douze2024faiss}. Our implementation represents a significant systems engineering effort, involving approximately 13,000 lines of code in total. The majority of this codebase (over 12,300 lines) consists of optimized C++ and CUDA system implementation (spanning the core Faiss integration, slab memory management, and a distributed MPI runtime), while the remaining 700 lines comprise Python utility scripts for experimental orchestration. We have open-sourced the complete implementation and evaluation scripts on GitHub.
 
-% \begin{table*}[t]
-%     \centering
-%     \caption{Summary of Key Source Files of SIVF Implementation in Faiss~\cite{douze2024faiss}}
-%     \label{tab:file_structure}
-%     \begin{tabular}{l|p{10.5cm}}
-%     \hline
-%     \textit{File Path} & \textit{Description} \\
-%     \hline
-%     \multicolumn{2}{c}{\textit{Core SIVF Architecture \& Memory Management}} \\
-%     \hline
-%     \texttt{faiss/gpu/GpuIndexSIVF.h} & Header definition for the SIVF index class, inheriting from \texttt{GpuIndex}. \\
-%     \texttt{faiss/gpu/GpuIndexSIVF.cu} & Manages host-device synchronization and overrides standard operations. \\
-%     \texttt{faiss/gpu/impl/SlabManager.cuh} & Defines the device-side slab structures, arena pointers, and metadata layout. \\
-%     \texttt{faiss/gpu/impl/SlabManager.cu} & Slab-based Dynamic Memory Allocator (SDMA) and memory pool management. \\
-%     \texttt{faiss/gpu/impl/SIVFStructs.cuh} & Shared data structures and metadata definitions used across host and device code. \\
-%     \hline
-%     \multicolumn{2}{c}{\textit{CUDA Kernels (Ingestion, Search, Deletion)}} \\
-%     \hline
-%     \texttt{faiss/gpu/impl/SIVFAppend.cuh} & Device function templates for the ingestion logic. \\
-%     \texttt{faiss/gpu/impl/SIVFAppend.cu} & Lock-free insertion kernel, atomic slot reservation, and slab expansion logic. \\
-%     \texttt{faiss/gpu/impl/SIVFSearch.cuh} & Warp-Level Collaborative Search (WLCS) and shared memory reduction. \\
-%     \texttt{faiss/gpu/impl/SIVFSearch.cu} & Search kernel, including distance computation and heap aggregation. \\
-%     \texttt{faiss/gpu/SIVFDeletion.cu} & Bitmap-based lazy eviction and deletion kernels. \\
-%     \hline
-%     \end{tabular}
-% \end{table*}
+The core architecture of SIVF centers on the \texttt{GpuIndexSIVF} class, a direct subclass of Faiss's \texttt{GpuIndex}. This class integrates our custom \texttt{SlabManager} to handle dynamic memory allocation on the GPU, replacing the standard static pre-allocation models. To support high-concurrency operations, we implemented specialized GPU-native kernels for insertion, deletion, and search (encapsulated in \texttt{SIVFAppend}, \texttt{SIVFDelete}, and \texttt{SIVFSearch}). These operators interact with lock-free metadata structures (e.g., \texttt{SIVFStructs}) to ensure data consistency during simultaneous read and write access.
 
-Implementing SIVF required substantial modifications to the Faiss GPU backend and associated experimental infrastructure. 
-% Table~\ref{tab:file_structure} summarizes some of the key source files added or modified in the repository based on our development history. 
-In total, the implementation involves approximately 9,000 lines of code changes across more than 45 source files. Core system changes are concentrated in the GPU index implementation, incorporating new GPU-native insertion, deletion, and search operators (e.g., \texttt{GpuIndexSIVF}, \texttt{SIVFAppend}, \texttt{SIVFSearch}, \texttt{SIVFDelete}), alongside a custom slab-based memory manager (e.g., \texttt{SlabManager}) and lock-free metadata structures (e.g., \texttt{SIVFStructs}). Furthermore, we developed a comprehensive benchmarking suite that extends beyond standard metric testing to include end-to-end streaming simulations, memory scalability analysis, and automated visualization scripts, ensuring a rigorous and reproducible evaluation.
-
-Integrating SIVF into Faiss presented unique engineering challenges, particularly in reconciling our dynamic memory model with Faiss's static resource management.
-Unlike standard Faiss indices which rely on pre-allocated flat arrays (managed via \texttt{DeviceTensor}), SIVF introduces a custom \texttt{SlabManager} that operates directly on a raw GPU memory arena.
-To maintain compatibility, we implemented \texttt{GpuIndexSIVF} as a direct subclass of \texttt{GpuIndex}, overriding the virtual \texttt{addImpl} and \texttt{searchImpl} methods. This polymorphism allows SIVF to serve as a drop-in replacement in existing Faiss pipelines.
-Of note, our implementation respects Faiss's \texttt{GpuResources} context, ensuring that all SIVF kernels (append, search, delete) are dispatched onto the user-specified CUDA streams. This design allows SIVF to support asynchronous ingest-search pipelines without blocking the default stream, a requirement for high-throughput streaming scenarios.
-Finally, we extended the SWIG interface files to expose the new \texttt{SIVF} class and its configuration parameters (e.g., slab size, relaxation factor) to the Python layer, enabling seamless interaction with PyTorch and NumPy workflows.
+Integrating these dynamic components into the static resource management of Faiss presented unique challenges. Unlike standard Faiss indices which rely on flat arrays managed via \texttt{DeviceTensor}, SIVF operates directly on a raw GPU VRAM. We reconcile this by overriding the virtual \texttt{addImpl} and \texttt{searchImpl} methods, allowing SIVF to serve as a drop-in replacement in existing pipelines. Furthermore, our design strictly adheres to the \texttt{GpuResources} context provided by Faiss. All SIVF kernels are dispatched onto user-specified CUDA streams, enabling asynchronous ingest-search pipelines without blocking the default stream. Finally, we extended the SWIG interface files to expose the new \texttt{SIVF} class and its configuration parameters to the Python layer, ensuring seamless interoperability with PyTorch and NumPy workflows.
 
 \section{Evaluation}
 \label{sec:evaluation}
@@ -899,7 +866,7 @@ Figure~\ref{fig:eval_memory} illustrates the memory growth trends for both SIFT1
 
 We verified the efficacy of our memory reclamation strategy. In a stress test (not shown in the figure) involving the deletion of 50\% of the dataset followed by immediate re-insertion, SIVF maintained a constant memory footprint without triggering OS-level deallocation. The deletion operation completed in sub-millisecond time per batch (e.g., 4.04~ms for 100K GIST vectors), confirming that memory slots are logically reclaimed via bitmap toggling and immediately available for reuse. This zero-cost reclamation ensures that SIVF can sustain long-running streaming workloads without suffering from memory leaks or fragmentation-induced bloat.
 
-\subsection{More Indexes for Streaming Vectors}
+\subsection{Popular Indexes for Streaming Vectors}
 \label{sec:eval_non_ivf}
 
 To position SIVF within the broader indexing landscape, we benchmarked it against five representative non-IVF architectures: GPU CAGRA~\cite{10597683} (graphs), Faiss GPU Flat (brute-force baseline, i.e., no index), HNSW~\cite{malkov2018efficient} (dynamic graphs), (3) LSH~\cite{10.1145/997817.997857} (legacy hash-based approaches), and (4) NSG~\cite{10.14778/3303753.3303754} (static graphs). Table~\ref{tab:landscape_full} summarizes ingestion throughput and deletion latency across three datasets: SIFT1M, T2I-1B, and GIST1M.
@@ -912,7 +879,7 @@ To position SIVF within the broader indexing landscape, we benchmarked it agains
 \begin{tabular}{l|rr|rr|rr}
 \toprule
 \multirow{2}{*}{\textbf{Method}} & \multicolumn{2}{c|}{\textbf{SIFT1M}} & \multicolumn{2}{c|}{\textbf{T2I-1B}} & \multicolumn{2}{c}{\textbf{GIST1M}} \\
- & Add & Del & Add & Del & Add & Del \\
+ & Add & Delete & Add & Delete & Add & Delete \\
 \midrule
 GPU Flat~\cite{douze2024faiss} & 9,308 & 833 & 5,957 & 1,163 & 1,907 & 1,040 \\
 GPU CAGRA~\cite{10597683} & 305 & 3,030 & 259 & 3,773 & 97.1 & 10,215 \\
