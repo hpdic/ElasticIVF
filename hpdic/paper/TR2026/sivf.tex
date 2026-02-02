@@ -866,7 +866,7 @@ Figure~\ref{fig:eval_memory} illustrates the memory growth trends for both SIFT1
 
 We verified the efficacy of our memory reclamation strategy. In a stress test (not shown in the figure) involving the deletion of 50\% of the dataset followed by immediate re-insertion, SIVF maintained a constant memory footprint without triggering OS-level deallocation. The deletion operation completed in sub-millisecond time per batch (e.g., 4.04~ms for 100K GIST vectors), confirming that memory slots are logically reclaimed via bitmap toggling and immediately available for reuse. This zero-cost reclamation ensures that SIVF can sustain long-running streaming workloads without suffering from memory leaks or fragmentation-induced bloat.
 
-\subsection{Popular Indexes for Streaming Vectors}
+\subsection{Mainstream Indexes for Streaming Vectors}
 \label{sec:eval_non_ivf}
 
 To position SIVF within the broader indexing landscape, we benchmarked it against five representative non-IVF architectures: GPU CAGRA~\cite{10597683} (graphs), Faiss GPU Flat (brute-force baseline, i.e., no index), HNSW~\cite{malkov2018efficient} (dynamic graphs), (3) LSH~\cite{10.1145/997817.997857} (legacy hash-based approaches), and (4) NSG~\cite{10.14778/3303753.3303754} (static graphs). Table~\ref{tab:landscape_full} summarizes ingestion throughput and deletion latency across three datasets: SIFT1M, T2I-1B, and GIST1M.
@@ -902,27 +902,27 @@ In contrast, SIVF emerges as the only architecture enabling holistic stream proc
 \label{sec:eval_multigpu}
 
 We evaluated the scalability performance of SIVF on the Chameleon TACC site~\cite{keahey2020lessons}. 
-Each node is equipped with dual-socket Intel Xeon E5-2660 v4 CPUs running at 2.00 GHz and 128 GB of RAM. 
-The compute power is provided by NVIDIA Tesla P100 SXM2 GPUs, which are interconnected via high-bandwidth NVLink within each node, while cross-node communication is handled by a high-speed RDMA-enabled network interface. 
-Specifically, the experimental environment leverages a total of 10 GPUs distributed across three physical nodes (4 GPUs each on \texttt{c11-01} and \texttt{c11-04}, and 2 GPUs on \texttt{c11-03}).
+Each node is equipped with dual-socket Intel Xeon E5 CPUs running at 2.00 GHz and 128 GB of RAM. 
+The compute power is provided by NVIDIA Tesla P100 GPUs, which are interconnected via high-bandwidth NVLink within each node, while cross-node communication is handled by a high-speed RDMA-enabled network interface. 
+The experimental environment leverages a total of 12 GPUs distributed across 4 physical nodes (4 GPUs each on \texttt{c11-01} and \texttt{c11-04}, and 2 GPUs each on \texttt{c11-03} and \texttt{c11-22}).
 We employ a sharding strategy where the dataset is partitioned across devices with queries broadcasted via MPI.
 
 \begin{figure}[t]
   \centering
   \includegraphics[width=\linewidth]{figures/scalability.pdf}
-  \caption{Scalability of SIVF core operations across a three node cluster with up to 10 GPUs.}
-  \Description{Three line graphs showing the scalability of SIVF core operations (ingestion, search, deletion) across a three node cluster with up to 10 GPUs.}
+  \caption{Scalability of SIVF core operations across a four node cluster with up to 12 GPUs.}
+  \Description{Three line graphs showing the scalability of SIVF core operations (ingestion, search, deletion) across a four node cluster with up to 12 GPUs.}
   \label{fig:scalability}
 \end{figure}
 
-Figure~\ref{fig:scalability} reports the near linear throughput growth of 128-dimensional syhtetic vectors for all operations as the resources increase. 
-Ingestion throughput reaches 37.6 million QPS on 10 GPUs, maintaining a steady growth curve despite the overhead of distributed synchronization. 
-Search performance exhibits remarkable efficiency reaching 26.3 thousand QPS on 10 GPUs, which represents approximately 99.8\% of the ideal linear scaling relative to the single card baseline. 
-Deletion throughput scales to 77.7 million QPS, benefiting from the lightweight bitmap based lazy update mechanism that minimizes inter card communication.
-Notably, certain configurations exhibit super-linear scaling, particularly in deletion operations where efficiency exceeds 100\%. 
+Figure~\ref{fig:scalability} reports the near linear throughput growth of 128-dimensional synthetic vectors for all operations as the resources increase. 
+Ingestion throughput peaks at 45.5 million vectors/s on 12 GPUs, maintaining a steady growth curve despite the overhead of distributed synchronization. 
+Search performance exhibits remarkable efficiency reaching 30.1 thousand QPS on 12 GPUs, which represents approximately 95\% of the ideal linear scaling relative to the single card baseline. 
+Deletion throughput scales to 103.2 million QPS, benefiting from the lightweight bitmap based lazy update mechanism that minimizes inter card communication.
+Notably, certain configurations exhibit super-linear scaling, particularly in deletion operations where efficiency exceeds 100\% (actual throughput of 103.2 million QPS versus a projected linear ideal of 92.1 million QPS). 
 This phenomenon is primarily attributed to the compute-bound nature of vector indexing and analytics. 
 Since the primary bottleneck resides in GPU streaming multiprocessor utilization rather than interconnect bandwidth, expanding the cluster increases the aggregate GPU cache capacity and memory bandwidth available to the workload. 
-In deletion scenarios, the super-linear effect stems from the reduced per-card metadata management overhead as the 10K vector workload is distributed across more physical devices, leading to improved cache hit rates and lower contention during bitmap synchronization. 
+In deletion scenarios, the super-linear effect stems from the reduced per-card metadata management overhead as the workload is distributed across more physical devices, leading to improved cache hit rates and lower contention during bitmap synchronization.
 
 \begin{figure}[t]
   \centering

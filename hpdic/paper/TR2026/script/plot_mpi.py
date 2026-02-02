@@ -2,20 +2,20 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os
 
-# GPU counts: 1, 2, 3, 4, 6, 8, 10
-gpus = np.array([1, 2, 3, 4, 6, 8, 10])
+# GPU counts: 1, 2, 3, 4, 6, 8, 10, 12
+gpus = np.array([1, 2, 3, 4, 6, 8, 10, 12])
 
 # Ingestion Total QPS (Millions)
-# Aggregated from n1g1, n1g2/n2g2, n3g3, n1g4/n2g4, n3g6, n2g8, n3g10
-insert_qps = np.array([2.81, 5.65, 8.72, 13.61, 24.93, 31.56, 37.63])
+# Updated with 12-GPU result: 45.46 M (based on nlist=2048 run)
+insert_qps = np.array([2.81, 5.65, 8.72, 13.61, 24.93, 31.56, 37.63, 45.46])
 
 # Search Total QPS (Thousands)
-# Aggregated from n1g1, n1g2/n2g2, n3g3, n1g4/n2g4, n3g6, n2g8, n3g10
-search_qps = np.array([2.64, 5.27, 7.92, 10.53, 15.79, 21.05, 26.35])
+# Updated with 12-GPU result: 30.03 K
+search_qps = np.array([2.64, 5.27, 7.92, 10.53, 15.79, 21.05, 26.35, 30.05])
 
 # Deletion Total QPS (Millions)
-# Aggregated from n1g1, n1g2/n2g2, n3g3, n1g4/n2g4, n3g6, n2g8, n3g10
-delete_qps = np.array([7.68, 16.55, 23.04, 31.87, 51.54, 64.51, 77.73])
+# Updated with 12-GPU result: 103.17 M
+delete_qps = np.array([7.68, 16.55, 23.04, 31.87, 51.54, 64.51, 77.73, 103.17])
 
 # Visualization configuration for single-column papers
 plt.rcParams.update({
@@ -52,7 +52,7 @@ axes[2].set_ylabel('M QPS')
 
 for ax in axes:
     ax.set_xlabel('Total GPUs')
-    ax.set_xticks(gpus)
+    ax.set_xticks(gpus) # Ensure all GPU counts are shown on axis
     ax.grid(True, linestyle=':', alpha=0.5)
 
 # Add legend to the last plot only to save space
@@ -61,7 +61,7 @@ axes[2].legend(loc='lower right', frameon=True)
 plt.tight_layout()
 
 # Save to the specific project directory
-output_dir = os.path.expanduser('~/ElasticIVF/hpdic/paper/TR2026/figures/')
+output_dir = os.path.expanduser('~/hpdic/ElasticIVF/hpdic/paper/TR2026/figures/')
 if not os.path.exists(output_dir):
     os.makedirs(output_dir)
 

@@ -1,46 +1,49 @@
-cc@gpu0:~/hpdic/ElasticIVF$ mpirun --allow-run-as-root \
-    -np 12 \
-    --host gpu0:4,gpu1:4,gpu2:2,gpu3:2 \
-    -x LD_LIBRARY_PATH \
-    ~/hpdic/ElasticIVF/build/faiss/gpu/test_sivf_mpi_search 
+cc@gpu0:~/hpdic/ElasticIVF$ mpirun --allow-run-as-root     -np 12     --host gpu0:4,gpu1:4,gpu2:2,gpu3:2     -x LD_LIBRARY_PATH     ~/hpdic/ElasticIVF/build/faiss/gpu/test_sivf_mpi_search 
 
 ==========================================================
 [MPI Search Scaling] Ranks: 12 | GPUs: 4
 [Setup] Index: 1000000 vec/GPU | Query: 10000 vec (Broadcast)
-[HPDIC MOD] Faiss GPU initialized on device ID: 0
 [HPDIC MOD] Faiss GPU initialized on device ID: 1
-
-[HPDIC MEMORY FIX] Resizing:
-  > Slab Pool:   70692 -> 316596
-  > Data Buffer: 2000000 -> 10131072 vectors (Avoids Overflow)
-
-[SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...
-Clustering 65536 points in 128D to 4096 clusters, redo 1 times, 20 iterations
-  Preprocessing in 0.03 s
-WARNING clustering 65536 points to 4096 centroids: please provide at least 159744 training points
-
-[HPDIC MEMORY FIX] Resizing:
-  > Slab Pool:   70692 -> 316596
-  > Data Buffer: 2000000 -> 10131072 vectors (Avoids Overflow)
-
-[SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...
-WARNING clustering 65536 points to 4096 centroids: please provide at least 159744 training points
-Clustering 65536 points in 128D to 4096 clusters, redo 1 times, 20 iterations
-  Preprocessing in 0.03 s
-[HPDIC MOD] Faiss GPU initialized on device ID: 1613558 imbalance=2.701 nsplit=642       
 [HPDIC MOD] Faiss GPU initialized on device ID: 0
-  Iteration 5 (0.34 s, search 0.14 s): objective=335844 imbalance=1.847 nsplit=1         
-[HPDIC MEMORY FIX] Resizing:
-  > Slab Pool:   70692 -> 316596
-  > Data Buffer: 2000000 -> 10131072 vectors (Avoids Overflow)
-
 
 [HPDIC MEMORY FIX] Resizing:
   > Slab Pool:   70692 -> 316596
   > Data Buffer: 2000000 -> 10131072 vectors (Avoids Overflow)
 
-[SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...lit=6       
 [SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...
+Clustering 65536 points in 128D to 4096 clusters, redo 1 times, 20 iterations
+  Preprocessing in 0.03 s
+WARNING clustering 65536 points to 4096 centroids: please provide at least 159744 training points
+
+[HPDIC MEMORY FIX] Resizing:
+  > Slab Pool:   70692 -> 316596
+  > Data Buffer: 2000000 -> 10131072 vectors (Avoids Overflow)
+
+[SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...
+WARNING clustering 65536 points to 4096 centroids: please provide at least 159744 training points
+Clustering 65536 points in 128D to 4096 clusters, redo 1 times, 20 iterations
+  Preprocessing in 0.03 s
+[HPDIC MOD] Faiss GPU initialized on device ID: 0338372 imbalance=1.852 nsplit=13        
+[HPDIC MOD] Faiss GPU initialized on device ID: 1336291 imbalance=1.849 nsplit=6       
+  Iteration 7 (0.38 s, search 0.16 s): objective=335568 imbalance=1.847 nsplit=1         
+  Converged at iteration 7: objective did not change
+
+[SIVF::train] GPU K-Means complete. Quantizer populated with 4096 centroids.
+  Iteration 5 (0.34 s, search 0.14 s): objective=335844 imbalance=1.847 nsplit=1        
+[HPDIC MEMORY FIX] Resizing:
+  > Slab Pool:   70692 -> 316596
+  > Data Buffer: 2000000 -> 10131072 vectors (Avoids Overflow)
+
+[SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...
+
+[HPDIC MEMORY FIX] Resizing:
+  > Slab Pool:   70692 -> 316596
+  > Data Buffer: 2000000 -> 10131072 vectors (Avoids Overflow)
+
+[SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...lit=1       
+WARNING clustering 65536 points to 4096 centroids: please provide at least 159744 training points
+Clustering 65536 points in 128D to 4096 clusters, redo 1 times, 20 iterations
+  Preprocessing in 0.04 s
   Iteration 7 (0.40 s, search 0.18 s): objective=335568 imbalance=1.847 nsplit=1       
   Converged at iteration 7: objective did not change
 
@@ -48,129 +51,118 @@ Clustering 65536 points in 128D to 4096 clusters, redo 1 times, 20 iterations
 WARNING clustering 65536 points to 4096 centroids: please provide at least 159744 training points
 Clustering 65536 points in 128D to 4096 clusters, redo 1 times, 20 iterations
   Preprocessing in 0.04 s
-Clustering 65536 points in 128D to 4096 clusters, redo 1 times, 20 iterations
-  Preprocessing in 0.04 s
-WARNING clustering 65536 points to 4096 centroids: please provide at least 159744 training points
-  Iteration 7 (0.38 s, search 0.16 s): objective=335568 imbalance=1.847 nsplit=1       
-  Converged at iteration 7: objective did not change
-
-[SIVF::train] GPU K-Means complete. Quantizer populated with 4096 centroids.
-[HPDIC MOD] Faiss GPU initialized on device ID: 2613558 imbalance=2.701 nsplit=642       
-[HPDIC MOD] Faiss GPU initialized on device ID: 0
-[HPDIC MOD] Faiss GPU initialized on device ID: 1
+[HPDIC MOD] Faiss GPU initialized on device ID: 1613558 imbalance=2.701 nsplit=642       
 [HPDIC MOD] Faiss GPU initialized on device ID: 3372343 imbalance=2.016 nsplit=172       
-  Iteration 5 (0.34 s, search 0.12 s): objective=335844 imbalance=1.847 nsplit=1         
+[HPDIC MOD] Faiss GPU initialized on device ID: 0336291 imbalance=1.849 nsplit=6        
+[HPDIC MOD] Faiss GPU initialized on device ID: 2335844 imbalance=1.847 nsplit=1       
+  Iteration 5 (0.35 s, search 0.12 s): objective=335844 imbalance=1.847 nsplit=1       
 [HPDIC MEMORY FIX] Resizing:
   > Slab Pool:   70692 -> 316596
   > Data Buffer: 2000000 -> 10131072 vectors (Avoids Overflow)
 
-
-[HPDIC MEMORY FIX] Resizing:
-  > Slab Pool:   70692 -> 316596
-  > Data Buffer: 2000000 -> 10131072 vectors (Avoids Overflow)
-
-[SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...
-[SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...
-  Iteration 6 (0.39 s, search 0.15 s): objective=335568 imbalance=1.847 nsplit=1       
-[HPDIC MEMORY FIX] Resizing:
-  > Slab Pool:   70692 -> 316596
-  > Data Buffer: 2000000 -> 10131072 vectors (Avoids Overflow)
-
-
-[HPDIC MEMORY FIX] Resizing:
-  > Slab Pool:   70692 -> 316596
-  > Data Buffer: 2000000 -> 10131072 vectors (Avoids Overflow)
-
-WARNING clustering 65536 points to 4096 centroids: please provide at least 159744 training points
-Clustering 65536 points in 128D to 4096 clusters, redo 1 times, 20 iterations
-  Preprocessing in 0.04 s
-Clustering 65536 points in 128D to 4096 clusters, redo 1 times, 20 iterations
-  Preprocessing in 0.04 s
-WARNING clustering 65536 points to 4096 centroids: please provide at least 159744 training points
-  Iteration 7 (0.40 s, search 0.16 s): objective=335568 imbalance=1.847 nsplit=1       
-  Converged at iteration 7: objective did not change
-
-[SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...
-[SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...
-[SIVF::train] GPU K-Means complete. Quantizer populated with 4096 centroids.
-  Iteration 7 (0.42 s, search 0.16 s): objective=335568 imbalance=1.847 nsplit=1       
+[SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...lit=1       
+  Iteration 7 (0.41 s, search 0.15 s): objective=335568 imbalance=1.847 nsplit=1       
   Converged at iteration 7: objective did not change
 
 [SIVF::train] GPU K-Means complete. Quantizer populated with 4096 centroids.
+
+[HPDIC MEMORY FIX] Resizing:
+  > Slab Pool:   70692 -> 316596
+  > Data Buffer: 2000000 -> 10131072 vectors (Avoids Overflow)
+
 WARNING clustering 65536 points to 4096 centroids: please provide at least 159744 training points
 Clustering 65536 points in 128D to 4096 clusters, redo 1 times, 20 iterations
   Preprocessing in 0.04 s
-Clustering 65536 points in 128D to 4096 clusters, redo 1 times, 20 iterations
+  Iteration 7 (0.41 s, search 0.15 s): objective=335568 imbalance=1.847 nsplit=1       
+  Converged at iteration 7: objective did not change
+
+[SIVF::train] GPU K-Means complete. Quantizer populated with 4096 centroids.
+[SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...
 WARNING clustering 65536 points to 4096 centroids: please provide at least 159744 training points
-  Preprocessing in 0.04 s
+Clustering 65536 points in 128D to 4096 clusters, redo 1 times, 20 iterations
+  Preprocessing in 0.05 s
+[HPDIC MOD] Faiss GPU initialized on device ID: 2
+
+[HPDIC MEMORY FIX] Resizing:
+  > Slab Pool:   70692 -> 316596
+  > Data Buffer: 2000000 -> 10131072 vectors (Avoids Overflow)
+
+
+[HPDIC MEMORY FIX] Resizing:
+  > Slab Pool:   70692 -> 316596
+  > Data Buffer: 2000000 -> 10131072 vectors (Avoids Overflow)
+
+[SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...
+[SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...
 
 | GPUs | NB/GPU     | nprobe     | SIVF QPS        | Vanilla QPS     | Speedup    |
 |------|------------|------------|-----------------|-----------------|------------|
 [HPDIC MOD] Faiss GPU initialized on device ID: 0
-[HPDIC MOD] Faiss GPU initialized on device ID: 2
+[HPDIC MOD] Faiss GPU initialized on device ID: 3
+WARNING clustering 65536 points to 4096 centroids: please provide at least 159744 training points
+Clustering 65536 points in 128D to 4096 clusters, redo 1 times, 20 iterations
+  Preprocessing in 0.04 s
+Clustering 65536 points in 128D to 4096 clusters, redo 1 times, 20 iterations
+WARNING clustering 65536 points to 4096 centroids: please provide at least 159744 training points
+  Preprocessing in 0.04 s
 [HPDIC MOD] Faiss GPU initialized on device ID: 1
-[HPDIC MOD] Faiss GPU initialized on device ID: 3613558 imbalance=2.701 nsplit=642       
-  Iteration 1 (0.24 s, search 0.05 s): objective=372343 imbalance=2.016 nsplit=172       
-[HPDIC MEMORY FIX] Resizing:
-  > Slab Pool:   70692 -> 316596
-  > Data Buffer: 2000000 -> 10131072 vectors (Avoids Overflow)
-
-  Iteration 1 (0.24 s, search 0.05 s): objective=372343 imbalance=2.016 nsplit=172       
+  Iteration 2 (0.27 s, search 0.06 s): objective=345433 imbalance=1.915 nsplit=48        
 [HPDIC MEMORY FIX] Resizing:
   > Slab Pool:   70692 -> 316596
   > Data Buffer: 2000000 -> 10131072 vectors (Avoids Overflow)
 
 [SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...lit=172       
-[SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...
-WARNING clustering 65536 points to 4096 centroids: please provide at least 159744 training points
-Clustering 65536 points in 128D to 4096 clusters, redo 1 times, 20 iterations
-  Preprocessing in 0.04 s
-Clustering 65536 points in 128D to 4096 clusters, redo 1 times, 20 iterations
-  Preprocessing in 0.04 s
-WARNING clustering 65536 points to 4096 centroids: please provide at least 159744 training points
-
-[HPDIC MEMORY FIX] Resizing:
-  > Slab Pool:   70692 -> 316596
-  > Data Buffer: 2000000 -> 10131072 vectors (Avoids Overflow)
-
-[SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...lit=48       
-  Iteration 4 (0.37 s, search 0.11 s): objective=336291 imbalance=1.849 nsplit=6       
+  Iteration 3 (0.31 s, search 0.08 s): objective=338372 imbalance=1.852 nsplit=13       
 [HPDIC MEMORY FIX] Resizing:
   > Slab Pool:   70692 -> 316596
   > Data Buffer: 2000000 -> 10131072 vectors (Avoids Overflow)
 
 [SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...
+WARNING clustering 65536 points to 4096 centroids: please provide at least 159744 training points
+Clustering 65536 points in 128D to 4096 clusters, redo 1 times, 20 iterations
+  Preprocessing in 0.04 s
+  Iteration 4 (0.34 s, search 0.10 s): objective=336291 imbalance=1.849 nsplit=6        
+[HPDIC MEMORY FIX] Resizing:
+  > Slab Pool:   70692 -> 316596
+  > Data Buffer: 2000000 -> 10131072 vectors (Avoids Overflow)
+
+[SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...
+WARNING clustering 65536 points to 4096 centroids: please provide at least 159744 training points
+Clustering 65536 points in 128D to 4096 clusters, redo 1 times, 20 iterations
+  Preprocessing in 0.04 s
+
+[HPDIC MEMORY FIX] Resizing:
+  > Slab Pool:   70692 -> 316596
+  > Data Buffer: 2000000 -> 10131072 vectors (Avoids Overflow)
+
+[SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...lit=1       
 WARNING clustering 65536 points to 4096 centroids: please provide at least 159744 training points
 Clustering 65536 points in 128D to 4096 clusters, redo 1 times, 20 iterations
   Preprocessing in 0.04 s
 Clustering 65536 points in 128D to 4096 clusters, redo 1 times, 20 iterationst=1       
+WARNING clustering 65536 points to 4096 centroids: please provide at least 159744 training points
   Preprocessing in 0.04 s
-WARNING clustering 65536 points to 4096 centroids: please provide at least 159744 training points
-  Iteration 7 (0.49 s, search 0.17 s): objective=335568 imbalance=1.847 nsplit=1       
+  Iteration 7 (0.45 s, search 0.16 s): objective=335568 imbalance=1.847 nsplit=1        
   Converged at iteration 7: objective did not change
 
-[SIVF::train] GPU K-Means complete. Quantizer populated with 4096 centroids.it=1       
-  Iteration 7 (0.49 s, search 0.17 s): objective=335568 imbalance=1.847 nsplit=1       
-  Converged at iteration 7: objective did not change
-
-[SIVF::train] GPU K-Means complete. Quantizer populated with 4096 centroids.
-  Iteration 7 (0.50 s, search 0.18 s): objective=335568 imbalance=1.847 nsplit=1         
+[SIVF::train] GPU K-Means complete. Quantizer populated with 4096 centroids.it=48       
+  Iteration 7 (0.48 s, search 0.18 s): objective=335568 imbalance=1.847 nsplit=1         
   Converged at iteration 7: objective did not change
 
 [SIVF::train] GPU K-Means complete. Quantizer populated with 4096 centroids.
-  Iteration 7 (0.52 s, search 0.19 s): objective=335568 imbalance=1.847 nsplit=1         
-  Converged at iteration 7: objective did not change
-
-[SIVF::train] GPU K-Means complete. Quantizer populated with 4096 centroids.it=172       
-  Iteration 7 (0.51 s, search 0.17 s): objective=335568 imbalance=1.847 nsplit=1         
-  Converged at iteration 7: objective did not change
-
-[SIVF::train] GPU K-Means complete. Quantizer populated with 4096 centroids.it=1       
-  Iteration 7 (0.52 s, search 0.18 s): objective=335568 imbalance=1.847 nsplit=1       
+  Iteration 7 (0.49 s, search 0.18 s): objective=335568 imbalance=1.847 nsplit=1         
   Converged at iteration 7: objective did not change
 
 [SIVF::train] GPU K-Means complete. Quantizer populated with 4096 centroids.
-  Iteration 7 (0.50 s, search 0.18 s): objective=335568 imbalance=1.847 nsplit=1       
+  Iteration 7 (0.49 s, search 0.17 s): objective=335568 imbalance=1.847 nsplit=1         
+  Converged at iteration 7: objective did not change
+
+[SIVF::train] GPU K-Means complete. Quantizer populated with 4096 centroids.
+  Iteration 7 (0.48 s, search 0.17 s): objective=335568 imbalance=1.847 nsplit=1        
+  Converged at iteration 7: objective did not change
+
+[SIVF::train] GPU K-Means complete. Quantizer populated with 4096 centroids.
+  Iteration 7 (0.52 s, search 0.17 s): objective=335568 imbalance=1.847 nsplit=1       
   Converged at iteration 7: objective did not change
 
 [SIVF::train] GPU K-Means complete. Quantizer populated with 4096 centroids.
@@ -178,6 +170,10 @@ WARNING clustering 65536 points to 4096 centroids: please provide at least 15974
   Converged at iteration 7: objective did not change
 
 [SIVF::train] GPU K-Means complete. Quantizer populated with 4096 centroids.
+  Iteration 7 (0.50 s, search 0.18 s): objective=335568 imbalance=1.847 nsplit=1       
+  Converged at iteration 7: objective did not change
+
+[SIVF::train] GPU K-Means complete. Quantizer populated with 4096 centroids.
 WARNING clustering 65536 points to 4096 centroids: please provide at least 159744 training points
 WARNING clustering 65536 points to 4096 centroids: please provide at least 159744 training points
 WARNING clustering 65536 points to 4096 centroids: please provide at least 159744 training points
@@ -190,5 +186,5 @@ WARNING clustering 65536 points to 4096 centroids: please provide at least 15974
 WARNING clustering 65536 points to 4096 centroids: please provide at least 159744 training points
 WARNING clustering 65536 points to 4096 centroids: please provide at least 159744 training points
 WARNING clustering 65536 points to 4096 centroids: please provide at least 159744 training points
-| 12   | 1000000    | 32         | 30029           | 86458           | 0.35      x |
+| 12   | 1000000    | 32         | 30053           | 86506           | 0.35      x |
 cc@gpu0:~/hpdic/ElasticIVF$ 
