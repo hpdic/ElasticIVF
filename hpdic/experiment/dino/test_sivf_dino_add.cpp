@@ -88,7 +88,7 @@ int main(int argc, char** argv) {
     int d = 1024;
     // Please verify this path exists on gpu0!
     // NO TILDE (~), use Absolute Path
-    std::string file_path = "/data/dino10b/chunk_0000.bvecs"; 
+    std::string file_path = "/home/cc/hpdic/data/dino10b/chunk_0000.bvecs"; 
     
     std::vector<int> nlist_list = {4096};
     size_t nb_per_rank = 100000; // 100k vectors per GPU (Total 1M vectors for 10 GPUs)
@@ -357,6 +357,56 @@ WARNING clustering 65536 points to 4096 centroids: please provide at least 15974
 WARNING clustering 65536 points to 4096 centroids: please provide at least 159744 training points
 WARNING clustering 65536 points to 4096 centroids: please provide at least 159744 training points
 | "    | "          | "          | Vanilla  | 0.7143          | 1496738         | 1.0x       |
+|------|------------|------------|----------|-----------------|-----------------|------------|
+cc@gpu0:~/hpdic/ElasticIVF/build$ 
+
+
+
+
+
+
+
+cc@gpu0:~/hpdic/ElasticIVF/build$ mpirun --allow-run-as-root \
+    -np 2 \
+    --host gpu3:2 \
+    -x LD_LIBRARY_PATH \
+    ~/hpdic/ElasticIVF/build/test_sivf_dino_add 
+[IO] Rank 0 reading 200000 vectors (196.075 MB) from disk...
+[IO] Read complete. Preparing to Scatter...
+[MPI] Data distributed. Starting Benchmarks...
+
+| GPUs | NB/GPU     | nlist      | System   | Avg Latency(s)  | Total QPS       | Speedup    |
+|------|------------|------------|----------|-----------------|-----------------|------------|
+[HPDIC MOD] Faiss GPU initialized on device ID: 0
+[HPDIC MOD] Faiss GPU initialized on device ID: 1
+
+[HPDIC MEMORY FIX] Resizing:
+  > Slab Pool:   1024 -> 27536
+  > Data Buffer: 150000 -> 881152 vectors (Avoids Overflow)
+
+[SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...
+
+[HPDIC MEMORY FIX] Resizing:
+  > Slab Pool:   1024 -> 27536
+  > Data Buffer: 150000 -> 881152 vectors (Avoids Overflow)
+
+[SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...
+WARNING clustering 65536 points to 4096 centroids: please provide at least 159744 training points
+Clustering 65536 points in 1024D to 4096 clusters, redo 1 times, 20 iterations
+  Preprocessing in 0.27 s
+Clustering 65536 points in 1024D to 4096 clusters, redo 1 times, 20 iterations
+  Preprocessing in 0.28 s
+WARNING clustering 65536 points to 4096 centroids: please provide at least 159744 training points
+  Iteration 19 (6.02 s, search 2.43 s): objective=1.3399e+10 imbalance=1.377 nsplit=0        
+[SIVF::train] GPU K-Means complete. Quantizer populated with 4096 centroids.
+  Iteration 19 (6.13 s, search 2.51 s): objective=1.33687e+10 imbalance=1.380 nsplit=0       
+  Converged at iteration 19: objective did not change
+
+[SIVF::train] GPU K-Means complete. Quantizer populated with 4096 centroids.
+| 2    | 100000     | 4096       | **SIVF** | 0.3923          | 666296          | -          |
+WARNING clustering 65536 points to 4096 centroids: please provide at least 159744 training points
+WARNING clustering 65536 points to 4096 centroids: please provide at least 159744 training points
+| "    | "          | "          | Vanilla  | 0.7174          | 317064          | 1.0x       |
 |------|------------|------------|----------|-----------------|-----------------|------------|
 cc@gpu0:~/hpdic/ElasticIVF/build$ 
  */
