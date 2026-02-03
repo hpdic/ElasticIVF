@@ -913,26 +913,26 @@ We employ a sharding strategy where the dataset is partitioned across devices wi
 
 \begin{figure}[t]
   \centering
-  \includegraphics[width=\linewidth]{figures/scalability.pdf}
-  \caption{Scalability of SIVF core operations across a four node cluster with up to 12 GPUs.}
-  \Description{Three line graphs showing the scalability of SIVF core operations (ingestion, search, deletion) across a four node cluster with up to 12 GPUs.}
-  \label{fig:scalability}
-\end{figure}
-
-Figure~\ref{fig:scalability} demonstrates near-linear scalability for 128-dimensional vectors. On 12 GPUs, ingestion peaks at 45.5 million vectors/s, and search reaches 30.1k QPS (95\% efficiency relative to the single-GPU baseline). Notably, deletion exhibits super-linear scaling, achieving 103.2 million QPS. This efficiency boost stems from the compute-bound nature of the workload: expanding the cluster increases aggregate GPU cache capacity and reduces per-device contention for bitmap synchronization, thereby outperforming linear projections.
-
-\begin{figure}[t]
-  \centering
   \includegraphics[width=\linewidth]{figures/mpi_dino.pdf}
   \caption{Distributed performance on the 12-GPU cluster (DINO10B dataset).}
   \Description{Two side-by-side charts on DINO 1024d. Left: Bar chart showing 2.69x ingestion speedup and 1150x deletion speedup (log scale). Right: Pareto frontier showing SIVF maintains high search efficiency (approx. 160K QPS) across 12 GPUs.}
   \label{fig:dino_perf_12gpu}
 \end{figure}
 
-We also evaluate SIVF's performance against the primary baseline (Faiss IVFFlat) using the high-dimensional DINO10B dataset (1024 dimensions) distributed on the 12-GPU cluster.
+We evaluate SIVF's performance against the primary baseline (Faiss IVFFlat) using the high-dimensional DINO10B dataset (1024 dimensions) distributed on the 12-GPU cluster.
 Figure~\ref{fig:dino_perf_12gpu}(a) highlights SIVF's efficiency in handling data updates. For ingestion, SIVF achieves a 2.69$\times$ speedup over the baseline (4.07M QPS vs. 1.51M QPS).
 The most significant performance gap is observed in deletion operations. SIVF achieves a 1150$\times$ speedup, processing over 108M deletions per second compared to the baseline's 94K. 
 Figure~\ref{fig:dino_perf_12gpu}(b) plots the Pareto frontier of Recall@10 versus QPS. SIVF exhibits zero recall loss and retains over 95\% of the baseline's QPS.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\linewidth]{figures/scalability.pdf}
+  \caption{Scalability across a 4-node cluster of 12 GPUs.}
+  \Description{Three line graphs showing the scalability of SIVF core operations (ingestion, search, deletion) across a four node cluster with up to 12 GPUs.}
+  \label{fig:scalability}
+\end{figure}
+
+Figure~\ref{fig:scalability} demonstrates near-linear scalability for 128-dimensional vectors. On 12 GPUs, ingestion peaks at 45.5 million vectors/s, and search reaches 30.1k QPS (95\% efficiency relative to the single-GPU baseline). Notably, deletion exhibits super-linear scaling, achieving 103.2 million QPS. This efficiency boost stems from the compute-bound nature of the workload: expanding the cluster increases aggregate GPU cache capacity and reduces per-device contention for bitmap synchronization, thereby outperforming linear projections.
 
 \section{Conclusion}
 \label{sec:conclusion}

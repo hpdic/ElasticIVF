@@ -344,22 +344,34 @@ wait
 echo "Sync Complete!"
 
 # MPI execution (synthetic data) across multiple GPU nodes:
-cd ~/hpdic/ElasticIVF
+cd ~/hpdic/ElasticIVF/build
+make -j test_sivf_mpi_insert
 mpirun --allow-run-as-root \
     -np 12 \
     --host gpu0:4,gpu1:4,gpu2:2,gpu3:2 \
     -x LD_LIBRARY_PATH \
     ~/hpdic/ElasticIVF/build/faiss/gpu/test_sivf_mpi_insert
+cd ~/hpdic/ElasticIVF/build
+make -j test_sivf_mpi_delete
 mpirun --allow-run-as-root \
     -np 12 \
     --host gpu0:4,gpu1:4,gpu2:2,gpu3:2 \
     -x LD_LIBRARY_PATH \
     ~/hpdic/ElasticIVF/build/faiss/gpu/test_sivf_mpi_delete
+cd ~/hpdic/ElasticIVF/build
+make -j test_sivf_mpi_search
 mpirun --allow-run-as-root \
     -np 12 \
     --host gpu0:4,gpu1:4,gpu2:2,gpu3:2 \
     -x LD_LIBRARY_PATH \
     ~/hpdic/ElasticIVF/build/faiss/gpu/test_sivf_mpi_search    
+cd ~/hpdic/ElasticIVF/build
+make -j test_sivf_mpi_breakdown
+mpirun --allow-run-as-root \
+    -np 12 \
+    --host gpu0:4,gpu1:4,gpu2:2,gpu3:2 \
+    -x LD_LIBRARY_PATH \
+    ~/hpdic/ElasticIVF/build/faiss/gpu/test_sivf_mpi_breakdown      
 
 # MPI of DINO10B on 10 GPUs across 3 nodes:
 bash ~/hpdic/ElasticIVF/hpdic/script/download_dino.sh
