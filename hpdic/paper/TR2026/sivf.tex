@@ -437,7 +437,7 @@ Algorithm~\ref{alg:sivf_delete} summarizes the procedure.
     \State $\text{idx}_{slab} \gets coord \gg 32$
     \State $\text{idx}_{slot} \gets coord \mathbin{\&} (2^{32}-1)$
     \State $mask \gets \quad \sim(1 \ll \text{idx}_{slot})$
-    \State $old\_map \gets \texttt{atomicAnd}(\text{slab\_meta}[\text{idx}_{slab}].\text{bitmap}, mask)$
+    \State $old\_map \gets \texttt{atomicAnd}(\text{slab}[\text{idx}_{slab}].\text{bitmap}, mask)$
     \If{$((old\_map \gg \text{idx}_{slot}) \mathbin{\&} 1) == 1$}
         \State $old\_cnt = \texttt{atomicSub}(\&\text{slab\_meta}[\text{idx}_{slab}].\text{cnt}, 1)$
         \State $\mathcal{T}[u] \gets \text{INVALID}$
@@ -530,13 +530,15 @@ search to revisit already visited slabs within the traversal bound.
 \begin{theorem}[Lazy eviction is linearizable and makes deleted vectors invisible]
 \label{thm:delete}
 Consider any concurrent execution of Algorithms~\ref{alg:sivf_search} and \ref{alg:sivf_delete}.
-For any delete request on id $u$ such that $\mathcal{T}[u]\neq\texttt{INVALID}$ and decodes to
+For any delete request on $u$ such that 
+$\mathcal{T}[u] \neq \textnormal{\texttt{INVALID}}$
+and decodes to
 $(\text{idx}_{slab},\text{idx}_{slot})$, define
 \[
 mask = \mathbin{\sim}(1 \ll \text{idx}_{slot}).
 \]
 Then the atomic operation
-\texttt{old = atomicAnd(\&$\mathcal{B}_{\text{idx}_{slab}}$, mask)}
+$old\_map \gets atomicAnd()$ 
 in Algorithm~\ref{alg:sivf_delete} constitutes the linearization point for logical deletion. After this atomic operation takes effect,
 the slot becomes logically absent from the search space. Repeated deletes of the same id are idempotent and safe.
 \end{theorem}
@@ -929,7 +931,7 @@ The experimental environment leverages a total of 12 GPUs distributed across 4 p
   \label{fig:dino_perf_12gpu}
 \end{figure}
 
-We evaluate SIVF's performance against the primary baseline (Faiss GPU IVFFlat) using the 1024-dimensional DINO10B dataset~\cite{9709990} on the 12-GPU cluster.
+We evaluate SIVF against the primary baseline (Faiss GPU IVFFlat) using the 1024-dimensional DINO10B dataset~\cite{9709990} on the 12-GPU cluster.
 Figure~\ref{fig:dino_perf_12gpu}(a) highlights SIVF's efficiency in handling data updates. For ingestion, SIVF achieves a 2.69$\times$ speedup over the baseline (4.07M vectors/s vs. 1.51M vectors/s).
 The most significant performance gap is observed in deletion operations. SIVF achieves a 1150$\times$ speedup, processing over 108M deletions per second compared to the baseline's 94K. 
 Figure~\ref{fig:dino_perf_12gpu}(b) plots the Pareto frontier of Recall@10 versus throughput. SIVF exhibits zero recall loss and retains over 95\% of the baseline's throughput.
