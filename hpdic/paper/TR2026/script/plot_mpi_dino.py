@@ -57,7 +57,7 @@ rects2 = ax1.bar(x + width/2, sivf_vals, width, label='SIVF (Ours)',
 ax1.set_yscale('log')
 ax1.set_ylim(bottom=1e4, top=8e9) 
 
-ax1.set_ylabel('Throughput (QPS)', fontweight='bold')
+ax1.set_ylabel('Throughput (vectors/s)', fontweight='bold')
 ax1.set_title('(a) Update Performance (12-Card)', fontweight='bold', pad=20)
 ax1.set_xticks(x)
 ax1.set_xticklabels(labels, fontweight='bold', fontsize=26)
@@ -97,13 +97,13 @@ ax2.plot(recall_axis, sivf_qps, 's-', color=UW_PURPLE, label='SIVF (Ours)',
          linewidth=4.5, markersize=16, alpha=0.9)
 
 ax2.set_xlabel('Recall@10', fontweight='bold')
-ax2.set_ylabel('Total QPS', fontweight='bold') 
+ax2.set_ylabel('Total vectors/s', fontweight='bold') 
 ax2.set_title('(b) Search Performance (12-Card)', fontweight='bold', pad=20)
 ax2.grid(True, linestyle='--', alpha=0.5, linewidth=1.5)
 ax2.legend(fontsize=24)
 
 # Annotation Box - 强调在大规模下的性能维持
-ax2.text(0.88, 120000, "Maintain\nHigh Search\nEfficiency", 
+ax2.text(0.88, 100000, "Maintain\nHigh Search\nEfficiency", 
          fontsize=24, color='#333', ha='center', fontweight='bold',
          bbox=dict(boxstyle="round,pad=0.4", fc="white", ec=UW_GOLD, lw=3, alpha=0.9))
 
@@ -111,7 +111,7 @@ ax2.text(0.88, 120000, "Maintain\nHigh Search\nEfficiency",
 # 4. 保存
 # ==========================================
 plt.tight_layout()
-output_dir = os.path.expanduser('~/hpdic/ElasticIVF/hpdic/paper/TR2026/figures/')
+output_dir = os.path.expanduser('~/ElasticIVF/hpdic/paper/TR2026/figures/')
 if not os.path.exists(output_dir):
     os.makedirs(output_dir)
 

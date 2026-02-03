@@ -76,7 +76,7 @@ def plot_grid():
         if i >= 2:
             ax.set_xlabel('Recall@10 (%)', fontsize=16)
         if i % 2 == 0:
-            ax.set_ylabel('QPS (log)', fontsize=16)
+            ax.set_ylabel('Vectors/s (log)', fontsize=16)
             
         # Log Scale
         ax.set_yscale('log')

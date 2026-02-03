@@ -36,19 +36,19 @@ fig, axes = plt.subplots(1, 3, figsize=(22, 7))
 axes[0].plot(gpus, insert_qps, 's-', color='#d62728', linewidth=4, markersize=12, label='SIVF')
 axes[0].plot(gpus, insert_qps[0] * gpus, '--', color='gray', alpha=0.6, label='Ideal')
 axes[0].set_title('Ingestion')
-axes[0].set_ylabel('M QPS')
+axes[0].set_ylabel('M vectors/s')
 
 # 2. Search Scaling
 axes[1].plot(gpus, search_qps, 'o-', color='#d62728', linewidth=4, markersize=12, label='SIVF')
 axes[1].plot(gpus, search_qps[0] * gpus, '--', color='gray', alpha=0.6, label='Ideal')
 axes[1].set_title('Search')
-axes[1].set_ylabel('K QPS')
+axes[1].set_ylabel('K queries/s')
 
 # 3. Deletion Scaling
 axes[2].plot(gpus, delete_qps, 'd-', color='#d62728', linewidth=4, markersize=12, label='SIVF')
 axes[2].plot(gpus, delete_qps[0] * gpus, '--', color='gray', alpha=0.6, label='Ideal')
 axes[2].set_title('Deletion')
-axes[2].set_ylabel('M QPS')
+axes[2].set_ylabel('M vectors/s')
 
 for ax in axes:
     ax.set_xlabel('Total GPUs')
@@ -61,7 +61,7 @@ axes[2].legend(loc='lower right', frameon=True)
 plt.tight_layout()
 
 # Save to the specific project directory
-output_dir = os.path.expanduser('~/hpdic/ElasticIVF/hpdic/paper/TR2026/figures/')
+output_dir = os.path.expanduser('~/ElasticIVF/hpdic/paper/TR2026/figures/')
 if not os.path.exists(output_dir):
     os.makedirs(output_dir)
 
