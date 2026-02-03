@@ -331,7 +331,7 @@ The full per-thread protocol is described in Algorithm~\ref{alg:sivf_ingestion}.
                 \State Write identifier to slab\_id\_buffer[$h$][$c$]
                 \State $\mathcal{T}(v_{id}) \gets \langle h, c \rangle$
                 \State \verb|__threadfence()|
-                \State \texttt{atomicOr}(\&\text{slab\_meta}[h].\text{validity\_bitmap})
+                \State \texttt{atomicOr}(\&\text{slab\_meta}[h].\text{valid\_bitmap}, mask)
                 \State \Return
             \EndIf
         \EndIf
@@ -753,7 +753,7 @@ By optimizing the coarse quantizer granularity, such as setting $n_{list}=8192$ 
 \begin{figure}[t]
     \centering
     \includegraphics[width=\linewidth]{figures/pareto.pdf}
-    \caption{QPS-Recall Pareto frontier analysis across four datasets (Deep1B, SIFT1M, T2I-1B, and GIST1M).}
+    \caption{Throughput-Recall Pareto frontier analysis across four datasets (Deep1B, SIFT1M, T2I-1B, and GIST1M).}
     \Description{Four line graphs comparing QPS vs Recall@10 for SIVF and Vanilla Faiss across four datasets.}
     \label{fig:pareto}
 \end{figure}
@@ -949,7 +949,7 @@ Figure~\ref{fig:scalability} shows near-linear scalability for 128-dimensional v
 \section{Conclusion}
 \label{sec:conclusion}
 
-This work addresses the immutability issues in GPU-accelerated Inverted File (IVF) indices caused by static memory layouts. We present SIVF, a GPU-native index enabling high-velocity, in-place updates via slab-based memory management. By leveraging a lock-free update mechanism and optimized slab traversal, SIVF effectively masks the synchronization overhead typical of dynamic indexing, allowing the system to fully exploit hardware parallelism. Evaluation on a 12-GPU cluster demonstrates that SIVF achieves near perfect linear scalability, reaching 4.07M vectors/s for ingestion and 108.5M vectors/s for deletion. Furthermore, SIVF maintains high-accuracy search performance at 159.3K QPS while keeping memory overhead negligible.
+This work addresses the immutability issues in GPU-accelerated Inverted File (IVF) indices caused by static memory layouts. We present SIVF, a GPU-native index enabling high-velocity, in-place updates via slab-based memory management. By leveraging a lock-free update mechanism and optimized slab traversal, SIVF effectively masks the synchronization overhead typical of dynamic indexing, allowing the system to fully exploit hardware parallelism. Evaluation on a 12-GPU cluster demonstrates that SIVF achieves near perfect linear scalability, reaching 4.07M vectors/s for ingestion and 108.5M vectors/s for deletion. Furthermore, SIVF maintains high-accuracy search performance at 159.3K queries/s while keeping memory overhead negligible.
 
 % Despite these advances, SIVF currently operates strictly within GPU VRAM, which bounds the maximum dataset size to the aggregate device memory. Future work will explore hierarchical storage architectures, transparently offloading cold slabs to host memory or NVMe storage to support billion-scale datasets. Additionally, while the current slab reclamation strategy effectively recycles empty nodes, we plan to investigate adaptive background compaction policies to further minimize internal fragmentation under highly skewed deletion patterns. 
 
