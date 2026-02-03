@@ -67,14 +67,14 @@ __global__ void sivf_delete_kernel(
     // Check if the bit was previously 1 (i.e., we actually deleted something)
     if ((old_bitmap >> slot_idx) & 1u) {
 
-        atomicSub(&(md->valid_count), 1);
+        int old_count = atomicSub(&(md->valid_count), 1);
         atomicAdd(deleted_count, 1);
 
         // Invalidate the address table entry to prevent future access
         att_ptr[target_id] = INVALID_COORD;
 
         // Reclaim slab if empty
-        if (md->valid_count == 0) {
+        if (old_count == 1) {
             int old_top = atomicAdd(manager.free_list_top, 1);
             if (old_top < manager.slab_pool_size) {
                 manager.free_list[old_top] = slab_idx;

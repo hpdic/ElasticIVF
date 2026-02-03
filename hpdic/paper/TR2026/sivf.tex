@@ -306,7 +306,7 @@ per-thread protocol is described in Algorithm~\ref{alg:sivf_ingestion}.
 \label{alg:sivf_ingestion}
 \begin{algorithmic}[1]
 \State Input: vector $x$, identifier $v_{id}$, list assignment $\ell$
-\State Global: head array $H[\cdot]$, slab metadata, slab data, free list, stack pointer $P_{top}$, address table $\mathcal{T}$
+\State Global: head array $H[\cdot]$, slab\_meta, slab\_data, free list, stack pointer $P_{top}$, address table $\mathcal{T}$
 \State $attempts \gets 0$
 \While{$attempts < \textsc{MAX\_INSERT\_ATTEMPTS}$}
     \State $attempts \gets attempts + 1$
@@ -314,9 +314,9 @@ per-thread protocol is described in Algorithm~\ref{alg:sivf_ingestion}.
     \If{$h \neq -1$}
         \State $c \gets \text{slab\_meta}[h].\text{valid\_count}$
         \If{$c < C$}
-            \If{$\texttt{atomicCAS}(\&\text{slab}[h].\text{valid\_cnt}) == c$}
-                \State Write payload $x$ to slab data[$h$][$c$]
-                \State Write identifier to slab id buffer[$h$][$c$]
+            \If{$\texttt{atomicCAS}(\&\text{slab\_meta}[h].\text{cnt}, c, c+1)$}
+                \State Write payload $x$ to slab\_data[$h$][$c$]
+                \State Write identifier to slab\_id\_buffer[$h$][$c$]
                 \State $\mathcal{T}(v_{id}) \gets \langle h, c \rangle$
                 \State \verb|__threadfence()|
                 \State \texttt{atomicOr}(\&\text{slab\_meta}[h].\text{validity\_bitmap})
@@ -335,8 +335,8 @@ per-thread protocol is described in Algorithm~\ref{alg:sivf_ingestion}.
     \State Set \text{slab\_meta}[$s_{new}$].\text{next} $\gets h$
     \State \verb|__threadfence()|
     \If{$\texttt{atomicCAS}(\&H[\ell], h, s_{new}) == h$}
-        \State Write payload $x$ to slab data[$s_{new}$][$0$]
-        \State Write identifier to slab id buffer[$s_{new}$][$0$]
+        \State Write payload $x$ to slab\_data[$s_{new}$][$0$]
+        \State Write identifier to slab\_id\_buffer[$s_{new}$][$0$]
         \State $\mathcal{T}(v_{id}) \gets \langle s_{new}, 0 \rangle$
         \State \verb|__threadfence()|
         \State \texttt{atomicOr(\&slab\_meta[s\_new].validity\_bitmap)}
@@ -418,15 +418,15 @@ Algorithm~\ref{alg:sivf_delete} summarizes the procedure.
 
 \For{each $u$ in $U$ in parallel}
     \State $coord \gets \mathcal{T}[u]$
-    \If{$coord = \text{INVALID}$} \State \textbf{continue} \EndIf
+    \If{$coord == \text{INVALID}$} \State \textbf{continue} \EndIf
     \State $\text{idx}_{slab} \gets coord \gg 32$
     \State $\text{idx}_{slot} \gets coord \mathbin{\&} (2^{32}-1)$
     \State $mask \gets \quad \sim(1 \ll \text{idx}_{slot})$
     \State $old\_map \gets \texttt{atomicAnd}(\text{slab\_meta}[\text{idx}_{slab}].\text{bitmap}, mask)$
     \If{$((old\_map \gg \text{idx}_{slot}) \mathbin{\&} 1) == 1$}
-        \State $\texttt{atomicSub}(\&\text{slab\_meta}[\text{idx}_{slab}].\text{valid\_count}, 1)$
+        \State $old\_cnt = \texttt{atomicSub}(\&\text{slab\_meta}[\text{idx}_{slab}].\text{cnt}, 1)$
         \State $\mathcal{T}[u] \gets \text{INVALID}$
-        \If{$\text{slab\_meta}[\text{idx}_{slab}].\text{valid\_count} == 0$}
+        \If{$old\_cnt == 1$}
              \State $t \gets \texttt{atomicAdd}(P_{top}, 1)$
              \State $\text{free\_list}[t] \gets \text{idx}_{slab}$
              \State $\text{slab\_meta}[\text{idx}_{slab}].\text{bitmap} \gets 0$
@@ -447,9 +447,9 @@ The second shows that search in Algorithm~\ref{alg:sivf_search} is safe under co
 The third proves that lazy eviction in Algorithm~\ref{alg:sivf_delete} is linearizable with a clear linearization point.
 
 We use the same state as the pseudocode. For each list id $\ell$, $H[\ell]$ stores the head slab id. Each slab $s$ has
-metadata \texttt{slab\_meta[$s$]} including \texttt{next}, \texttt{valid\_count}, and a 32 bit
+metadata \texttt{slab\_meta[$s$]} including \texttt{next}, \texttt{valid\_count}, and a 32-bit
 \texttt{validity\_bitmap}. A slot $(s,o)$ is logically present if and only if bit $o$ in the bitmap is 1.
-Payloads and ids are stored in \texttt{slab data[$s$][$o$]} and \texttt{slab\_ids[$s$][$o$]}.
+Payloads and ids are stored in \texttt{slab\_data[$s$][$o$]} and \texttt{slab\_ids[$s$][$o$]}.
 The address table $\mathcal{T}$ maps a vector id $u$ to a coordinate $(s,o)$ encoded in \texttt{coord}, or \texttt{INVALID}.
 
 \begin{theorem}[Parallel ingestion is safe and linearizable]
@@ -465,27 +465,25 @@ For every insertion that returns successfully, there exists a unique slot $(s,o)
 We first argue the uniqueness of the chosen slot for a successful insertion.
 
 In the existing head case, the code reads 
-\[ c=\texttt{slab\_meta}[h].\texttt{valid\_count} \] 
-and attempts to reserve index $c$
-using an atomic compare and swap. Only one thread can succeed for a given observed $c$, because the compare and swap updates a single memory location atomically. 
-Therefore, among concurrent contenders for the same slab $h$, at most one insertion
-obtains a given index $c$. 
+\[ c=\texttt{slab\_meta}[h].\texttt{valid\_count}, \] 
+and attempts to reserve index $c$ using an atomic compare-and-swap (CAS). 
+Since the CAS operation atomically verifies that the count is still $c$ before incrementing it to $c+1$, only one thread can succeed for any specific snapshot of the counter.
+Therefore, among concurrent contenders for the same slab $h$, at most one insertion obtains a given index $c$. 
 In the new slab case, the thread publishes its new slab as the head using \texttt{atomicCAS(\&H[$\ell$], h, s\_new)}; only one thread can win this publication for a fixed old head value $h$,
 and the winner uses slot $o=0$ in its newly allocated slab. Thus, every successful insertion selects exactly one slot $(s,o)$.
 
 We next argue that the chosen slot is initialized before it becomes visible.
-In both code paths, after reserving the slot, the writer performs the payload write to \texttt{slab data[$s$][$o$]} and
-the id write to \texttt{slab\_ids[$s$][$o$]}, then writes $\mathcal{T}(v_{id})\gets\langle s,o\rangle$, then executes
+In both code paths, after reserving the slot, the writer performs the payload write to \texttt{slab\_data[$s$][$o$]} and
+the id write to \texttt{slab\_ids[$s$][$o$]}, then writes $\mathcal{T}(v_{id})\gets\langle s,o\rangle$, executes
 \verb|__threadfence()|, and only after the fence performs \texttt{atomicOr} to set bit $o$ in the bitmap.
-The intended CUDA guarantee used here is that the fence makes the prior global writes visible before a later atomic operation
-performed by the same thread becomes visible to other threads. Therefore, once bit $o$ is observed as set, the payload and id
-written earlier by that insertion are already visible as well.
+The memory consistency semantics of \verb|__threadfence()| ensure that all prior global writes are committed to memory before any subsequent atomic operation by the same thread becomes visible to other threads.
+Therefore, any observer that sees bit $o$ as set is guaranteed to see the fully initialized payload and id.
 
-Finally, we justify linearizability of a successful insertion with linearization point at the atomic bit set.
+Finally, we justify linearizability of a successful insertion with the atomic bit set as the linearization point.
 The membership predicate used throughout the design is exactly the bitmap bit. Before the \texttt{atomicOr}, the bit is 0,
-so the slot is logically absent. After the \texttt{atomicOr} takes effect, the bit is 1, so the slot is logically present.
-Since \texttt{atomicOr} is an atomic operation on the bitmap word, it takes effect at a single instant and provides a valid
-linearization point. At that instant, the slot becomes visible and, by the fence argument above, it is already fully initialized.
+so the slot is logically absent to any search warp. After the \texttt{atomicOr} takes effect, the bit is 1, so the slot is logically present.
+Since \texttt{atomicOr} executes atomically on the bitmap word, the state transition $0 \to 1$ occurs at a single instant.
+At that instant, the slot becomes visible and, by the fence ordering established above, it is valid. Thus, the insertion is linearizable.
 \end{proof}
 
 \begin{theorem}[Search safety under concurrent ingestion and deletion]
@@ -497,18 +495,20 @@ every payload and id read performed by Algorithm~\ref{alg:sivf_search} is fully 
 \begin{proof}
 Algorithm~\ref{alg:sivf_search} reads a slot $(s,j)$ only if it first observes that bit $j$ in
 \texttt{slab\_meta[$s$].validity\_bitmap} is set. When the search observes the bit set, the slot must have been published
-by some successful insertion. By Theorem~\ref{thm:ingestion}, the publication point is the atomic bit set in
-Algorithm~\ref{alg:sivf_ingestion}, and the payload and id writes occur before the fence, which occurs before the bit set.
-The same fence guarantee used in Theorem~\ref{thm:ingestion} implies that once the bit set is visible, the earlier payload and
+by a successful insertion. By Theorem~\ref{thm:ingestion}, the publication point is the atomic bit set in
+Algorithm~\ref{alg:sivf_ingestion}, and the payload and id writes occur before the fence, which ensures they complete before the bit set.
+The same memory consistency guarantee implies that once the bit set is visible to a search warp, the earlier payload and
 id writes are also visible. Therefore, the search cannot observe a partially initialized payload or id.
 
-Deletion does not write payloads or ids. Algorithm~\ref{alg:sivf_delete} only clears the validity bit and possibly updates
-counters and $\mathcal{T}$. Hence, even if a search races with a delete, the only effect is whether the search sees the bit as 1
-or 0. If it sees 0, it skips the slot and reads nothing. If it sees 1, it reads a payload and id that were fully initialized
-before publication, by the argument above. In neither case does the search read partially initialized data.
+Deletion does not write payloads or ids. Algorithm~\ref{alg:sivf_delete} only clears the validity bit and, upon slab reclamation, 
+resets the bitmap to 0 before returning the slab to the free pool. 
+Hence, even if a search races with a delete or a subsequent slab reuse, the primary guard is the bitmap state.
+If the search sees the bit as 0, it skips the slot. If it sees the bit as 1, it reads a payload and id that were fully initialized
+before the corresponding bitmap set operation (whether from the original insertion or a reuse). 
+In neither case does the search read corrupted or partially written data.
 
-Algorithm~\ref{alg:sivf_search} also terminates because its traversal is bounded, and it includes an explicit self loop guard
-(\texttt{md.next = s}) before following \texttt{next}. Concurrent insertions can add a new head slab, but they do not require the
+Algorithm~\ref{alg:sivf_search} also terminates because its traversal is bounded, and it includes an explicit self-loop guard
+(\texttt{md.next == s}) before following \texttt{next}. Concurrent insertions can add a new head slab, but they do not require the
 search to revisit already visited slabs within the traversal bound.
 \end{proof}
 
@@ -518,55 +518,49 @@ Consider any concurrent execution of Algorithms~\ref{alg:sivf_search} and \ref{a
 For any delete request on id $u$ such that $\mathcal{T}[u]\neq\texttt{INVALID}$ and decodes to
 $(\text{idx}_{slab},\text{idx}_{slot})$, define
 \[
-mask =~\sim(1 \ll \text{idx}_{slot}).
+mask = \mathbin{\sim}(1 \ll \text{idx}_{slot}).
 \]
 Then the atomic operation
 \texttt{old = atomicAnd(\&$\mathcal{B}_{\text{idx}_{slab}}$, mask)}
-in Algorithm~\ref{alg:sivf_delete} is a linearization point for logical deletion. After this atomic operation takes effect,
-the slot becomes logically absent from the search space until a later insertion sets the same bit again. Repeated deletes of
-the same id are safe.
+in Algorithm~\ref{alg:sivf_delete} constitutes the linearization point for logical deletion. After this atomic operation takes effect,
+the slot becomes logically absent from the search space. Repeated deletes of the same id are idempotent and safe.
 \end{theorem}
 
 \begin{proof}
-If $\mathcal{T}[u]=\texttt{INVALID}$, Algorithm~\ref{alg:sivf_delete} performs no state change and the delete can be linearized
+If $\mathcal{T}[u]=\texttt{INVALID}$, Algorithm~\ref{alg:sivf_delete} performs no state change and the delete is linearized
 at the \texttt{INVALID} check.
 
 Otherwise, the delete decodes \texttt{coord} into $(\text{idx}_{slab},\text{idx}_{slot})$, computes
-$mask=\sim(1\ll \text{idx}_{slot})$, and executes
-\[\texttt{old = atomicAnd(\&$\mathcal{B}_{\text{idx}_{slab}}$, mask)}\] to clear the corresponding bit.
-The intended guarantee is that this atomic read modify write takes effect at a single instant on the bitmap word.
-We choose that instant as the linearization point.
+$mask$, and executes
+\[old\_map \gets \texttt{atomicAnd}(\text{slab\_meta}[\text{idx}_{slab}].\text{bitmap}, mask)\] to clear the corresponding bit.
+Since \texttt{atomicAnd} is an atomic read-modify-write instruction on the GPU, the transition of the validity bit from 1 to 0 (or 0 to 0) occurs at a single, indivisible instant.
+We designate this instant as the linearization point.
 
-Algorithm~\ref{alg:sivf_search} uses the validity bit as the membership predicate and checks it before dereference.
-Thus, after the clear takes effect, any search that reads the bitmap and sees the bit as 0 skips the slot and does not include
-it as a candidate. No payload reclamation is required because logical membership is determined solely by the validity bit.
+Algorithm~\ref{alg:sivf_search} uses the validity bit as the sole membership predicate.
+Because the search warp reads the bitmap atomically before accessing any payload, any search that observes the bitmap
+after the linearization point will see the bit as 0, skip the slot, and exclude the vector from the results.
+Physical payload reclamation is not required for correctness because logical membership is fully determined by the validity bit.
 
-If the old bitmap value shows the bit transitioned from 1 to 0, the delete performs bookkeeping and sets
-$\mathcal{T}[u]\gets\texttt{INVALID}$. If the bit was already 0, clearing it again does not change the logical state.
-Either way, repeated deletes are safe.
+To handle duplicates, Algorithm~\ref{alg:sivf_delete} uses the return value \texttt{old\_cnt} to detect if it was the specific thread
+that caused the $1 \to 0$ transition. If so, it performs bookkeeping (e.g., updating counters). If the bit was already 0,
+the operation is effectively a no-op on the logical state. Thus, the deletion mechanism is idempotent.
 \end{proof}
 
-
 \subsubsection{Time Complexity}
-We analyze the complexity relative to the number of existing vectors $N$ and the dimensionality $D$.
-For ingestion, the standard dynamic array approach requires $O(N)$ time in the worst case to copy data during capacity resizing. In contrast, the slab-based allocation in SIVF operates in $O(1)$ time, as it involves only pointer manipulation and atomic counter updates, independent of the current list size.
-For deletion, traditional IVF implementations without a reverse index require scanning the target inverted list, yielding a complexity of $O(N/n_{list})$. Even with a reverse index, physical removal requires $O(N/n_{list})$ data movement to maintain array contiguity. SIVF achieves $O(1)$ deletion complexity by utilizing the Address Translation Table to locate the target slot in constant time and performing a logical invalidation via a single atomic instruction.
-For search, the complexity remains $O(nprobe \cdot (N/n_{list}) \cdot D)$, which is asymptotically equivalent to standard IVF. While the linked-slab layout introduces pointer-chasing overhead, it does not alter the algorithmic complexity class.
+We analyze the time complexity relative to the total number of vectors $N$, the number of lists $n_{list}$, and dimensionality $D$. For ingestion, SIVF guarantees strict $O(1)$ time complexity as it requires only atomic counter updates and pointer manipulation to append data, independent of the current list size. Similarly, deletion achieves $O(1)$ complexity by utilizing the Address Translation Table for constant-time lookup followed by a single atomic bitmap invalidation, completely eliminating the need for memory compaction or data movement. For search, the complexity remains $O(nprobe \cdot (N/n_{list}) \cdot D)$, where $nprobe$ is the user-configured number of lists to scan; while the linked-slab layout introduces minor pointer-chasing overhead, it preserves the asymptotic complexity class of inverted file search.
 
 \subsubsection{Space Complexity}
-The space complexity of SIVF consists of the vector storage, the slab metadata, and the address translation structures.
-Let $S$ be the slab capacity (fixed at 32). The metadata overhead per vector is constant, scaling as $O(1/S)$.
-The Address Translation Table introduces a linear space overhead of $O(N_{max})$, where each entry requires 8 bytes.
-Comparing this to standard dynamic arrays, which often reserve up to $2 \times N$ capacity to amortize resizing costs, SIVF maintains a tighter memory footprint. The external fragmentation is bounded by the size of the free pool, and internal fragmentation is limited to the unused slots in the tail slab of each list. Consequently, the total space complexity is $O(N \cdot D)$, maintaining linear scalability with dataset size.
+The total space complexity is dominated by the vector payload, scaling linearly as $O(N \cdot D)$. The structural overhead consists of the Address Translation Table ($O(N)$, 8 bytes per entry) and slab metadata. Since metadata is amortized over the fixed slab capacity ($C=32$), its footprint is negligible compared to high-dimensional payloads. Regarding memory efficiency, unlike dynamic arrays that typically reserve up to $2 \times$ capacity to amortize resizing costs, SIVF grows in fine-grained increments of single slabs. Although lazy deletion introduces sparse internal fragmentation (unused slots within active slabs), the immediate reclamation of fully empty slabs bounds this waste, ensuring the total memory footprint remains proportional to the active dataset size.
 
 \subsection{System Implementation}
 \label{sec:implementation_details}
 
-We implement SIVF as a fully integrated extension to the GPU components of the widely-adopted Faiss library~\cite{douze2024faiss}. Our implementation represents a significant systems engineering effort, involving approximately 13,000 lines of code in total. The majority of this codebase (over 12,300 lines) consists of optimized C++ and CUDA system implementation (spanning the core Faiss integration, slab memory management, and a distributed MPI runtime), while the remaining 700 lines comprise Python utility scripts for experimental orchestration. We have open-sourced the complete implementation and evaluation scripts on GitHub.
+We implement SIVF as a fully integrated extension to the GPU components of the widely-adopted Faiss library~\cite{douze2024faiss}. Our implementation represents a significant systems engineering effort, involving approximately 13,000 lines of code. The majority of this codebase consists of optimized C++ and CUDA system implementation (spanning the core Faiss integration, slab memory management, and distributed MPI runtime), while the remaining lines comprise Python and Bash utility scripts for experimental orchestration. We have open-sourced the complete implementation and evaluation scripts on GitHub.
 
-The core architecture of SIVF centers on the \texttt{GpuIndexSIVF} class, a direct subclass of Faiss's \texttt{GpuIndex}. This class integrates our custom \texttt{SlabManager} to handle dynamic memory allocation on the GPU, replacing the standard static pre-allocation models. To support high-concurrency operations, we implemented specialized GPU-native kernels for insertion, deletion, and search (encapsulated in \texttt{SIVFAppend}, \texttt{SIVFDelete}, and \texttt{SIVFSearch}). These operators interact with lock-free metadata structures (e.g., \texttt{SIVFStructs}) to ensure data consistency during simultaneous read and write access.
+The core architecture centers on the \texttt{GpuIndexSIVF} class, a direct subclass of Faiss's \texttt{GpuIndex}. This class integrates our custom \texttt{SlabManager} to orchestrate dynamic memory on the GPU. Unlike standard static models, \texttt{SlabManager} maintains a monolithic memory pool and a device-side free list stack, enabling both warp-aligned allocation and $O(1)$ slab recycling without host intervention. To support high-concurrency operations, we implemented specialized GPU-native kernels for insertion, deletion, and search (encapsulated in \texttt{SIVFAppend}, \texttt{SIVFDelete}, and \texttt{SIVFSearch}). These operators interact with lock-free metadata structures via atomic state transitions to ensure data consistency during simultaneous read and write access.
 
-Integrating these dynamic components into the static resource management of Faiss presented unique challenges. Unlike standard Faiss indices which rely on flat arrays managed via \texttt{DeviceTensor}, SIVF operates directly on a raw GPU VRAM. We reconcile this by overriding the virtual \texttt{addImpl} and \texttt{searchImpl} methods, allowing SIVF to serve as a drop-in replacement in existing pipelines. Furthermore, our design strictly adheres to the \texttt{GpuResources} context provided by Faiss. All SIVF kernels are dispatched onto user-specified CUDA streams, enabling asynchronous ingest-search pipelines without blocking the default stream. Finally, we extended the SWIG interface files to expose the new \texttt{SIVF} class and its configuration parameters to the Python layer, ensuring seamless interoperability with PyTorch and NumPy workflows.
+Integrating these dynamic components into the static resource management of Faiss presented multiple challenges. Unlike standard Faiss indices which rely on flat arrays managed through the \texttt{DeviceTensor} class, SIVF implements its own allocator to minimize fragmentation overhead. We reconcile this by overriding the virtual \texttt{addImpl} and \texttt{searchImpl} methods, allowing SIVF to serve as a drop-in replacement in existing pipelines. Furthermore, our design adheres to the \texttt{GpuResources} context provided by Faiss. 
+% All SIVF kernels are dispatched onto user-specified CUDA streams, enabling asynchronous ingest-search pipelines without blocking the default stream. Finally, we extended the SWIG interface files to expose the new \texttt{SIVF} class and its configuration parameters to the Python layer, ensuring seamless interoperability with PyTorch and NumPy workflows.
 
 \section{Evaluation}
 \label{sec:evaluation}
