@@ -19,11 +19,16 @@
 % \usepackage{amsmath}    
 \usepackage{xcolor}       
 \usepackage{subcaption}
-\usepackage{caption} % 建议同时加上这个，通常它们是一起用的
+\usepackage{caption} 
 
 \usepackage[capitalize,noabbrev]{cleveref}
 
 \newcommand{\don}[1]{\textcolor{blue}{[Dongfang: #1]}}
+
+\usepackage{caption}
+
+% 调整标题（Caption）与其下方内容/正文的间距
+\captionsetup{skip=1mm}
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % THEOREMS
@@ -126,7 +131,7 @@ As illustrated in Figure~\ref{fig:motivation}(a), we observe a drastic asymmetry
     \label{fig:motivation}
 \end{figure}
 
-A common alternative is \textit{lazy deletion} (aka tombstone), which marks vectors as invalid to avoid immediate physical movement. However, this strategy merely defers the cost. As shown in Figure~\ref{fig:motivation}(b), tombstone mechanisms suffer from poor scalability due to the $O(N)$ complexity of garbage collection (compaction). Based on our microbenchmarks, the compaction pause scales linearly with index size. While negligible at small scales, the latency is projected to exceed 360 ms at 50 million vectors and reach nearly 700 ms at 100 million vectors. These results confirm a fundamental limitation: current GPU indices lack an efficient mutability mechanism that is both low-latency (unlike physical deletion) and scalable (unlike tombstones), necessitating a new indexing method ideally with a constant cost, as represented by SIVF that we will present in this work.
+A common alternative is \textit{lazy deletion} (aka tombstone), which marks vectors as invalid to avoid immediate physical movement. However, this strategy merely defers the cost. As shown in Figure~\ref{fig:motivation}(b), tombstone mechanisms suffer from poor scalability due to the $O(N)$ complexity of garbage collection (compaction). Based on our microbenchmarks, the compaction pause scales linearly with index size. While negligible at small scales, the latency is projected to exceed 360 ms at 50 million vectors and reach nearly 700 ms at 100 million vectors. These results confirm a fundamental limitation: current GPU indices lack an efficient mutability mechanism that is both low-latency (unlike physical deletion) and scalable (unlike tombstones), necessitating a new indexing method ideally with a constant cost, as represented by SIVF that we will present.
 
 Our analysis of the Faiss source code~\cite{douze2024faiss} further reveals that this performance asymmetry stems from a rigid class hierarchy that enforces a fallback to host-side processing on CPUs. In the library's architecture, the data eviction interface is defined in the abstract base class \texttt{faiss::Index} via the \texttt{remove\_ids} virtual method. While CPU-based implementations override this method to provide efficient in-memory deletion logic (e.g., \texttt{memmove}), the GPU counterparts inherit the base implementation which lacks native support. Consequently, current GPU indices rely on a \emph{CPU-GPU Roundtrip} pattern for eviction. That is, to delete even a single vector, the system must transfer the entire index state from VRAM to host memory, perform the compaction on the CPU, and re-upload the modified index to the device. This heavy I/O burden saturates the PCIe bus and prevents the system from utilizing the GPU's compute throughput, capping the maximum sustainable ingestion rate in streaming scenarios.
 
@@ -146,7 +151,7 @@ To resolve these limitations, we propose SIVF, a GPU-resident indexing method th
 
 SIVF has been implemented and integrated into Faiss~\cite{douze2024faiss} as a new index through the \texttt{GpuIndexSIVF} class. Our implementation leverages CUDA for device-side kernels and employs a dual-view memory management strategy to maintain the consistency between host and device states. All new algorithms as well as key data structures are encapsulated within a \texttt{SlabManager} class that abstracts the complexity of dynamic memory operations on the GPU. 
 
-We have evaluated SIVF against a comprehensive set of baselines within Faiss, including CAGRA, IVF, Flat, HNSW, NSG, and LSH. Our evaluation was carried out on six datasets representing a variety of modalities, dimensions, and scalability: synthetic, Deep1B, SIFT1M, T2I-1B, GIST1M, and DINO10B. Experimental results show that SIVF achieves up to 1765x reduction in deletion latency compared to CPU fallback baselines and improves ingestion throughput by 36x to 120x compared to existing GPU indices. Furthermore, distributed evaluations on a 12-GPU cluster demonstrate that SIVF exhibits near-perfect linear scalability, reaching an aggregate deletion throughput of 108.5 million QPS and 159.3K QPS for high-fidelity search. In end-to-end sliding window scenarios, SIVF delivers a 163x to 262x speedup with a negligible memory overhead less than 0.8 percent, effectively closing the gap between static and streaming vector analytics performance.
+We have evaluated SIVF against a comprehensive set of baselines within Faiss, including CAGRA~\cite{10597683}, IVF~\cite{johnson2019billion}, Flat~\cite{douze2024faiss}, HNSW~\cite{malkov2018efficient}, NSG~\cite{10.14778/3303753.3303754}, and LSH~\cite{10.1145/997817.997857}. Our evaluation was carried out on six datasets representing a variety of modalities, dimensions, and scalability: synthetic~\cite{douze2024faiss}, Deep1B~\cite{babenko2016efficient}, SIFT1M~\cite{jegou2011product}, T2I-1B~\cite{simhadri2025results}, GIST1M~\cite{jegou2011product}, and DINO10B~\cite{9709990}. Experimental results show that SIVF achieves up to 1765x reduction in deletion latency compared to CPU fallback baselines and improves ingestion throughput by 36x to 120x compared to existing GPU indices. Furthermore, distributed evaluations on a 12-GPU cluster demonstrate that SIVF exhibits near-perfect linear scalability, reaching an aggregate deletion throughput of 108.5 million QPS and 159.3K QPS for high-fidelity search. In end-to-end sliding window scenarios, SIVF delivers a 163x to 262x speedup with a negligible memory overhead less than 0.8 percent, effectively closing the gap between static and streaming vector analytics performance.
 
 In summary, this paper makes the following contributions:
 \begin{itemize}
@@ -156,6 +161,9 @@ In summary, this paper makes the following contributions:
     
     \item We implement SIVF in the state-of-the-art vector search library Faiss and evaluate SIVF against a broad spectrum of baselines including GPU CAGRA, GPU Flat, GPU IVF, HNSW, NSG, and LSH on 6 representative datasets and a 12-GPU cluster. The results demonstrate that SIVF achieves up to 1765x reduction in deletion latency, up to 120x faster ingestion compared to existing GPU indices, and exhibits near perfect linear scalability in distributed environments reaching 108.5 million QPS for deletion and 4.07 million QPS for ingestion on 12 GPUs. These advancements transform vector search from a static retrieval task into an integral component of real-time vector data analytics.
 \end{itemize}
+
+\paragraph{Limitation}
+While SIVF significantly enhances the mutability of GPU-based indices for streaming vectors, we acknowledge two primary constraints that define its current scope. First, SIVF is designed as an in-core index operating within GPU VRAM, which bounds the maximum dataset size to the aggregate GPU VRAM. This design choice prioritizes high-velocity updates and low-latency search, though future extensions could incorporate hierarchical storage architectures to transparently offload cold slabs to host memory or NVMe storage for large-scale datasets. Second, while our slab reclamation strategy effectively recycles empty nodes, the system remains susceptible to sparse internal fragmentation under extremely skewed deletion patterns. We defer to future work the implementation of adaptive background compaction policies, which would further consolidate memory at the cost of transient throughput fluctuations.
 
 % \noindent
 % \textbf{The complete implementation and evaluation scripts are available on GitHub: \url{https://github.com/hpdic/ElasticIVF}.}
@@ -596,8 +604,8 @@ Second, to position SIVF within the broader indexing landscape, we in Section~\r
 Most experiments were conducted on a bare-metal node from the Chameleon Cloud testbed~\cite{keahey2020lessons} (CHI@UC site). The platform is equipped with dual-socket Intel Xeon Gold 6126 CPUs (Skylake microarchitecture), providing a total of 24 physical cores (48 threads with Hyper-Threading) clocked at 2.60 GHz. The host memory consists of 192 GiB of RAM. 
 For acceleration, the node features an NVIDIA Quadro RTX 6000 GPU with 24 GB of GDDR6 VRAM. The system runs on a Ubuntu 24.04 environment with the CUDA toolkit installed: Driver ver. 560.35.05 and CUDA ver. 12.6.
 
-Each reported data point represents the average of at least three independent executions. Error bars are omitted in figures where the standard deviation is negligible to maintain visual clarity. 
-Unless explicitly stated (as in Section~\ref{sec:eval_real_world}), our experiments utilize synthetic datasets consisting of random 128-dimensional vectors generated from a uniform distribution. 
+% Each reported data point represents the average of at least three independent executions. Error bars are omitted in figures where the standard deviation is negligible to maintain visual clarity. 
+% Unless explicitly stated (as in Section~\ref{sec:eval_real_world}), our experiments utilize synthetic datasets consisting of random 128-dimensional vectors generated from a uniform distribution. 
 % We employ this configuration as a neutral baseline to isolate system-level overheads (e.g., memory allocation, PCIe transfer) from data distribution effects. Note that because uniform data lacks the clustering structure inherent in real-world applications, the performance advantages of SIVF in microbenchmarks are primarily architectural and appear more conservative than real-world datasets.
 
 \subsection{Microbenchmarks}
@@ -856,7 +864,7 @@ This demonstrates that despite the irregular memory access patterns inherent to 
 \label{sec:eval_memory}
 
 A common concern with dynamic graph-based or list-based indices is the potential for memory bloating due to structural overhead, such as pointers and metadata, as well as fragmentation. To quantify the space complexity of SIVF, we conducted a memory footprint analysis comparing the allocated VRAM usage of SIVF against a theoretically compact array baseline across varying dataset sizes ranging from 100K to 1M vectors.
-Figure~\ref{fig:eval_memory} illustrates the memory growth trends for both SIFT1M and GIST1M. The results demonstrate that SIVF exhibits deterministic linear scalability with negligible structural overhead. For SIFT1M ($d=128$), the overhead stabilizes at 0.77\%, while for the high-dimensional GIST1M ($d=960$), it is merely 0.10\%. This efficiency stems from our coarse-grained slab design, where the metadata cost (128-byte header) is amortized over a batch of 32 vectors. Consequently, SIVF achieves orders-of-magnitude performance gains in dynamic operations without imposing significant storage penalties compared to static, compact indices.
+Figure~\ref{fig:eval_memory} illustrates the memory growth trends for both SIFT1M and GIST1M. The results demonstrate that SIVF exhibits deterministic linear scalability with negligible structural overhead. For SIFT1M ($d=128$), the overhead stabilizes at 0.77\%, while for the high-dimensional GIST1M ($d=960$), it is merely 0.10\%. This efficiency stems from our coarse-grained slab design, where the metadata cost (128-byte header) is amortized over 32 vectors. 
 
 \begin{figure}[t]
     \centering
@@ -907,9 +915,10 @@ In contrast, SIVF emerges as the only architecture enabling holistic stream proc
 
 We evaluated the scalability performance of SIVF on the Chameleon TACC site~\cite{keahey2020lessons}. 
 Each node is equipped with dual-socket Intel Xeon E5 CPUs running at 2.00 GHz and 128 GB of RAM. 
-The compute power is provided by NVIDIA Tesla P100 GPUs, which are interconnected via high-bandwidth NVLink within each node, while cross-node communication is handled by a high-speed RDMA-enabled network interface. 
+The compute power is provided by NVIDIA Tesla P100 GPUs.
+% which are interconnected via high-bandwidth NVLink within each node, while cross-node communication is handled by a high-speed RDMA-enabled network interface. 
 The experimental environment leverages a total of 12 GPUs distributed across 4 physical nodes (4 GPUs each on \texttt{c11-01} and \texttt{c11-04}, and 2 GPUs each on \texttt{c11-03} and \texttt{c11-22}).
-We employ a sharding strategy where the dataset is partitioned across devices with queries broadcasted via MPI.
+% We employ a sharding strategy where the dataset is partitioned across devices with queries broadcasted via MPI.
 
 \begin{figure}[t]
   \centering
@@ -919,7 +928,7 @@ We employ a sharding strategy where the dataset is partitioned across devices wi
   \label{fig:dino_perf_12gpu}
 \end{figure}
 
-We evaluate SIVF's performance against the primary baseline (Faiss IVFFlat) using the high-dimensional DINO10B dataset (1024 dimensions) distributed on the 12-GPU cluster.
+We evaluate SIVF's performance against the primary baseline (Faiss IVFFlat) using the high-dimensional DINO10B dataset~\cite{9709990} (1024 dimensions) distributed on the 12-GPU cluster.
 Figure~\ref{fig:dino_perf_12gpu}(a) highlights SIVF's efficiency in handling data updates. For ingestion, SIVF achieves a 2.69$\times$ speedup over the baseline (4.07M QPS vs. 1.51M QPS).
 The most significant performance gap is observed in deletion operations. SIVF achieves a 1150$\times$ speedup, processing over 108M deletions per second compared to the baseline's 94K. 
 Figure~\ref{fig:dino_perf_12gpu}(b) plots the Pareto frontier of Recall@10 versus QPS. SIVF exhibits zero recall loss and retains over 95\% of the baseline's QPS.
@@ -932,7 +941,7 @@ Figure~\ref{fig:dino_perf_12gpu}(b) plots the Pareto frontier of Recall@10 versu
   \label{fig:scalability}
 \end{figure}
 
-Figure~\ref{fig:scalability} demonstrates near-linear scalability for 128-dimensional vectors. On 12 GPUs, ingestion peaks at 45.5 million vectors/s, and search reaches 30.1k QPS (95\% efficiency relative to the single-GPU baseline). Notably, deletion exhibits super-linear scaling, achieving 103.2 million QPS. This efficiency boost stems from the compute-bound nature of the workload: expanding the cluster increases aggregate GPU cache capacity and reduces per-device contention for bitmap synchronization, thereby outperforming linear projections.
+Figure~\ref{fig:scalability} shows near-linear scalability for 128-dimensional vectors. On 12 GPUs, ingestion peaks at 45.5 million vec/s, and search reaches 30.1k QPS (95\% efficiency relative to the single-GPU baseline). Deletion exhibits super-linear scaling, achieving 103.2 million QPS. This efficiency boost stems from the compute-bound nature of the workload: expanding the cluster increases aggregate GPU cache capacity and reduces per-device contention for bitmap synchronization, thereby outperforming linear projections.
 
 \section{Conclusion}
 \label{sec:conclusion}
