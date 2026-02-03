@@ -181,7 +181,7 @@ Several works focus on distance metric optimizations: ADA-NNS~\cite{10.1145/3696
 Efforts to improve graph construction and maintenance include LIGS~\cite{10.1145/3726302.3730028}, which employs locality-sensitive hashing (LSH) to simulate proximity graphs for faster updates, and CSPG~\cite{DBLP:conf/nips/YangCZ24}, which crosses sparse proximity graphs. 
 Addressing robustness, Hua et al.~\cite{10.1145/3769783} propose dynamically detecting and fixing graph hardness for out-of-distribution queries. MIRAGE-ANNS~\cite{10.1145/3725325} attempts to bridge the gap between incremental and refinement-based construction. 
 Furthermore, theoretical frameworks like Subspace Collision~\cite{10.1145/3709729} provide guarantees on result quality via clustering-based indexing.
-
+%%
 Collectively, while these approaches maximize navigational efficiency for static data, they fundamentally rely on complex edge dependencies that are prohibitively expensive to maintain on GPUs. Unlike SIVF, they lack the architectural support for $O(1)$ lock-free mutation, rendering them unsuitable for high-churn streaming workloads where sub-millisecond update latency is critical.
 
 \paragraph{Attribute-Filtered and Hybrid Search}
@@ -193,7 +193,7 @@ Dynamic environments are addressed by DIGRA~\cite{10.1145/3725399}, which uses a
 Peng et al.~\cite{10.14778/3748191.3748193} propose dynamic segment graphs to handle mixed streams of data and queries.
 Regarding specific constraints, Wang et al.~\cite{DBLP:conf/nips/WangLX0YN23} present a robust framework for general attribute constraints. 
 Engels et al.~\cite{engels2024approximate} focus on window filters, while WoW~\cite{10.1145/3769843} develops a window-graph based index to handle window-to-window incremental construction.
-
+%%
 However, these contributions primarily optimize algorithmic filtering logic rather than the underlying storage architecture. They remain constrained by the static memory layouts of standard GPU indices, whereas SIVF fundamentally redesigns the VRAM management to enable the high-throughput, in-place mutability that is a prerequisite for such dynamic operations.
 
 \paragraph{Quantization and Scalability}
@@ -206,14 +206,13 @@ For distributed environments, HARMONY~\cite{10.1145/3749167} employs a multi-gra
 WebANNS~\cite{10.1145/3726302.3730115} enables efficient search within web browsers via WebAssembly. 
 From a theoretical perspective, Indyk and Xu~\cite{DBLP:conf/nips/IndykX23} analyze the worst-case performance limits of popular implementations. 
 Finally, DARTH~\cite{10.1145/3749160} introduces declarative recall targets through adaptive early termination to balance performance and result quality.
-
+%%
 While these techniques reduce storage footprints or distribute load, they predominantly operate on static memory layouts that are brittle under frequent updates. SIVF addresses a complementary challenge: it provides the dynamic memory substrate that allows these scalable architectures to support real-time streams without succumbing to VRAM fragmentation or locking overheads.
 
 \paragraph{GPU Acceleration}
 Recent HPC work highlights how careful kernel and data-layout design can unlock GPU performance across data-intensive workloads. FZ-GPU demonstrates a fully parallel compression pipeline with both warp-aware bitwise operations and shared-memory efficiency~\cite{10.1145/3588195.3592994}. For sparse linear algebra, SpMV designs reduce preprocessing overhead while improving load balance and memory access locality~\cite{10.1145/3588195.3593002}, and GPU-aware preconditioning further emphasizes locality and coalescence as first-order concerns on modern GPU architectures~\cite{10.1145/3625549.3658683}. Beyond compute kernels, GPU-enabled asynchronous checkpoint caching and prefetching treat GPU memory as a first-class tier to improve end-to-end throughput for I/O-heavy workflows~\cite{10.1145/3588195.3592987}. Format choices and composition are also critical for irregular workloads, as shown by automatic sparse format composition for SpMM that avoids expensive autotuning while delivering strong performance~\cite{10.1145/3731545.3731574}.
 Another line of work focuses on reliability, debugging, and cluster-scale GPU management, which together shape how GPU-centric systems are built and operated. GPU-FPX provides low-overhead floating-point exception tracking for NVIDIA GPUs~\cite{10.1145/3588195.3592991}, FPBOXer improves scalable input generation for triggering floating-point exceptions in GPU programs~\cite{10.1145/3625549.3658660}, and FloatGuard extends whole-program exception detection to AMD GPUs and highlights cross-vendor portability concerns~\cite{10.1145/3731545.3731586}. At the application and cluster level, SIMCoV-GPU studies multi-node, multi-GPU acceleration for irregular agent-based simulations~\cite{10.1145/3625549.3658692}, FASOP automates fast search for near-optimal transformer parallelization on heterogeneous GPU clusters~\cite{10.1145/3625549.3658687}, and serverless platforms motivate GPU sharing and scheduling mechanisms such as ESG and FluidFaaS~\cite{10.1145/3625549.3658657,10.1145/3731545.3731580}. 
-% These works reinforce the importance of aligning work granularity with warps, minimizing synchronization overhead, and designing memory layouts that preserve locality, which are relevant to GPU-resident indexing under dynamic updates.
-
+%%
 However, applying these general-purpose HPC optimizations to vector search remains non-trivial due to the irregular memory access patterns of IVF traversal. SIVF bridges this gap by tailoring these micro-architectural principles, specifically warp-aligned slabs and lock-free synchronization, to construct the first GPU-resident index capable of sustaining high-velocity updates without compromising retrieval integrity.
 
 \section{Design and Implementation of SIVF}
@@ -234,6 +233,9 @@ consulting the validity bitmap before reading payloads (Algorithm~\ref{alg:sivf_
 (Section~\ref{sec:bitmap_lazy_eviction}), which performs constant-time deletion by looking up coordinates in the address table
 $\mathcal{T}$ and atomically clearing the corresponding bitmap bit (Algorithm~\ref{alg:sivf_delete}).
 We demonstrate the theoretical properties of SIVF in Section~\ref{sec:theoretical_analysis} and discuss implementation details in Section~\ref{sec:implementation_details}.
+
+\paragraph{Data Model and Assumptions}
+To ensure $O(1)$ address resolution without hashing collisions, SIVF operates on a dense identifier space $v_{id} \in [0, N_{max})$, where $N_{max}$ is the pre-configured capacity. In production environments, sparse or non-integer external IDs (e.g., 64-bit UUIDs) are mapped to this internal dense range via a lightweight host-side registry. Furthermore, SIVF enforces strong consistency for data updates via a ``delete-then-insert'' semantic: overwriting an existing $v_{id}$ involves atomically clearing its existing validity bit (logical deletion) before the new payload becomes visible. This design ensures that the validity bitmap serves as the single source of truth for searchers.
 
 \subsection{Slab-based Memory Management}
 \label{sec:slab_memory_management}
@@ -294,12 +296,13 @@ A thread first reads the current head slab $h=H[\ell]$ and attempts to reserve a
 On success, the thread writes the payload to \texttt{slab data[$h$][$c$]} and the id to \texttt{slab\_ids[$h$][$c$]}, updates
 the address table $\mathcal{T}(v_{id})\gets\langle h,c\rangle$, then executes \verb|__threadfence()| and sets the corresponding
 validity bit using \texttt{atomicOr}. The validity bit is the only publication signal read by search, so this ordering ensures
-that a reader observing the bit set never sees partially initialized payload or a missing table entry. If the head slab is
+that a reader observing the bit set never sees partially initialized payload or a missing table entry. 
+If the head slab is
 absent or full, the thread allocates a new slab id from the global pool via \texttt{atomicSub} on $P_{top}$, initializes its
 metadata (\texttt{valid\_count}, \texttt{validity\_bitmap}, \texttt{next}), executes \verb|__threadfence()|, and attempts to
-publish it as the new head with \texttt{atomicCAS(\&H[$\ell$], h, s\_new)}. If head publication fails under contention, the
-thread retries without reclaiming the allocated slab, avoiding allocator-side synchronization in the hot path. The full
-per-thread protocol is described in Algorithm~\ref{alg:sivf_ingestion}.
+publish it as the new head with \texttt{atomicCAS(\&H[$\ell$], h, s\_new)}. 
+If head publication fails under contention (i.e., another thread updated the head first), the thread immediately reclaims the allocated slab to the global free list to prevent memory leaks and retries the operation.
+The full per-thread protocol is described in Algorithm~\ref{alg:sivf_ingestion}.
 
 \begin{algorithm}[t]
 \caption{Lock-free ingestion protocol in SIVF}
@@ -341,6 +344,9 @@ per-thread protocol is described in Algorithm~\ref{alg:sivf_ingestion}.
         \State \verb|__threadfence()|
         \State \texttt{atomicOr(\&slab\_meta[s\_new].validity\_bitmap)}
         \State \Return
+    \Else
+        \State $t_{ret} \gets \texttt{atomicAdd}(P_{top}, 1)$
+        \State $\text{free\_list}[t_{ret}] \gets s_{new}$        
     \EndIf
 \EndWhile
 \end{algorithmic}
@@ -928,7 +934,7 @@ Figure~\ref{fig:dino_perf_12gpu}(b) plots the Pareto frontier of Recall@10 versu
 
 This work addresses the immutability issues in GPU-accelerated Inverted File (IVF) indices caused by static memory layouts. We present SIVF, a GPU-native index enabling high-velocity, in-place updates via slab-based memory management. By leveraging a lock-free update mechanism and optimized slab traversal, SIVF effectively masks the synchronization overhead typical of dynamic indexing, allowing the system to fully exploit hardware parallelism. Evaluation on a 12-GPU cluster demonstrates that SIVF achieves near perfect linear scalability, reaching 4.07M QPS for ingestion and 108.5M QPS for deletion. Furthermore, SIVF maintains high-accuracy search performance at 159.3K QPS while keeping memory overhead negligible.
 
-Despite these advances, SIVF currently operates strictly within GPU VRAM, which bounds the maximum dataset size to the aggregate device memory. Future work will explore hierarchical storage architectures, transparently offloading cold slabs to host memory or NVMe storage to support billion-scale datasets. Additionally, while the current slab reclamation strategy effectively recycles empty nodes, we plan to investigate adaptive background compaction policies to further minimize internal fragmentation under highly skewed deletion patterns. 
+% Despite these advances, SIVF currently operates strictly within GPU VRAM, which bounds the maximum dataset size to the aggregate device memory. Future work will explore hierarchical storage architectures, transparently offloading cold slabs to host memory or NVMe storage to support billion-scale datasets. Additionally, while the current slab reclamation strategy effectively recycles empty nodes, we plan to investigate adaptive background compaction policies to further minimize internal fragmentation under highly skewed deletion patterns. 
 
 % \noindent
 % \textbf{The complete implementation and evaluation scripts are available on GitHub: \url{https://github.com/hpdic/ElasticIVF}.}
