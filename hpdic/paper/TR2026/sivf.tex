@@ -162,8 +162,8 @@ In summary, this paper makes the following contributions:
     \item We implement SIVF in the state-of-the-art vector search library Faiss and evaluate SIVF against a broad spectrum of baselines including GPU CAGRA, GPU Flat, GPU IVF, HNSW, NSG, and LSH on 6 representative datasets and a 12-GPU cluster. The results demonstrate that SIVF achieves up to 1765x reduction in deletion latency, up to 120x faster ingestion compared to existing GPU indices, and exhibits near perfect linear scalability in distributed environments reaching 108.5 million vectors/s for deletion and 4.07 million vectors/s for ingestion on 12 GPUs. These advancements transform vector search from a static retrieval task into an integral component of real-time vector data analytics.
 \end{itemize}
 
-\paragraph{Limitation}
-While SIVF significantly enhances the mutability of GPU-based indices for streaming vectors, we acknowledge two primary constraints that define its current scope. First, SIVF is designed as an in-core index operating within GPU VRAM, which bounds the maximum dataset size to the aggregate GPU VRAM. This design choice prioritizes high-velocity updates and low-latency search, though future extensions could incorporate hierarchical storage architectures to transparently offload cold slabs to host memory or NVMe storage for large-scale datasets. Second, while our slab reclamation strategy effectively recycles empty nodes, the system remains susceptible to sparse internal fragmentation under extremely skewed deletion patterns. We defer to future work the implementation of adaptive background compaction policies, which would further consolidate memory at the cost of transient throughput fluctuations.
+% \paragraph{Limitation}
+% While SIVF significantly enhances the mutability of GPU-based indices for streaming vectors, we acknowledge two primary constraints that define its current scope. First, SIVF is designed as an in-core index operating within GPU VRAM, which bounds the maximum dataset size to the aggregate GPU VRAM. This design choice prioritizes high-velocity updates and low-latency search, though future extensions could incorporate hierarchical storage architectures to transparently offload cold slabs to host memory or NVMe storage for large-scale datasets. Second, while our slab reclamation strategy effectively recycles empty nodes, the system remains susceptible to sparse internal fragmentation under extremely skewed deletion patterns. We defer to future work the implementation of adaptive background compaction policies, which would further consolidate memory at the cost of transient throughput fluctuations.
 
 % \noindent
 % \textbf{The complete implementation and evaluation scripts are available on GitHub: \url{https://github.com/hpdic/ElasticIVF}.}
@@ -248,46 +248,47 @@ To ensure $O(1)$ address resolution without hashing collisions, SIVF operates on
 \subsection{Slab-based Memory Management}
 \label{sec:slab_memory_management}
 
-We propose a Slab-based Dynamic Memory Allocator (SDMA) that replaces monolithic, variable-length inverted lists with linked
-chains of fixed-size blocks on GPU. SDMA pre-allocates a contiguous slab pool; each slab stores up to $C$ vectors and a small
-metadata header
-$M=\langle n_{next}, b_{valid}, c_{valid}\rangle$, where $n_{next}$ is the next-slab pointer, $b_{valid}$ is a $C$-bit validity
-bitmap, and $c_{valid}$ tracks occupancy. We set $C=32$ to match the warp size. Each IVF list $\ell$ is represented by a head
-pointer $H[\ell]$ to the first slab in its chain. Allocation draws a fresh slab id from a global stack pointer $P_{top}$ via
-$s=\texttt{atomicSub}(P_{top},1)-1$, and links the new slab by setting its $n_{next}$ to the previous head and then publishing
-$H[\ell]$ with an atomic compare-and-swap. Insertion for a vector id $v_{id}$ first reads the current head slab $s\gets H[\ell]$,
-reserves a free slot $o$ in $s$ by atomically updating $c_{valid}$, writes the payload into \texttt{slab data[$s$][$o$]}, and
-publishes visibility by atomically setting bit $o$ in $b_{valid}$. To support $O(1)$ deletion, SDMA maintains an address table
-$\mathcal{T}$ that records the physical coordinate of each id, $\mathcal{T}(v_{id})=\langle s,o\rangle$; deletion performs a
-direct lookup and atomically clears bit $o$ in $b_{valid}$, then marks $\mathcal{T}(v_{id})$ invalid. Algorithm~\ref{alg:sdma_core}
-summarizes these core operations.
+We propose a Slab-based Dynamic Memory Allocator (SDMA) that replaces monolithic, variable-length inverted lists with linked chains of fixed-size blocks on GPU. SDMA pre-allocates a contiguous slab pool; each slab stores up to $C$ vectors and a lightweight metadata header $M=\langle n_{next}, b_{valid}, \text{cnt} \rangle$, where $n_{next}$ is the next-slab pointer, $b_{valid}$ is a $C$-bit validity bitmap, and $\text{cnt}$ tracks the number of active vectors. We set $C=32$ to match the GPU warp size. Each IVF list $\ell$ is represented by a head pointer $H[\ell]$ to the first slab in its chain. Algorithm~\ref{alg:sdma_core} summarizes these core primitives.
+
+Allocation draws a fresh slab id from a global stack pointer $P_{top}$ via $s=\textnormal{\texttt{atomicSub}}(P_{top},1)-1$, initializes its metadata, and links it to the list head $H[\ell]$ using an atomic compare-and-swap (CAS) operation. Insertion for a vector id $v_{id}$ first resolves the target slab $s$, reserves a free slot $o$, writes the payload, and finally commits visibility by atomically setting bit $o$ in $b_{valid}$.
+
+To support $O(1)$ \textit{physical} deletion without expensive garbage collection, SDMA maintains an address table $\mathcal{T}$ mapping each id to its physical coordinate $\mathcal{T}(v_{id})=\langle s,o\rangle$. The deletion operation performs a direct lookup and atomically clears bit $o$ in $b_{valid}$. Unlike tombstone-based designs, SDMA performs immediate reclamation: it atomically decrements the slab's occupancy counter $\text{cnt}$. If $\text{cnt}$ drops to zero, the slab is instantly recycled by pushing it back to the global free stack $P_{top}$, making it available for future insertions. 
 
 \begin{algorithm}[t]
 \caption{Core operations of SDMA}
 \label{alg:sdma_core}
 \begin{algorithmic}[1]
-\State \textbf{Global State:} slab pool metadata and data, per-list head pointers $H[\cdot]$, stack pointer $P_{top}$, address table $\mathcal{T}$
-\State \textbf{Input:} vector identifier $v_{id}$, vector $x$, list assignment $\ell$
+\State \textbf{Global State:} slab pool metadata and data, per-list head pointers $H[\cdot]$, stack pointer $P_{\text{top}}$, address table $\mathcal{T}$
+\State \textbf{Input:} vector identifier $v_{\text{id}}$, vector $x$, list assignment $\ell$
 
-\Procedure{Insert}{$v_{id}, x, \ell$}
+\Procedure{Insert}{$v_{\text{id}}, x, \ell$}
     \State $s \gets H[\ell]$
     \While{$s$ is invalid \textbf{or} no free slot exists in slab $s$}
-        \State $s_{new} \gets \texttt{atomicSub}(P_{top}, 1) - 1$
-        \State Initialize metadata $s_{new}$ with $b_{valid}=0$, $n_{next}=s$
-        \State Update $H[\ell]$ to $s_{new}$ if unchanged, otherwise retry
+        \State $s_{\text{new}} \gets \textnormal{\texttt{atomicSub}}(P_{\text{top}}, 1) - 1$
+        \State Initialize metadata $s_{\text{new}}$ with $b_{\text{valid}}=0$, $n_{\text{next}}=s$
+        \State Update $H[\ell]$ to $s_{\text{new}}$ via \textnormal{\texttt{atomicCAS}}
         \State $s \gets H[\ell]$
     \EndWhile
-    \State Reserve a free slot $o$ in slab $s$ via atomic update of $c_{valid}$
+    \State Reserve a free slot $o$ in slab $s$ via atomic update of $c_{\text{valid}}$
     \State Write $x$ to slab data[$s$][$o$]
-    \State Atomically set bit $o$ in $b_{valid}$
-    \State $\mathcal{T}(v_{id}) \gets \langle s, o \rangle$
+    \State Atomically set bit $o$ in $b_{\text{valid}}$
+    \State $\mathcal{T}(v_{\text{id}}) \gets \langle s, o \rangle$
 \EndProcedure
 
-\Procedure{Delete}{$v_{id}$}
-    \State $\langle s, o \rangle \gets \mathcal{T}(v_{id})$
-    \If{$\langle s, o \rangle$ is valid}
-        \State Atomically clear bit $o$ in $b_{valid}$ of slab $s$
-        \State Mark $\mathcal{T}(v_{id})$ as invalid
+\Procedure{Delete}{$v_{\text{id}}$}
+    \State $\langle s, o \rangle \gets \mathcal{T}(v_{\text{id}})$
+    \If{$\langle s, o \rangle \neq \textnormal{\texttt{INVALID}}$}
+        \State $old\_map \gets \text{Atomically clear bit } o \text{ in } b_{\text{valid}} \text{ of slab } s$
+        
+        \If{bit $o$ was set in $old\_map$} 
+            \State $\mathcal{T}(v_{\text{id}}) \gets \textnormal{\texttt{INVALID}}$
+            
+            \State $old\_cnt \gets \textnormal{\texttt{atomicSub}}(\&\text{slab\_meta}[s].\text{cnt}, 1)$
+            \If{$old\_cnt == 1$} 
+                \State Atomically push $s$ back to $P_{\text{top}}$ stack
+                \State $\text{slab\_meta}[s].b_{\text{valid}} \gets 0$
+            \EndIf
+        \EndIf
     \EndIf
 \EndProcedure
 \end{algorithmic}
@@ -360,6 +361,7 @@ The full per-thread protocol is described in Algorithm~\ref{alg:sivf_ingestion}.
 \EndWhile
 \end{algorithmic}
 \end{algorithm}
+
 
 \subsection{Coalesced Search on Non-Contiguous Slabs}
 \label{sec:methods_search_kernel}
