@@ -1,10 +1,10 @@
 /**
- * faiss/gpu/GpuIndexSIVF.h
+ * * File: faiss/gpu/GpuIndexSIVF.h
  *
- * Author: Dongfang Zhao
- * Email:  dzhao@uw.edu
+ * * Author: Dongfang Zhao (dzhao@uw.edu)
+ * * Date: February 2026
  *
- * Header definition for GpuIndexSIVF, a GPU-resident inverted file index
+ * * Description: Header definition for GpuIndexSIVF, a GPU-resident inverted file index
  * supporting dynamic updates (insertion/deletion) via Slab memory management.
  */
 
@@ -21,7 +21,7 @@ class GpuResources;
 class SlabManager;
 
 class GpuIndexSIVF : public GpuIndexIVF {
-   public:
+public:
     // Constructor: Matches base class signature strictly
     GpuIndexSIVF(
             GpuResourcesProvider* provider,
@@ -38,26 +38,23 @@ class GpuIndexSIVF : public GpuIndexIVF {
     // Public Overrides
     // =======================================================
 
-    // [Correction] Use idx_t directly (not Index::idx_t)
     void train(idx_t n, const float* x) override;
 
     size_t remove_ids(const faiss::IDSelector& sel) override;
     
-    // [New] Mandatory virtual implementations for state management
+    // Mandatory virtual implementations for state management
     void reset() override;
     void updateQuantizer() override;
 
-   protected:
+protected:
     // =======================================================
     // Protected Overrides
     // =======================================================
 
-    // [Core Fix]
     // 1. Function name is addImpl_ (with trailing underscore)
     // 2. Type must be idx_t
     void addImpl_(idx_t n, const float* x, const idx_t* ids) override;
 
-    // [Core Fix]
     // Note: The parameter 'k' in searchImpl_ is int, not idx_t
     void searchImpl_(
             idx_t n,
@@ -67,7 +64,7 @@ class GpuIndexSIVF : public GpuIndexIVF {
             idx_t* labels,
             const SearchParameters* params) const override;
 
-   protected:
+protected:
     SlabManager* slab_manager_;
     bool is_slab_initialized_;
 

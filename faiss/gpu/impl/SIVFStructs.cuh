@@ -1,7 +1,7 @@
 /**
- * * faiss/gpu/impl/SIVFStructs.cuh
+ * * File: faiss/gpu/impl/SIVFStructs.cuh
  * 
- * * Definition of data structures for SIVF (Streaming IVF) architecture.
+ * * Description: Definition of data structures for SIVF (Streaming IVF) architecture.
  * 
  * * Author: Dongfang Zhao (dzhao@cs.washington.edu)
  * * Date: February 2026
@@ -25,7 +25,8 @@ constexpr int SIVF_NULL_SLAB = -1;
 /**
  * SlabMetadata
  * This is a lightweight structure for managing linked list relationships and the Bitmap.
- * * We do not store the float* codes here; instead, they are placed in a massive global memory pool.
+ * 
+ * We do not store the float* codes here; instead, they are placed in a massive global memory pool.
  * This structure stores management metadata only.
  */
 struct SlabMetadata {
@@ -49,8 +50,9 @@ struct SlabMetadata {
 
 /**
  * AddressTableEntry
- * Addresses Challenge 3: Reverse Mapping Overhead.
- * * We need to compress (BlockID, SlotOffset) into a single 64-bit integer
+ * This is called ATT in the paper: Locate the target slab.
+ *
+ * We need to compress (BlockID, SlotOffset) into a single 64-bit integer 
  * to construct an O(1) GPU-Resident Address Table.
  */
 struct AddressTableEntry {

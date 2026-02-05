@@ -1,8 +1,8 @@
 /**
- * faiss/gpu/impl/SlabManager.cuh
+ * * File: faiss/gpu/impl/SlabManager.cuh
  *
- * Author: Dongfang Zhao
- * Email:  dzhao@uw.edu
+ * * Author: Dongfang Zhao
+ * * Email:  dzhao@uw.edu
  *
  * Header definition for the SlabManager, handling GPU memory allocation primitives.
  * Includes both the Host-side manager class and the Device-side view struct
@@ -12,7 +12,7 @@
 #pragma once
 
 #include <faiss/gpu/GpuResources.h>
-#include <faiss/gpu/impl/SIVFStructs.cuh> // [Fix] Include definition instead of redefining
+#include <faiss/gpu/impl/SIVFStructs.cuh> // HPDIC MOD
 #include <faiss/gpu/utils/DeviceVector.cuh>
 
 namespace faiss {
@@ -79,7 +79,7 @@ struct SlabManagerDevice {
 // Host Manager
 // =========================================================
 class SlabManager {
-   public:
+public:
     SlabManager(
             GpuResources* res,
             int device,
@@ -90,7 +90,7 @@ class SlabManager {
 
     SlabManagerDevice getDeviceView();
 
-   public:
+public:
     int device_;
     size_t max_vectors_;
     size_t slab_pool_size_;

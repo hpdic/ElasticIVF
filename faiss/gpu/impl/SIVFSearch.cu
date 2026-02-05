@@ -1,10 +1,10 @@
 /**
- * faiss/gpu/impl/SIVFSearch.cu
+ * * File: faiss/gpu/impl/SIVFSearch.cu
  *
- * Author: Dongfang Zhao
- * Email:  dzhao@uw.edu
+ * * Author: Dongfang Zhao (dzhao@uw.edu)
+ * * Date: February 2026
  *
- * Implementation of the exact search kernel for SIVF.
+ * * Description: Implementation of the exact search kernel for SIVF.
  * This file handles the traversal of slab-based inverted lists, distance computation,
  * and the thread-local top-k heap management within the GPU.
  */
@@ -72,8 +72,7 @@ __global__ void sivf_search_kernel(
     int query_idx = blockIdx.x;
     int tid = threadIdx.x;
     
-    if (query_idx >= num_queries)
-        return;
+    if (query_idx >= num_queries) return;
 
     // 1. Load Query into Shared Memory
     // Although dim usually > 32, the loop ensures full loading.
@@ -93,8 +92,8 @@ __global__ void sivf_search_kernel(
     // 3. Traverse Inverted Lists (Probes)
     for (int p = 0; p < nprobe; ++p) {
         idx_t cluster_id = coarse_ids[query_idx * nprobe + p];
-        if (cluster_id == -1)
-            continue;
+        
+        if (cluster_id == -1) continue;
 
         // Retrieve head slab index
         volatile int* heads_ptr = list_heads;
@@ -106,14 +105,13 @@ __global__ void sivf_search_kernel(
         while (cur_slab != -1 && loop_safety < 10000) {
             loop_safety++;
 
-            // [Critical Fix] Use standard struct copy logic.
+            // Use standard struct copy logic.
             // Avoid unsafe casting (e.g., int*) which may violate alignment 
             // or strict aliasing rules.
             SlabMetadata md = manager.slab_metadata[cur_slab];
 
             // Safety break: Detect and break infinite self-loops
-            if (md.next_slab_idx == cur_slab)
-                break;
+            if (md.next_slab_idx == cur_slab) break;
 
             // Process vectors in the current slab
             // Each thread in the warp handles one slot (0-31)
@@ -172,7 +170,8 @@ __global__ void sivf_search_kernel(
                             my_labels,
                             k,
                             final_dists[t * k + i],
-                            final_labels[t * k + i]);
+                            final_labels[t * k + i]
+                    );
                 }
             }
         }
@@ -211,7 +210,8 @@ void runSIVFSearch(
             queries,
             coarse_ids,
             out_distances,
-            out_labels);
+            out_labels
+    );
     CUDA_TEST_ERROR();
 }
 

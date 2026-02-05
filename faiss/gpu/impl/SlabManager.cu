@@ -1,10 +1,10 @@
 /**
- * faiss/gpu/impl/SlabManager.cu
+ * * File: faiss/gpu/impl/SlabManager.cu
  *
- * Author: Dongfang Zhao
- * Email:  dzhao@uw.edu
+ * * Author: Dongfang Zhao
+ * * Email:  dzhao@uw.edu
  *
- * Implementation of the Host side Slab Memory Manager.
+ * * Description: Implementation of the Host side Slab Memory Manager.
  * This file handles the allocation, initialization, and lifecycle management
  * of GPU memory resources required for the SIVF index structure, including
  * slab metadata, vector data storage, and the address translation table.

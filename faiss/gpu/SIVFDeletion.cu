@@ -1,10 +1,10 @@
 /**
- * faiss/gpu/impl/SIVFDeletion.cu
+ * * File: faiss/gpu/impl/SIVFDeletion.cu
  *
- * Author: Dongfang Zhao
- * Email:  dzhao@uw.edu
+ * * Author: Dongfang Zhao (dzhao@uw.edu)
+ * * Date: February 2026
  *
- * Implementation of the GPU-resident deletion logic for SIVF.
+ * * Description: Implementation of the GPU-resident deletion logic for SIVF.
  * This file contains the CUDA kernel for atomic bitmap invalidation and
  * the host-side wrapper to manage memory transfer and kernel execution.
  */
@@ -74,6 +74,11 @@ __global__ void sivf_delete_kernel(
         att_ptr[target_id] = INVALID_COORD;
 
         // Reclaim slab if empty
+        // Note that this is different than the conventional tombstone approach:
+        // We physically reclaim the slab back to the free pool when it becomes empty;
+        // thus, future insertions can reuse it.
+        // This avoids memory bloat in workloads with heavy deletions.
+        // Tombstone, on the other hand, would keep the slab allocated.
         if (old_count == 1) {
             int old_top = atomicAdd(manager.free_list_top, 1);
             if (old_top < manager.slab_pool_size) {
@@ -96,22 +101,22 @@ void run_sivf_deletion(
         return;
     }
 
-    // [API Adaptation] 1. Retrieve current device ID for AllocInfo construction
+    // Retrieve current device ID for AllocInfo construction
     int device;
     cudaGetDevice(&device);
 
-    // [API Adaptation] 2. Construct AllocInfo
+    // Construct AllocInfo
     // Required by DeviceVector constructors to specify memory location.
     AllocInfo info(AllocType::Other, device, MemorySpace::Device, stream);
 
-    // [API Adaptation] 3. Initialize DeviceVector for IDs
+    // Initialize DeviceVector for IDs
     DeviceVector<idx_t> d_ids(res, info);
 
-    // [API Adaptation] 4. Transfer Data
+    // Transfer Data
     // Use append() instead of copyFrom() as it handles allocation and copy.
     d_ids.append(ids.data(), ids.size(), stream);
 
-    // [API Adaptation] 5. Initialize Output Counter
+    // Initialize Output Counter
     DeviceVector<int> d_count(res, info);
     d_count.resize(1, stream); // Allocate storage
     d_count.setAll(0, stream); // Initialize to 0
@@ -127,7 +132,7 @@ void run_sivf_deletion(
 
     CUDA_TEST_ERROR();
 
-    // [API Adaptation] 6. Retrieve Result
+    // Retrieve Result
     // DeviceVector does not have a direct pointer copyTo method,
     // so we use raw cudaMemcpyAsync.
     CUDA_VERIFY(cudaMemcpyAsync(

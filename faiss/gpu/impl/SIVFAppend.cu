@@ -1,10 +1,10 @@
 /**
- * faiss/gpu/impl/SIVFAppend.cu
+ * * File: faiss/gpu/impl/SIVFAppend.cu
  *
- * Author: Dongfang Zhao
- * Email:  dzhao@uw.edu
+ * * Author: Dongfang Zhao
+ * * Email:  dzhao@uw.edu
  *
- * Implementation of the parallel append kernel for SIVF.
+ * * Description: Implementation of the parallel append kernel for SIVF.
  * This file handles the concurrent ingestion of vectors into the slab-based
  * linked list structure, utilizing atomic CAS operations for lock-free
  * synchronization and head pointer management.
@@ -58,7 +58,8 @@ __device__ void write_to_slab(
     // 4. Atomically set the validity bit
     atomicOr(
             &(manager.slab_metadata[slab_idx].validity_bitmap),
-            (1u << slot_idx));
+            (1u << slot_idx)
+    );
 }
 
 /**
@@ -134,7 +135,7 @@ __global__ void sivf_append_kernel(
         new_md->valid_count = 1;
         new_md->validity_bitmap = 0;
 
-        // [Critical] Volatile cast ensures the write to next_slab_idx is 
+        // Volatile cast ensures the write to next_slab_idx is 
         // strictly ordered before the publication CAS below.
         ((volatile SlabMetadata*)new_md)->next_slab_idx = curr_head;
 
@@ -155,7 +156,7 @@ __global__ void sivf_append_kernel(
         // If CAS failed, another thread updated the head. 
         // The current `new_slab` is effectively orphaned (leaked) to avoid 
         // complex ABA issues or reclamation logic in this critical path.
-        // We simply loop again and try to insert into the *new* head.
+        // We simply loop again and try to insert into the new head.
     }
 }
 

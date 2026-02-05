@@ -1,10 +1,10 @@
 /**
- * faiss/gpu/GpuIndexSIVF.cu
+ * * File: faiss/gpu/GpuIndexSIVF.cu
  *
- * Author: Dongfang Zhao
- * Email:  dzhao@uw.edu
+ * * Author: Dongfang Zhao (dzhao@uw.edu)
+ * * Date: February 2026
  *
- * Implementation of the GpuIndexSIVF class.
+ * * Description: Implementation of the GpuIndexSIVF class.
  * This file implements the core lifecycle management (construction, destruction),
  * initialization logic, and overrides for the training, addition, search, and
  * deletion workflows of the Slab-based Inverted File index.
@@ -15,10 +15,10 @@
 #include <faiss/gpu/GpuIndexFlat.h>
 #include <faiss/gpu/GpuIndexSIVF.h>
 #include <faiss/gpu/GpuResources.h>
-#include <faiss/gpu/utils/DeviceUtils.h> // [HPDIC] Device utilities
+#include <faiss/gpu/utils/DeviceUtils.h> 
 #include <faiss/impl/FaissAssert.h>
-#include <faiss/gpu/impl/SIVFAppend.cuh> // [HPDIC] Append kernel interface
-#include <faiss/gpu/impl/SIVFSearch.cuh> // Search kernel interface
+#include <faiss/gpu/impl/SIVFAppend.cuh> // HPDIC: Append kernel interface
+#include <faiss/gpu/impl/SIVFSearch.cuh> // HPDIC: Search kernel interface
 #include <faiss/gpu/impl/SlabManager.cuh>
 #include <faiss/gpu/utils/DeviceTensor.cuh> // Essential for DeviceTensor usage
 
@@ -40,7 +40,8 @@ GpuIndexSIVF::GpuIndexSIVF(
           is_slab_initialized_(false),
           list_heads_(nullptr),
           slab_id_buffer_(nullptr) {
-    // [Critical Fix 1] Explicitly mark as untrained to ensure train() executes.
+    
+    // Explicitly mark as untrained to ensure train() executes.
     this->is_trained = false;
 
     // Initialize the Quantizer (if not provided externally)
@@ -73,17 +74,13 @@ void GpuIndexSIVF::initSlabManager(size_t max_vectors, size_t pool_size) {
     int device = getCurrentDevice();
     auto stream = resources_->getDefaultStream(device);
 
-    // =========================================================
-    // [Core Fix] Synchronized resizing of max_vectors and pool_size
-    // =========================================================
-
     // 1. Calculate required slabs (vectors / 32)
     size_t needed_slabs = (max_vectors + 31) / 32;
 
     // 2. Aggressive expansion: 5x buffer to prevent OOM
     size_t safe_pool_size = std::max(pool_size, needed_slabs * 5 + 4096);
 
-    // 3. [Critical!] Derive total vector storage from the slab count.
+    // 3. Derive total vector storage from the slab count.
     // Failure to align this will cause out-of-bounds writes in later slabs.
     size_t safe_max_vectors = safe_pool_size * 32;
 
@@ -179,7 +176,7 @@ size_t GpuIndexSIVF::remove_ids(const faiss::IDSelector& sel) {
 // Protected Overrides (Implementation Details)
 // ===========================================================
 
-// [Matches Header] addImpl_ (with underscore), parameter type idx_t
+// addImpl_ (with underscore), parameter type idx_t
 void GpuIndexSIVF::addImpl_(idx_t n, const float* x, const idx_t* ids) {
     FAISS_THROW_IF_NOT_MSG(
             is_slab_initialized_,
@@ -220,7 +217,7 @@ void GpuIndexSIVF::addImpl_(idx_t n, const float* x, const idx_t* ids) {
     this->ntotal += n;
 }
 
-// [Matches Header] searchImpl_ (with underscore), parameter k is int
+// addImpl_ (with underscore), parameter type idx_t
 void GpuIndexSIVF::searchImpl_(
         idx_t n,
         const float* x,
@@ -260,11 +257,11 @@ void GpuIndexSIVF::searchImpl_(
     quantizer->search(n, x, nprobe, coarse_dis.data(), coarse_ids.data());
 
     // ================== [DEBUG START] ==================
-    // // 1. Check if Quantizer is empty
+    // 1. Check if Quantizer is empty
     // if (quantizer->ntotal == 0) {
     //     printf("[ERROR] Quantizer is EMPTY! (ntotal=0). Did training fail?\n");
     // } else {
-    //     // printf("[DEBUG] Quantizer ntotal = %ld\n", quantizer->ntotal);
+        // printf("[DEBUG] Quantizer ntotal = %ld\n", quantizer->ntotal);
     // }
     // ================== [DEBUG END] ====================
 
@@ -282,11 +279,11 @@ void GpuIndexSIVF::searchImpl_(
             k,
             nprobe,
             x,
-            coarse_ids
-                    .data(), // Only IDs needed, residual not computed yet
+            coarse_ids.data(), // Only IDs needed, residual not computed yet
             distances,
             labels,
-            stream);
+            stream
+    );
 }
 
 void GpuIndexSIVF::reset() {
@@ -327,7 +324,7 @@ void GpuIndexSIVF::train(idx_t n, const float* x) {
         clus.verbose = true;
         clus.niter = 20; // High iteration count for quality, fast on GPU
 
-        // 2. [Critical] Pass the GPU Quantizer directly!
+        // Pass the GPU Quantizer directly!
         // Faiss will leverage the existing GPU Index to accelerate the assignment phase.
         // *this->quantizer is GpuIndexFlat, which natively supports GPU Search.
         this->quantizer->reset();

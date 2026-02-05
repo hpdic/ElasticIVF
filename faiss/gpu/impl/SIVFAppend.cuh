@@ -1,3 +1,12 @@
+/**
+ * * File: faiss/gpu/impl/SIVFAppend.cuh
+ * 
+ * * Description: Declaration of the SIVF Append Kernel for inserting vectors.
+ * 
+ * * Author: Dongfang Zhao (dzhao@uw.edu)
+ * * Date: February 2026
+ */
+
 #pragma once
 #include <faiss/gpu/impl/SlabManager.cuh>
 

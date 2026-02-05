@@ -1,3 +1,13 @@
+/**
+ * * File: faiss/gpu/impl/SIVFSearch.cuh
+ * 
+ * * Description: Declaration of the SIVF Search Kernel for querying vectors.
+ * 
+ * * Author: Dongfang Zhao (dzhao@uw.edu)
+ * 
+ * * Date: February 2026
+ */
+
 #pragma once
 #include <faiss/gpu/impl/SlabManager.cuh>
 
