@@ -27,7 +27,6 @@
 
 \usepackage{caption}
 
-% 调整标题（Caption）与其下方内容/正文的间距
 \captionsetup{skip=1mm}
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -106,7 +105,7 @@ GPU-accelerated Inverted File (IVF) index is one of the industry standards for l
 % \subsection{Observation: The Deletion Bottleneck}
 Real-world vector analytics applications, ranging from search engines to dynamic retrieval-augmented generation (RAG) of large language models (LLMs), increasingly operate on streaming data where timeliness is critical~\cite{zli_sigmod26,jmohoney_osdi25}. These systems necessitate a sliding-window model where expired vectors must be invalidated promptly as new vectors arrive to maintain bounded memory footprint. However, existing GPU-accelerated approximate nearest neighbor (ANN) indices are predominantly optimized for static, write-once-read-many workloads~\cite{zzhang_nsdi24,vectraflow}.
 
-To quantify the gap between insertion and eviction performance, we conducted benchmarks with the industry-standard Faiss library~\cite{johnson2019billion} and the state-of-the-art graph index CAGRA~\cite{10597683} on an NVIDIA RTX 6000 GPU hosted at the Chameleon Cloud~\cite{keahey2020lessons}. We utilized the SIFT1M dataset~\cite{jegou2011product} to simulate a realistic sliding-window scenario, measuring the wall-clock latency of ingesting 10,000 new vectors and evicting the oldest 10,000.
+To quantify the gap between insertion and eviction performance, we conducted benchmarks with the industry-standard Faiss library~\cite{johnson2019billion} and the state-of-the-art graph index CAGRA (cuVS)~\cite{10597683} on an NVIDIA RTX 6000 GPU hosted at the Chameleon Cloud~\cite{keahey2020lessons}. We utilized the SIFT1M dataset~\cite{jegou2011product} to simulate a realistic sliding-window scenario, measuring the wall-clock latency of ingesting 10,000 new vectors and evicting the oldest 10,000.
 
 As illustrated in Figure~\ref{fig:motivation}(a), we observe a drastic asymmetry between insertion and physical deletion. While GPU parallelism accelerates insertion to $\sim$28 ms for IVF, the eviction process is significantly slower. For Faiss IVF, physical deletion spikes the latency to $\sim$200 ms ($\sim$7.1$\times$ slower) due to the contiguous memory layout necessitating expensive data shifting. The situation is catastrophic for graph-based indices: CAGRA incurs a deletion latency of over 3,000 ms ($\sim$92$\times$ slower) as the topology requires reconstruction to maintain connectivity.
 
@@ -151,7 +150,7 @@ To resolve these limitations, we propose SIVF, a GPU-resident indexing method th
 
 SIVF has been implemented and integrated into Faiss~\cite{douze2024faiss} as a new index through the \texttt{GpuIndexSIVF} class. Our implementation leverages CUDA for device-side kernels and employs a dual-view memory management strategy to maintain the consistency between host and device states. All new algorithms as well as key data structures are encapsulated within a \texttt{SlabManager} class that abstracts the complexity of dynamic memory operations on the GPU. 
 
-We have evaluated SIVF against a comprehensive set of baselines within Faiss, including CAGRA~\cite{10597683}, IVF~\cite{johnson2019billion}, Flat~\cite{douze2024faiss}, HNSW~\cite{malkov2018efficient}, NSG~\cite{10.14778/3303753.3303754}, and LSH~\cite{10.1145/997817.997857}. Our evaluation was carried out on six datasets representing a variety of modalities, dimensions, and scalability: synthetic~\cite{douze2024faiss}, Deep1B~\cite{babenko2016efficient}, SIFT1M~\cite{jegou2011product}, T2I-1B~\cite{simhadri2025results}, GIST1M~\cite{jegou2011product}, and DINO10B~\cite{9709990}. Experimental results show that SIVF achieves up to 1765x reduction in deletion latency compared to CPU fallback baselines and improves ingestion throughput by 36x to 120x compared to existing GPU indices. Furthermore, distributed evaluations on a 12-GPU cluster demonstrate that SIVF exhibits near-perfect linear scalability, reaching an aggregate deletion throughput of 108.5 million vectors/s and 159.3K vectors/s for high-fidelity search. In end-to-end sliding window scenarios, SIVF delivers a 163x to 262x speedup with a negligible memory overhead less than 0.8 percent, effectively closing the gap between static and streaming vector analytics performance.
+We have evaluated SIVF against a comprehensive set of baselines within Faiss, including CAGRA (cuVS)~\cite{10597683}, IVF~\cite{johnson2019billion}, Flat~\cite{douze2024faiss}, HNSW~\cite{malkov2018efficient}, NSG~\cite{10.14778/3303753.3303754}, and LSH~\cite{10.1145/997817.997857}. Our evaluation was carried out on six datasets representing a variety of modalities, dimensions, and scalability: synthetic~\cite{douze2024faiss}, Deep1B~\cite{babenko2016efficient}, SIFT1M~\cite{jegou2011product}, T2I-1B~\cite{simhadri2025results}, GIST1M~\cite{jegou2011product}, and DINO10B~\cite{9709990}. Experimental results show that SIVF achieves up to 1765x reduction in deletion latency compared to CPU fallback baselines and improves ingestion throughput by 36x to 120x compared to existing GPU indices. Furthermore, distributed evaluations on a 12-GPU cluster demonstrate that SIVF exhibits near-perfect linear scalability, reaching an aggregate deletion throughput of 108.5 million vectors/s and 159.3K vectors/s for high-fidelity search. In end-to-end sliding window scenarios, SIVF delivers a 163x to 262x speedup with a negligible memory overhead less than 0.8 percent, effectively closing the gap between static and streaming vector analytics performance.
 
 In summary, this paper makes the following contributions:
 \begin{itemize}
@@ -574,7 +573,7 @@ The total space complexity is dominated by the vector payload, scaling linearly 
 \subsection{System Implementation}
 \label{sec:implementation_details}
 
-We implement SIVF as a fully integrated extension to the GPU components of the widely-adopted Faiss library~\cite{douze2024faiss}. Our implementation represents a significant systems engineering effort, involving approximately 13,000 lines of code. The majority of this codebase consists of optimized C++ and CUDA system implementation (spanning the core Faiss integration, slab memory management, and distributed MPI runtime), while the remaining lines comprise Python and Bash utility scripts for experimental orchestration. We have open-sourced the complete implementation and evaluation scripts on GitHub.
+We implement SIVF as a fully integrated extension to the GPU components of the widely-adopted Faiss library~\cite{douze2024faiss}. Our implementation represents a significant systems engineering effort, involving approximately 13,000 lines of code as of January 2026. The majority of this codebase consists of optimized C++ and CUDA system implementation (spanning the core Faiss integration, slab memory management, and distributed MPI runtime), while the remaining lines comprise Python and Bash utility scripts for experimental orchestration. We have open-sourced the complete implementation and evaluation scripts on GitHub.
 
 The core architecture centers on the \texttt{GpuIndexSIVF} class, a direct subclass of Faiss's \texttt{GpuIndex}. This class integrates our custom \texttt{SlabManager} to orchestrate dynamic memory on the GPU. Unlike standard static models, \texttt{SlabManager} maintains a monolithic memory pool and a device-side free list stack, enabling both warp-aligned allocation and $O(1)$ slab recycling without host intervention. To support high-concurrency operations, we implemented specialized GPU-native kernels for insertion, deletion, and search (encapsulated in \texttt{SIVFAppend}, \texttt{SIVFDelete}, and \texttt{SIVFSearch}). These operators interact with lock-free metadata structures via atomic state transitions to ensure data consistency during simultaneous read and write access.
 
@@ -608,8 +607,7 @@ Second, to position SIVF within the broader indexing landscape, we in Section~\r
 
 Most experiments were conducted on a bare-metal node from the Chameleon Cloud testbed~\cite{keahey2020lessons} (CHI@UC site). The platform is equipped with dual-socket Intel Xeon Gold 6126 CPUs (Skylake microarchitecture), providing a total of 24 physical cores (48 threads with Hyper-Threading) clocked at 2.60 GHz. The host memory consists of 192 GiB of RAM. 
 For acceleration, the node features an NVIDIA Quadro RTX 6000 GPU with 24 GB of GDDR6 VRAM. The system runs on a Ubuntu 24.04 environment with the CUDA toolkit installed: Driver ver. 560.35.05 and CUDA ver. 12.6.
-
-% Each reported data point represents the average of at least three independent executions. Error bars are omitted in figures where the standard deviation is negligible to maintain visual clarity. 
+Each reported data point represents the average of at least three independent executions. Error bars are omitted in figures where the standard deviation is negligible to maintain visual clarity. 
 % Unless explicitly stated (as in Section~\ref{sec:eval_real_world}), our experiments utilize synthetic datasets consisting of random 128-dimensional vectors generated from a uniform distribution. 
 % We employ this configuration as a neutral baseline to isolate system-level overheads (e.g., memory allocation, PCIe transfer) from data distribution effects. Note that because uniform data lacks the clustering structure inherent in real-world applications, the performance advantages of SIVF in microbenchmarks are primarily architectural and appear more conservative than real-world datasets.
 
@@ -898,8 +896,8 @@ To position SIVF within the broader indexing landscape, we benchmarked it agains
 \multirow{2}{*}{\textbf{Method}} & \multicolumn{2}{c|}{\textbf{SIFT1M}} & \multicolumn{2}{c|}{\textbf{T2I-1B}} & \multicolumn{2}{c}{\textbf{GIST1M}} \\
  & Add & Delete & Add & Delete & Add & Delete \\
 \midrule
-GPU Flat~\cite{douze2024faiss} & 9,308 & 833 & 5,957 & 1,163 & 1,907 & 1,040 \\
-GPU CAGRA~\cite{10597683} & 305 & 3,030 & 259 & 3,773 & 97.1 & 10,215 \\
+Faiss Flat~\cite{douze2024faiss} & 9,308 & 833 & 5,957 & 1,163 & 1,907 & 1,040 \\
+nuVS CAGRA~\cite{10597683} & 305 & 3,030 & 259 & 3,773 & 97.1 & 10,215 \\
 HNSW~\cite{malkov2018efficient} & 25.1 & 39,835 & 25.8 & 39,141 & 0.6 & 334,113 \\
 NSG~\cite{10.14778/3303753.3303754} & 3.7 & 266,224 & 3.2 & 314,315 & 0.7 & 278,101 \\
 LSH~\cite{10.1145/997817.997857} & 823 & 13.7 & 461 & 16.4 & 38.4 & 8.5 \\
