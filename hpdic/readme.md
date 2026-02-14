@@ -394,7 +394,7 @@ bash ~/hpdic/ElasticIVF/hpdic/script/search_dino.sh
 
 ## Single-Node GPUs
 
-### Update on 2026-02-24
+### Update on 2026-02-14
 We are moving single-node GPU experiments to A100 GPUs.
 Note that we will follow the convention of placing all projects under `~/hpdic/` and using `~/hpdic/myenv` for Python virtual environment. Please update your local setup accordingly.
 
@@ -555,7 +555,8 @@ g++ -O3 -std=c++17 -fopenmp benchmark_baseline.cpp -o benchmark_baseline.bin \
 git config --global user.name "Dongfang Zhao"
 git config --global user.email "dzhao@uw.edu"
 sudo apt install -y cmake ccache swig g++ libopenblas-dev libmkl-dev git openmpi-bin libopenmpi-dev
-cd ~
+mkdir -p ~/hpdic
+cd ~/hpdic
 git clone https://github.com/hpdic/ElasticIVF.git
 cd ElasticIVF
 python3 -m venv myenv
