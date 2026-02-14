@@ -4,7 +4,7 @@
 
 ## 5 nodes, each with 2 GPUs: `ibm8335` @ CloudLab Clem.
 
-It's a bit tedious to setup 5 nodes with 10 GPUs each on CloudLab Clem. In fact, it's a bit challenging to install on IBM Power9 architecture. Among many other issues, here's a list of warnings I have for you: (i) You cannot use the default VS Code editor because Power9 is compatible with VS Code. (2) You will need to manually install a lot of dependencies (e.g., cmake 3.28+) since the default Ubuntu 20.04 apt repository is too old.
+It's a bit tedious to setup 5 nodes with 10 GPUs each on CloudLab Clem. In fact, it's a bit challenging to install on IBM Power9 architecture. Among many other issues, here's a list of warnings I have for you: (i) You cannot use the default VS Code editor because Power9 is NOT compatible with VS Code. (2) You will need to manually install a lot of dependencies (e.g., cmake 3.28+) since the default Ubuntu 20.04 apt repository is too old.
 
 First we need to setup the cluster and smoke-test master node `node0`:
 ```bash
@@ -394,44 +394,48 @@ bash ~/hpdic/ElasticIVF/hpdic/script/search_dino.sh
 
 ## Single-Node GPUs
 
+### Update on 2026-02-24
+We are moving single-node GPU experiments to A100 GPUs.
+Note that we will follow the convention of placing all projects under `~/hpdic/` and using `~/hpdic/myenv` for Python virtual environment. Please update your local setup accordingly.
+
+### January 2026:
 We assume you are using (e.g., Chameleon Cloud `nc33` at U. Chicago) Ubuntu 24.04, NVIDIA RTX 6000 GPU (24 GB RAM, Driver 560.35.05, CUDA 12.6), 192 GB RAM, Intel(R) Xeon(R) Gold 6126 CPU @ 2.60GHz (48 Cores).
 
 ### Recompile C++
 ```bash
 # Recompile Faiss with HPDIC modifications:
-cd ~/ElasticIVF
+cd ~/hpdic/ElasticIVF
 cmake -B build . \
     -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
     -DCMAKE_CUDA_COMPILER_LAUNCHER=ccache \
     -DFAISS_ENABLE_GPU=ON \
-    -DFAISS_ENABLE_PYTHON=ON \
+    -DFAISS_ENABLE_PYTHON=OFF \
     -DBUILD_TESTING=OFF \
-    -DCMAKE_CUDA_ARCHITECTURES="75" \
-    -DPython_EXECUTABLE=$(which python)
+    -DCMAKE_CUDA_ARCHITECTURES="75;80"
 make -C build -j faiss
 
 # SIVF add benchmark:
-cd ~/ElasticIVF/build
+cd ~/hpdic/ElasticIVF/build
 make -j test_sivf_add
 ./faiss/gpu/test_sivf_add
 
 # SIVF search benchmark:
-cd ~/ElasticIVF/build
+cd ~/hpdic/ElasticIVF/build
 make -j test_sivf_search
 ./faiss/gpu/test_sivf_search
 
 # SIVF delete benchmark:
-cd ~/ElasticIVF/build
+cd ~/hpdic/ElasticIVF/build
 make -j test_sivf_delete
 ./faiss/gpu/test_sivf_delete
 
 # SIVF sensitivity benchmark:
-cd ~/ElasticIVF/build
+cd ~/hpdic/ElasticIVF/build
 make -j test_sivf_sensitivity
 ./faiss/gpu/test_sivf_sensitivity
 
 # Dataset Deep1B:
-cd ~/ElasticIVF/build
+cd ~/hpdic/ElasticIVF/build
 make test_sivf_deep_add test_sivf_deep_search test_sivf_deep_delete test_sivf_deep_pareto -j
 ./test_sivf_deep_add
 ./test_sivf_deep_search
@@ -439,7 +443,7 @@ make test_sivf_deep_add test_sivf_deep_search test_sivf_deep_delete test_sivf_de
 ./test_sivf_deep_pareto
 
 # Dataset SIFT1M:
-cd ~/ElasticIVF/build
+cd ~/hpdic/ElasticIVF/build
 make -j test_sivf_sift_add
 ./test_sivf_sift_add
 make -j test_sivf_sift_search
@@ -450,50 +454,50 @@ make -j test_sivf_sift_pareto
 ./test_sivf_sift_pareto
 
 # Dataset GIST1M:
-cd ~/ElasticIVF/build
+cd ~/hpdic/ElasticIVF/build
 make test_sivf_gist_add test_sivf_gist_search test_sivf_gist_delete test_sivf_gist_pareto -j
 ./test_sivf_gist_add
 ./test_sivf_gist_delete
 ./test_sivf_gist_pareto
 # ./test_sivf_gist_search
-bash ~/ElasticIVF/hpdic/script/search_gist.sh
+bash ~/hpdic/ElasticIVF/hpdic/script/search_gist.sh
 
 # Dataset T2I-1B:
-cd ~/ElasticIVF/build
+cd ~/hpdic/ElasticIVF/build
 make test_sivf_t2i_add test_sivf_t2i_search test_sivf_t2i_delete test_sivf_t2i_pareto -j
 ./test_sivf_t2i_add
 ./test_sivf_t2i_delete
 ./test_sivf_t2i_pareto
 # ./test_sivf_t2i_search
-bash ~/ElasticIVF/hpdic/script/search_t2i.sh
+bash ~/hpdic/ElasticIVF/hpdic/script/search_t2i.sh
 
 # Sliding window:
-cd ~/ElasticIVF/build
+cd ~/hpdic/ElasticIVF/build
 make -j test_sivf_sliding
 ./test_sivf_sliding # default is SIFT
 ./test_sivf_sliding gist
 
 # Memory usage:
-cd ~/ElasticIVF/build
+cd ~/hpdic/ElasticIVF/build
 make -j test_sivf_memory
 ./test_sivf_memory # default is SIFT
 ./test_sivf_memory gist
 
 # SIVF vs. Non-IVF:
-cd ~/ElasticIVF/build
+cd ~/hpdic/ElasticIVF/build
 make -j test_sivf_nonivf
 ./test_sivf_nonivf
 
 # CAGRA:
-source ~/ElasticIVF/myenv/bin/activate
+source ~/hpdic/ElasticIVF/myenv/bin/activate
 pip install cuvs-cu12 --extra-index-url https://pypi.nvidia.com
 pip install cupy-cuda12x
-export LD_LIBRARY_PATH=$(dirname $(find ~/ElasticIVF/myenv -name "libcuvs_c.so" | head -n 1)):$LD_LIBRARY_PATH
-cd ~/ElasticIVF/hpdic/script/
+export LD_LIBRARY_PATH=$(dirname $(find ~/hpdic/ElasticIVF/myenv -name "libcuvs_c.so" | head -n 1)):$LD_LIBRARY_PATH
+cd ~/hpdic/ElasticIVF/hpdic/script/
 python bench_cagra.py
 
 # Profiling
-cd ~/ElasticIVF/build
+cd ~/hpdic/ElasticIVF/build
 make -j test_sivf_profiling
 ./test_sivf_profiling
 sudo nsys profile     --trace=cuda,nvtx,osrt     --gpu-metrics-device=all     --output=sivf_pcie_evidence     --force-overwrite=true     ./test_sivf_profiling
@@ -507,17 +511,17 @@ sudo /usr/local/cuda/bin/ncu \
 nsys stats sivf_pcie_evidence.nsys-rep --report gputrace,cuda_api_sum
 
 # P99 latency test:
-cd ~/ElasticIVF/build
+cd ~/hpdic/ElasticIVF/build
 make -j test_sivf_p99
 ./test_sivf_p99
 
 # Mixed workload latency test:
-cd ~/ElasticIVF/build
+cd ~/hpdic/ElasticIVF/build
 make -j test_sivf_mixed
 ./test_sivf_mixed
 
 # Tombstone simulation test:
-cd ~/ElasticIVF/build
+cd ~/hpdic/ElasticIVF/build
 make -j test_sivf_tombstone
 ./test_sivf_tombstone
 ```
@@ -525,15 +529,15 @@ make -j test_sivf_tombstone
 ### Benchmarks
 ```bash
 # Download SIFT1M dataset:
-bash ~/ElasticIVF/hpdic/script/download_sift.sh
+bash ~/hpdic/ElasticIVF/hpdic/script/download_sift.sh
 
 # Quick Python test with precompiled Faiss library:
-source ~/ElasticIVF/myenv/bin/activate
-LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libmkl_rt.so python3 ~/ElasticIVF/hpdic/script/benchmark_baseline.py
+source ~/hpdic/ElasticIVF/myenv/bin/activate
+LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libmkl_rt.so python3 ~/hpdic/ElasticIVF/hpdic/script/benchmark_baseline.py
 
 # Serious C++ test with local compilation of Faiss source code:
-cp ~/ElasticIVF/hpdic/config/c_cpp_properties.json ~/.vscode/.
-cd ~/ElasticIVF/hpdic/experiment
+cp ~/hpdic/ElasticIVF/hpdic/config/c_cpp_properties.json ~/.vscode/.
+cd ~/hpdic/ElasticIVF/hpdic/experiment
 g++ -O3 -std=c++17 -fopenmp benchmark_baseline.cpp -o benchmark_baseline.bin \
     -I/home/cc/ElasticIVF \
     -I/usr/local/cuda/include \
@@ -550,7 +554,7 @@ g++ -O3 -std=c++17 -fopenmp benchmark_baseline.cpp -o benchmark_baseline.bin \
 ```bash
 git config --global user.name "Dongfang Zhao"
 git config --global user.email "dzhao@uw.edu"
-sudo apt install -y cmake ccache swig g++ libopenblas-dev libmkl-dev git
+sudo apt install -y cmake ccache swig g++ libopenblas-dev libmkl-dev git openmpi-bin libopenmpi-dev
 cd ~
 git clone https://github.com/hpdic/ElasticIVF.git
 cd ElasticIVF
@@ -576,7 +580,7 @@ python setup.py install
 
 ### Test
 ```bash
-cd ~/ElasticIVF/tutorial/cpp
+cd ~/hpdic/ElasticIVF/tutorial/cpp
 # For Intel MKL
 g++ 4-GPU.cpp -o 4-GPU.bin \
     -fopenmp \
@@ -602,6 +606,6 @@ g++ 4-GPU.cpp -o 4-GPU.bin \
 
 ### Reinstall Python package
 ```bash
-cd ~/ElasticIVF/build/faiss/python
+cd ~/hpdic/ElasticIVF/build/faiss/python
 python setup.py install
 ```
