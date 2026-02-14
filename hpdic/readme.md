@@ -578,6 +578,28 @@ cd build/faiss/python
 python setup.py install
 ```
 
+### VS Code Setup
+IntelliSense may not detect your CUDA path; you can try to add `/usr/local/cuda/include` to the include path (either on GUI C/C++ extension or by copying `c_cpp_properties.json` to `~/.vscode/`):
+```json
+{
+    "configurations": [
+        {
+            "name": "Linux",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "/usr/local/cuda/include"
+            ],
+            "defines": [],
+            "compilerPath": "/usr/bin/g++",
+            "cStandard": "c17",
+            "cppStandard": "c++17",
+            "intelliSenseMode": "linux-gcc-x64"
+        }
+    ],
+    "version": 4
+}
+```
+
 ### Test
 ```bash
 cd ~/hpdic/ElasticIVF/tutorial/cpp

@@ -1,5 +1,5 @@
 /**
- * faiss/hpdic/experiment/test_sivf_add.cpp
+ * File: faiss/hpdic/experiment/test_sivf_add.cpp
  *
  * Author: Dongfang Zhao
  * Email:  dzhao@uw.edu
@@ -7,8 +7,10 @@
  * Comprehensive Benchmark: SIVF vs Vanilla Faiss (IVFFlat)
  * Parameter Sweep: nb (Database Size) x nlist (Cluster Count)
  *
- * This test evaluates the ingestion throughput (QPS) of the Slab-based
+ * This test evaluates the ingestion throughput (vectors/second) of the Slab-based
  * architecture against the standard contiguous memory implementation.
+ *
+ * Last Update: 2026-2-14
  */
 
 #include <sys/time.h>
@@ -20,7 +22,7 @@
 #include <cstring> // For memcpy
 
 #include <faiss/gpu/GpuIndexIVFFlat.h>
-#include <faiss/gpu/GpuIndexSIVF.h>
+#include <faiss/gpu/GpuIndexSIVF.h> // HPDIC SIVF Header
 #include <faiss/gpu/StandardGpuResources.h>
 #include <faiss/gpu/utils/DeviceUtils.h>
 
