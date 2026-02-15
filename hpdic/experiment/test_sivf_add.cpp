@@ -141,7 +141,7 @@ int main() {
                 printf("| %-10ld | %-10d | %-15s | %-10.4f | %-15.0f | %-10s |\n",
                        nb,
                        nlist,
-                       "**SIVF**",
+                       "HPDIC SIVF",
                        time_cost,
                        sivf_qps,
                        "-");
@@ -169,10 +169,10 @@ int main() {
                 double time_cost = t1 - t0;
                 vanilla_qps = nb / time_cost;
 
-                printf("| %-10s | %-10s | %-15s | %-10.4f | %-15.0f | %-10.2fx |\n",
+                printf("| %-10s | %-10s | %-15s | %-10.4f | %-15.0f | %-9.2fx |\n",
                        "\"",
                        "\"",
-                       "Vanilla",
+                       "Faiss IVFFlat",
                        time_cost,
                        vanilla_qps,
                        sivf_qps / vanilla_qps);
