@@ -316,7 +316,7 @@ void GpuIndexSIVF::train(idx_t n, const float* x) {
 
     // 2. Verify training success
     if (this->quantizer->ntotal == 0) {
-        printf("[SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...\n");
+        // printf("[SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...\n");
 
         // === Optimized Fallback: GPU Accelerated Clustering ===
 
@@ -339,8 +339,8 @@ void GpuIndexSIVF::train(idx_t n, const float* x) {
 
         this->is_trained = true;
 
-        printf("[SIVF::train] GPU K-Means complete. Quantizer populated with %ld centroids.\n",
-               this->quantizer->ntotal);
+        // printf("[SIVF::train] GPU K-Means complete. Quantizer populated with %ld centroids.\n",
+        //        this->quantizer->ntotal);
     }
 }
 

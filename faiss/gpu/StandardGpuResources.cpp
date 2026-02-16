@@ -343,8 +343,8 @@ void StandardGpuResourcesImpl::initializeForDevice(int device) {
         return;
     }
 
-    std::cout << "[HPDIC MOD] Faiss GPU initialized on device ID: " << device
-              << std::endl;
+    // std::cout << "[HPDIC MOD] Faiss GPU initialized on device ID: " << device
+    //           << std::endl;
 
     FAISS_ASSERT(device < getNumDevices());
     DeviceScope scope(device);

@@ -353,14 +353,14 @@ void Clustering::train_encoded(
     }
 
     if (verbose) {
-        printf("Clustering %" PRId64
-               " points in %zdD to %zd clusters, "
-               "redo %d times, %d iterations\n",
-               nx,
-               d,
-               k,
-               nredo,
-               niter);
+        // printf("Clustering %" PRId64
+        //        " points in %zdD to %zd clusters, "
+        //        "redo %d times, %d iterations\n",
+        //        nx,
+        //        d,
+        //        k,
+        //        nredo,
+        //        niter);
         if (codec) {
             printf("Input data encoded in %zd bytes per vector\n",
                    codec->sa_code_size());
@@ -392,7 +392,7 @@ void Clustering::train_encoded(
 
     double t_search_tot = 0;
     if (verbose) {
-        printf("  Preprocessing in %.2f s\n", (getmillisecs() - t0) / 1000.);
+        // printf("  Preprocessing in %.2f s\n", (getmillisecs() - t0) / 1000.);
     }
     t0 = getmillisecs();
 
@@ -404,7 +404,7 @@ void Clustering::train_encoded(
 
     for (int redo = 0; redo < nredo; redo++) {
         if (verbose && nredo > 1) {
-            printf("Outer iteration %d / %d\n", redo, nredo);
+            // printf("Outer iteration %d / %d\n", redo, nredo);
         }
 
         // initialize centroids using the selected method
@@ -540,15 +540,15 @@ void Clustering::train_encoded(
             iteration_stats.push_back(stats);
 
             if (verbose) {
-                printf("  Iteration %d (%.2f s, search %.2f s): "
-                       "objective=%g imbalance=%.3f nsplit=%d       \r",
-                       i,
-                       stats.time,
-                       stats.time_search,
-                       stats.obj,
-                       stats.imbalance_factor,
-                       nsplit);
-                fflush(stdout);
+                // printf("  Iteration %d (%.2f s, search %.2f s): "
+                //        "objective=%g imbalance=%.3f nsplit=%d       \r",
+                //        i,
+                //        stats.time,
+                //        stats.time_search,
+                //        stats.obj,
+                //        stats.imbalance_factor,
+                //        nsplit);
+                // fflush(stdout);
             }
 
             post_process_centroids();
@@ -571,9 +571,9 @@ void Clustering::train_encoded(
                         iteration_stats[iteration_stats.size() - 2].obj;
                 if (obj == prev_obj) {
                     if (verbose) {
-                        printf("\n  Converged at iteration %d: "
-                               "objective did not change\n",
-                               i);
+                        // printf("\n  Converged at iteration %d: "
+                        //        "objective did not change\n",
+                        //        i);
                     }
                     break;
                 }
@@ -581,7 +581,7 @@ void Clustering::train_encoded(
         }
 
         if (verbose) {
-            printf("\n");
+            // printf("\n");
         }
         if (nredo > 1) {
             if ((lower_is_better && obj < best_obj) ||
