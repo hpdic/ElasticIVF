@@ -84,11 +84,11 @@ void GpuIndexSIVF::initSlabManager(size_t max_vectors, size_t pool_size) {
     // Failure to align this will cause out-of-bounds writes in later slabs.
     size_t safe_max_vectors = safe_pool_size * 32;
 
-    printf("\n[HPDIC MEMORY FIX] Resizing:\n");
-    printf("  > Slab Pool:   %zu -> %zu\n", pool_size, safe_pool_size);
-    printf("  > Data Buffer: %zu -> %zu vectors (Avoids Overflow)\n\n",
-           max_vectors,
-           safe_max_vectors);
+    // printf("\n[HPDIC MEMORY FIX] Resizing:\n");
+    // printf("  > Slab Pool:   %zu -> %zu\n", pool_size, safe_pool_size);
+    // printf("  > Data Buffer: %zu -> %zu vectors (Avoids Overflow)\n\n",
+    //        max_vectors,
+    //        safe_max_vectors);
 
     // 4. Initialize SlabManager (with the expanded sizes)
     slab_manager_ = new SlabManager(
@@ -137,6 +137,7 @@ void run_sivf_deletion(
         int* h_count_out);
 
 size_t GpuIndexSIVF::remove_ids(const faiss::IDSelector& sel) {
+    
     FAISS_THROW_IF_NOT_MSG(is_slab_initialized_, "SIVF not initialized");
 
     const faiss::IDSelectorBatch* sel_batch =
