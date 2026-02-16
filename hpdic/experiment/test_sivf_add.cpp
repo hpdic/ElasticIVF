@@ -48,6 +48,7 @@ void generate_data(size_t n, int d, std::vector<float>& data) {
     }
     
     // Replicate the chunk
+    // TODO: OpenMP parallelization could be added here for larger datasets
     for (size_t i = chunk; i < n; ++i) {
         memcpy(data.data() + i * d,
                data.data() + (i % chunk) * d,
@@ -80,8 +81,9 @@ int main() {
     generate_data(max_nt, d, all_xt);
 
     std::vector<idx_t> all_ids(max_nb);
-    for (size_t i = 0; i < max_nb; ++i)
-        all_ids[i] = (idx_t)i;
+    for (size_t i = 0; i < max_nb; ++i) {
+      all_ids[i] = (idx_t)i;
+    }
 
     StandardGpuResources res;
     res.setTempMemory(1024 * 1024 * 1024); // 1GB Temp Memory

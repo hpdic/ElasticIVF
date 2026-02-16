@@ -1,8 +1,8 @@
 /**
  * * File: faiss/gpu/GpuIndexSIVF.h
  *
- * * Author: Dongfang Zhao (dzhao@uw.edu)
- * * Date: February 2026
+ * * Author:    Dongfang Zhao (dzhao@uw.edu)
+ * * Date:      February 2026
  *
  * * Description: Header definition for GpuIndexSIVF, a GPU-resident inverted file index
  * supporting dynamic updates (insertion/deletion) via Slab memory management.
@@ -11,7 +11,7 @@
 #pragma once
 
 #include <faiss/gpu/GpuIndexIVF.h>
-#include <faiss/gpu/utils/DeviceVector.cuh> // [Fix] Required for DeviceVector instantiation
+#include <faiss/gpu/utils/DeviceVector.cuh> // for DeviceVector instantiation
 #include <vector>
 
 namespace faiss {

@@ -3,8 +3,8 @@
  * 
  * * Description: Definition of data structures for SIVF (Streaming IVF) architecture.
  * 
- * * Author: Dongfang Zhao (dzhao@cs.washington.edu)
- * * Date: February 2026
+ * * Author:    Dongfang Zhao (dzhao@cs.washington.edu)
+ * * Date:      February 2026
  */
 
 #pragma once
