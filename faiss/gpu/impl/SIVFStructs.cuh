@@ -1,10 +1,13 @@
 /**
- * * File: faiss/gpu/impl/SIVFStructs.cuh
- * 
- * * Description: Definition of data structures for SIVF (Streaming IVF) architecture.
- * 
- * * Author:    Dongfang Zhao (dzhao@cs.washington.edu)
- * * Date:      February 2026
+ * @file faiss/gpu/impl/SIVFStructs.cuh
+ * @brief Definition of data structures for SIVF (Streaming IVF) architecture.
+ * @author Dongfang Zhao <dzhao@uw.edu>
+ * @date February 2026
+ * @details This file defines the core data structures used in the SIVF index
+ * architecture, including SlabMetadata for managing slab-level information and
+ * AddressTableEntry for GPU-resident address translation. These structures are
+ * designed to be compact and efficient for GPU memory usage, enabling
+ * high-performance vector indexing and retrieval in the SIVF framework.
  */
 
 #pragma once

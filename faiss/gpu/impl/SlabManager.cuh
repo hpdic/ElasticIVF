@@ -157,8 +157,12 @@ public:
     SlabManagerDevice getDeviceView();
 
 public:
+    // These two members are only used on the Host side
     int device_;
     size_t max_vectors_;
+
+    // The following seven members are exactly mirrored in the 
+    // SlabManagerDevice struct for direct GPU access.
     size_t slab_pool_size_;
     int dim_;
 
