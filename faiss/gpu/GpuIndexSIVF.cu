@@ -50,6 +50,8 @@ GpuIndexSIVF::GpuIndexSIVF(
     this->is_trained = false;
 
     // Initialize the Quantizer (if not provided externally)
+    // This quantizer will be trained in the train() method, and is used for
+    // assigning vectors to inverted lists.
     if (!this->quantizer) {
         this->quantizer =
                 new GpuIndexFlat(provider, dims, metric, config.flatConfig);
@@ -72,21 +74,46 @@ GpuIndexSIVF::~GpuIndexSIVF() {
     }
 }
 
+/**
+ * @brief Initializes the Slab Memory Manager and associated GPU buffers.
+ * This is the "bootstrapping" phase where we pre-allocate a large chunk of GPU memory
+ * to serve as the pool for dynamic vector insertion.
+ *
+ * @param max_vectors The estimated initial number of vectors to support.
+ * @param pool_size The estimated initial number of slabs (chunks).
+ */
 void GpuIndexSIVF::initSlabManager(size_t max_vectors, size_t pool_size) {
+
+    // 0. Idempotency Check
+    // Prevent double-initialization if called multiple times.
     if (is_slab_initialized_)
         return;
 
     int device = getCurrentDevice();
     auto stream = resources_->getDefaultStream(device);
 
-    // 1. Calculate required slabs (vectors / 32)
+    // =========================================================
+    // 1. Capacity Planning (Heuristic Strategy)
+    // =========================================================
+
+    // Calculate how many slabs are needed strictly for the requested vectors.
+    // Use ceiling division: (num + den - 1) / den
+    // Each slab holds 32 vectors (defined by SIVF_SLAB_SIZE).
     size_t needed_slabs = (max_vectors + 31) / 32;
 
-    // 2. Aggressive expansion: 5x buffer to prevent OOM
+    // Aggressive Expansion Strategy:
+    // We allocate 5x the needed amount plus a static buffer (4096).
+    // 1. To accommodate dynamic growth without immediate reallocation.
+    // 2. To mitigate fragmentation effects in the free list.
+    // 3. GPU memory is high-bandwidth but allocation is high-latency, so we
+    // prefer fewer large allocations.
     size_t safe_pool_size = std::max(pool_size, needed_slabs * 5 + 4096);
 
-    // 3. Derive total vector storage from the slab count.
-    // Failure to align this will cause out-of-bounds writes in later slabs.
+    // =========================================================
+    // 2. Alignment & Safety Guard
+    // =========================================================
+
+    // Derive the total vector storage capacity directly from the slab count.
     size_t safe_max_vectors = safe_pool_size * 32;
 
     // printf("\n[HPDIC MEMORY FIX] Resizing:\n");
@@ -95,7 +122,13 @@ void GpuIndexSIVF::initSlabManager(size_t max_vectors, size_t pool_size) {
     //        max_vectors,
     //        safe_max_vectors);
 
-    // 4. Initialize SlabManager (with the expanded sizes)
+    // =========================================================
+    // 3. Resource Allocation
+    // =========================================================
+
+    // A. Create the Manager
+    // This constructor invokes cudaMalloc for the main 'slab_data' (float
+    // buffer) and 'free_list' (int stack).
     slab_manager_ = new SlabManager(
             resources_.get(),
             device,
@@ -103,37 +136,53 @@ void GpuIndexSIVF::initSlabManager(size_t max_vectors, size_t pool_size) {
             safe_pool_size,
             this->d);
 
-    // 5. Initialize ID Buffer (aligned size)
+    // B. Create the ID Buffer
+    // Stores the global ID (idx_t) for every vector in the pool.
+    // Size matches 'safe_max_vectors' to ensure 1:1 mapping with slab_data.
     slab_id_buffer_ = new DeviceVector<idx_t>(
             resources_.get(), makeDevAlloc(AllocType::Other, stream));
     slab_id_buffer_->resize(safe_max_vectors, stream);
 
-    // Initialize to -1 (empty state)
+    // Reset IDs to -1
+    // This marks all slots as "empty" or "invalid" initially.
     CUDA_VERIFY(cudaMemsetAsync(
             slab_id_buffer_->data(),
             -1,
             safe_max_vectors * sizeof(idx_t),
             stream));
 
-    // 6. Initialize List Heads
+    // =========================================================
+    // 4. Inverted List Initialization
+    // =========================================================
+
+    // C. Create List Heads
+    // This is the "Directory" of the inverted index.
+    // list_heads_[i] stores the Slab ID of the i-th cluster.
     if (list_heads_ == nullptr) {
         AllocInfo info(AllocType::Other, device, MemorySpace::Device, stream);
         list_heads_ = new DeviceVector<int>(resources_.get(), info);
     }
+
     FAISS_ASSERT(this->nlist > 0);
     list_heads_->resize(this->nlist, stream);
 
     if (list_heads_->data() == nullptr) {
-        FAISS_THROW_MSG("DeviceVector allocation failed");
+        FAISS_THROW_MSG("DeviceVector allocation failed for list_heads");
     }
 
+    // Reset Heads to -1
+    // -1 indicates that the cluster is currently empty (no slabs assigned).
     CUDA_VERIFY(cudaMemsetAsync(
             list_heads_->data(), -1, this->nlist * sizeof(int), stream));
 
+    // Mark initialization as complete
     is_slab_initialized_ = true;
 }
 
-// Declaration of external launcher function
+// Declaration of external launcher function, from SIVFDeletion.cu
+// TODO: This is so hacky. We should refactor the SIVF deletion logic into a
+// proper class and expose a cleaner interface. This is a temporary workaround
+// to get the functionality working without a major refactor.
 void run_sivf_deletion(
         SlabManager* slab_manager,
         GpuResources* res,
