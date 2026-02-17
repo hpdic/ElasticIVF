@@ -17,14 +17,14 @@
 #include <faiss/Clustering.h> // For manual K-Means fallback
 #include <faiss/IndexFlat.h>  // For CPU temporary Index
 #include <faiss/gpu/GpuIndexFlat.h>
-#include <faiss/gpu/GpuIndexSIVF.h>
+#include <faiss/gpu/GpuIndexSIVF.h>         // HPDIC MOD
 #include <faiss/gpu/GpuResources.h>
 #include <faiss/gpu/utils/DeviceUtils.h> 
 #include <faiss/impl/FaissAssert.h>
-#include <faiss/gpu/impl/SIVFAppend.cuh> // HPDIC: Append kernel interface
-#include <faiss/gpu/impl/SIVFSearch.cuh> // HPDIC: Search kernel interface
-#include <faiss/gpu/impl/SlabManager.cuh>
-#include <faiss/gpu/utils/DeviceTensor.cuh> // Essential for DeviceTensor usage
+#include <faiss/gpu/impl/SIVFAppend.cuh>    // HPDIC MOD
+#include <faiss/gpu/impl/SIVFSearch.cuh>    // HPDIC MOD
+#include <faiss/gpu/impl/SlabManager.cuh>   // HPDIC MOD
+#include <faiss/gpu/utils/DeviceTensor.cuh> 
 
 namespace faiss {
 namespace gpu {
@@ -46,6 +46,7 @@ GpuIndexSIVF::GpuIndexSIVF(
           slab_id_buffer_(nullptr) {
     
     // Explicitly mark as untrained to ensure train() executes.
+    // From Index.h
     this->is_trained = false;
 
     // Initialize the Quantizer (if not provided externally)
