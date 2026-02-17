@@ -1,17 +1,21 @@
 /**
- * * File: faiss/gpu/GpuIndexSIVF.h
- *
- * * Author:    Dongfang Zhao (dzhao@uw.edu)
- * * Date:      February 2026
- *
- * * Description: Header definition for GpuIndexSIVF, a GPU-resident inverted file index
+ * @file faiss/gpu/GpuIndexSIVF.h
+ * @brief Header definition for GpuIndexSIVF, a GPU-resident inverted file index
  * supporting dynamic updates (insertion/deletion) via Slab memory management.
+ * @author Dongfang Zhao (dzhao@uw.edu)
+ * @date February 2026
+ * @details This class extends GpuIndexIVF to support dynamic updates using a
+ * Slab-based memory management system. It provides efficient insertion and
+ * deletion of vectors while maintaining high search performance on the GPU. The
+ * implementation includes overrides for training, adding vectors, searching,
+ * and removing vectors by ID. It also manages the state of the SlabManager and
+ * maintains the head slab for each inverted list to facilitate dynamic updates.
  */
 
 #pragma once
 
 #include <faiss/gpu/GpuIndexIVF.h>
-#include <faiss/gpu/utils/DeviceVector.cuh> // for DeviceVector instantiation
+#include <faiss/gpu/utils/DeviceVector.cuh>
 #include <vector>
 
 namespace faiss {
@@ -21,14 +25,15 @@ class GpuResources;
 class SlabManager;
 
 class GpuIndexSIVF : public GpuIndexIVF {
-public:
+   public:
+
     // Constructor: Matches base class signature strictly
     GpuIndexSIVF(
-            GpuResourcesProvider* provider,
-            int dims,
-            int nlist,
-            faiss::MetricType metric = faiss::METRIC_L2,
-            GpuIndexIVFConfig config = GpuIndexIVFConfig());
+        GpuResourcesProvider* provider,
+        int dims,
+        int nlist, // Number of clusters (inverted lists)
+        faiss::MetricType metric = faiss::METRIC_L2,
+        GpuIndexIVFConfig config = GpuIndexIVFConfig());
 
     ~GpuIndexSIVF() override;
 
@@ -40,31 +45,29 @@ public:
 
     void train(idx_t n, const float* x) override;
 
+	// From IndexIVF.h
     size_t remove_ids(const faiss::IDSelector& sel) override;
-    
+
     // Mandatory virtual implementations for state management
     void reset() override;
     void updateQuantizer() override;
 
-protected:
+   protected:
     // =======================================================
     // Protected Overrides
     // =======================================================
 
-    // 1. Function name is addImpl_ (with trailing underscore)
-    // 2. Type must be idx_t
+    // Matching base class signature strictly for addImpl_ and searchImpl_
     void addImpl_(idx_t n, const float* x, const idx_t* ids) override;
-
-    // Note: The parameter 'k' in searchImpl_ is int, not idx_t
     void searchImpl_(
-            idx_t n,
-            const float* x,
-            int k,
-            float* distances,
-            idx_t* labels,
-            const SearchParameters* params) const override;
+        idx_t n,
+        const float* x,
+        int k,
+        float* distances,
+        idx_t* labels,
+        const SearchParameters* params) const override;
 
-protected:
+   protected:
     SlabManager* slab_manager_;
     bool is_slab_initialized_;
 
@@ -73,7 +76,8 @@ protected:
     // We always insert new data into the Head (Active) Slab.
     DeviceVector<int>* list_heads_;
 
-    DeviceVector<idx_t>* slab_id_buffer_; // Dedicated buffer for storing IDs within each Slab
+    DeviceVector<idx_t>*
+        slab_id_buffer_; // Dedicated buffer for storing IDs within each Slab
 };
 
 } // namespace gpu

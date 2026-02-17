@@ -1,13 +1,17 @@
 /**
- * * File: faiss/gpu/GpuIndexSIVF.cu
- *
- * * Author: Dongfang Zhao (dzhao@uw.edu)
- * * Date: February 2026
- *
- * * Description: Implementation of the GpuIndexSIVF class.
- * This file implements the core lifecycle management (construction, destruction),
- * initialization logic, and overrides for the training, addition, search, and
- * deletion workflows of the Slab-based Inverted File index.
+ * @file faiss/gpu/GpuIndexSIVF.cu
+ * @brief Implementation of the GpuIndexSIVF class.
+ * @author Dongfang Zhao <(dzhao@uw.edu)>
+ * @date February 2026
+ * @details This file implements the GpuIndexSIVF class, a slab-based inverted
+ * file index for GPU. It includes:
+ * - Constructor and destructor for lifecycle management.
+ * - Initialization of the SlabManager and associated buffers.
+ * - Overrides for training, addition, search, and deletion workflows.
+ * - A GPU-accelerated fallback for training using K-Means if the base class
+ * training fails.
+ * - A custom implementation of remove_ids that leverages GPU parallelism for
+ * efficient deletion.
  */
 
 #include <faiss/Clustering.h> // For manual K-Means fallback
