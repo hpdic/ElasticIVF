@@ -231,32 +231,82 @@ size_t GpuIndexSIVF::remove_ids(const faiss::IDSelector& sel) {
 // Protected Overrides (Implementation Details)
 // ===========================================================
 
-// addImpl_ (with underscore), parameter type idx_t
+/**
+ * @brief The core implementation for adding vectors to the SIVF index.
+ * * This overrides the standard GpuIndexIVF::addImpl_ to use our dynamic Slab
+ * memory system.
+ * * The process consists of two stages:
+ * 1. Quantization: Find the nearest cluster (inverted list) for each input
+ * vector.
+ * 2. Parallel Append: concurrently write vectors into the appropriate Slabs.
+ *
+ * @param n Number of vectors to add.
+ * @param x Pointer to the vector data (on Host or Device, Faiss handles this).
+ * @param ids Pointer to the external IDs for these vectors.
+ */
 void GpuIndexSIVF::addImpl_(idx_t n, const float* x, const idx_t* ids) {
+
+    // =========================================================
+    // 0. Pre-flight Checks (Safety First)
+    // =========================================================
+
+    // Ensure the memory pool is allocated.
     FAISS_THROW_IF_NOT_MSG(
             is_slab_initialized_,
             "SIVF not initialized. Call initSlabManager() first.");
+
+    // Ensure the quantizer (centroids) is ready.
     FAISS_THROW_IF_NOT_MSG(this->is_trained, "SIVF not trained");
+
+    // Get current GPU context and stream for subsequent operations.
     auto res = resources_.get();
     int device = getCurrentDevice();
     auto stream = res->getDefaultStream(device);
 
-    // 1. Quantization
+    // =========================================================
+    // 1. Stage 1: Quantization
+    // =========================================================
+    // We need to know which inverted list (cluster) each vector belongs to.
+    // This is done by searching for the nearest centroid in the quantizer.
+
+    // A. Allocate temporary buffers for quantization results
+
+    // 'distances' is needed by the API but not used for insertion logic.    
     DeviceVector<float> distances(
             res,
             AllocInfo(AllocType::Other, device, MemorySpace::Device, stream));
     distances.resize(n, stream);
 
+    // 'assignments' will store the cluster ID (0 to nlist-1) for each vector.
     DeviceVector<idx_t> assignments(
             res,
             AllocInfo(AllocType::Other, device, MemorySpace::Device, stream));
     assignments.resize(n, stream);
 
+    // B. Perform the Search
+
+    // For each of the n vectors in x, find the nearest neighbor in quantizer.
+    // Result: assignments[i] = ID of the cluster centroid closest to x[i].
     this->quantizer->search(n, x, 1, distances.data(), assignments.data());
 
-    // 2. Parallel Append Kernel
+    // =========================================================
+    // 2. Stage 2: Parallel Append
+    // =========================================================
+    // Now we know where each vector goes. We invoke the custom CUDA kernel
+    // to physically copy the data into the SlabManager.
+
+    // A. Get the lightweight Device View
+    // This creates the pass-by-value struct containing raw pointers to the Slab
+    // pool.
     auto manager_view = slab_manager_->getDeviceView();
 
+    // B. Launch the Custom Kernel (Defined in SIVFAppend.cuh)
+    // This kernel will:
+    //  - Read assignments[i] to know the target list.
+    //  - Atomic CAS to update list_heads_[assignments[i]].
+    //  - Allocate new slabs if a list is full (using
+    //  manager_view.allocate_slab).
+    //  - Write vector x[i] and id[i] into the slab.
     runSIVFAppend(
             manager_view,
             list_heads_->data(), // [Modified] Use ->data()
@@ -268,7 +318,12 @@ void GpuIndexSIVF::addImpl_(idx_t n, const float* x, const idx_t* ids) {
             ids,
             stream);
 
-    // Increment total count manually as base class does not handle this.
+    // =========================================================
+    // 3. Update Global State
+    // =========================================================
+    // Manually update the total vector count in the base class.
+    // Standard GpuIndexIVF does this internally, but since we overrode
+    // addImpl_, we must maintain the book-keeping ourselves.
     this->ntotal += n;
 }
 
