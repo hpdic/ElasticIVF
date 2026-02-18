@@ -97,7 +97,7 @@ void GpuIndexSIVF::initSlabManager(size_t max_vectors, size_t pool_size) {
     // =========================================================
 
     // Calculate how many slabs are needed strictly for the requested vectors.
-    // Use ceiling division: (num + den - 1) / den
+    // Use ceiling division: (num + len - 1) / len
     // Each slab holds 32 vectors (defined by SIVF_SLAB_SIZE).
     size_t needed_slabs = (max_vectors + 31) / 32;
 
@@ -341,6 +341,12 @@ void GpuIndexSIVF::searchImpl_(
     );
 }
 
+/**
+ * @brief Resets the SIVF index to an empty state. This involves:
+ * 1. Resetting the quantizer (clearing centroids and assignments).
+ * 2. Resetting all list heads to -1 (indicating empty clusters).
+ * 3. (TODO) Resetting the SlabManager's internal state (e.g., free list top).
+ */
 void GpuIndexSIVF::reset() {
     // 1. Reset Quantizer
     if (quantizer) {
@@ -359,41 +365,86 @@ void GpuIndexSIVF::reset() {
     // Deferred for future optimization.
 }
 
+/// @brief Not implemented for SIVF. The quantizer is trained as part of the
+/// main train() method, and there is no separate sub-quantizer training step.
+/// If the user needs to retrain the quantizer, they should call train() again
+/// with the new training data. This method is a no-op for SIVF and is provided
+/// to satisfy the interface requirements of IndexIVFInterface.
 void GpuIndexSIVF::updateQuantizer() {
     // Callback invoked when the user replaces the CPU-side Quantizer.
     // No specific handling required for SIVF currently.
+    // TODO: If we later add GPU-side state that depends on the quantizer (e.g.,
+    // precomputed norms), we would need to update that state here.
 }
 
+/**
+ * @brief Trains the index by performing K-Means clustering to find centroids.
+ *
+ * * Standard Faiss training involves clustering the input data 'x' into 'nlist'
+ * clusters. The centroids of these clusters become the "keys" in the Quantizer
+ * (GpuIndexFlat).
+ * 
+ * * This implementation includes a robust fallback:
+ * 1. Tries the standard GpuIndexIVF training.
+ * 2. If that fails (quantizer remains empty), it manually executes a
+ * GPU-accelerated K-Means.
+ *
+ * @param n Number of training vectors.
+ * @param x Pointer to the training vectors (host memory).
+ */
 void GpuIndexSIVF::train(idx_t n, const float* x) {
-    // 1. Attempt base class training
+    
+    // =========================================================
+    // 1. Attempt Standard Training
+    // =========================================================
     GpuIndexIVF::train(n, x);
 
-    // 2. Verify training success
+    // =========================================================
+    // 2. Verification & Fallback Strategy
+    // =========================================================
+    // Check if the quantizer is actually populated.
+    // ntotal == 0 implies the base training failed silently or didn't commit
+    // the centroids. This can happen in custom GPU indices if memory states
+    // aren't perfectly synced.
     if (this->quantizer->ntotal == 0) {
         // printf("[SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...\n");
 
-        // === Optimized Fallback: GPU Accelerated Clustering ===
+        // === Optimized Fallback: Manual GPU Accelerated Clustering ===
 
-        // 1. Set clustering parameters
+        // A. Setup Clustering Parameters
+        // We need 'nlist' centroids (one for each inverted list).
         faiss::Clustering clus(this->d, this->nlist);
-        clus.verbose = true;
-        clus.niter = 20; // High iteration count for quality, fast on GPU
+        clus.verbose = false; // Suppress internal logging for cleaner output
+        clus.niter = 20; // 20 iterations. High enough for convergence
 
-        // Pass the GPU Quantizer directly!
-        // Faiss will leverage the existing GPU Index to accelerate the assignment phase.
-        // *this->quantizer is GpuIndexFlat, which natively supports GPU Search.
+        // B. GPU-Accelerated Assignment
+        // K-Means has two steps: 1. Assign points to nearest centroid. 2.
+        // Update centroids. Step 1 is the bottleneck (Nearest Neighbor Search).
+        // By passing '*this->quantizer' (which is a GpuIndexFlat), we force
+        // Faiss to use the GPU for the Assignment step. If we didn't pass this,
+        // Faiss might use a slow CPU index by default.
         this->quantizer->reset();
         clus.train(n, x, *this->quantizer);
 
-        // 3. Populate the Quantizer with final centroids
-        // Note: clus.train stores intermediate results in clus.centroids (CPU).
-        // We must re-add them to the GPU quantizer.
+        // =========================================================
+        // 3. Commit Results
+        // =========================================================
+
+        // C. Populate the Quantizer
+        // The result of K-Means is stored in 'clus.centroids' (usually in CPU
+        // RAM). We must strictly add them into the GPU Quantizer so it can
+        // function as an index.
         this->quantizer->reset();
+
+        // Upload the calculated centroids (d * nlist floats) to the GPU index.
+        // After this, 'quantizer->ntotal' should equal 'nlist'.
         this->quantizer->add(this->nlist, clus.centroids.data());
 
+        // Mark the flag manually because we bypassed the standard flow.
         this->is_trained = true;
 
-        // printf("[SIVF::train] GPU K-Means complete. Quantizer populated with %ld centroids.\n",
+        // printf("[SIVF::train] GPU K-Means complete. Quantizer populated with
+        // %ld centroids.\n",
         //        this->quantizer->ntotal);
     }
 }
