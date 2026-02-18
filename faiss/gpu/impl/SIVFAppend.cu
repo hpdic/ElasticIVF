@@ -1,13 +1,12 @@
 /**
- * * File: faiss/gpu/impl/SIVFAppend.cu
- *
- * * Author: Dongfang Zhao
- * * Email:  dzhao@uw.edu
- *
- * * Description: Implementation of the parallel append kernel for SIVF.
- * This file handles the concurrent ingestion of vectors into the slab-based
- * linked list structure, utilizing atomic CAS operations for lock-free
- * synchronization and head pointer management.
+ * @file faiss/gpu/impl/SIVFAppend.cu
+ * @brief Implements the core logic for appending vectors to the SIVF index on
+ * the GPU.
+ * @author Dongfang Zhao (dzhao@uw.edu)
+ * @date February 2026
+ * @details This file implements the core logic for appending vectors to the
+ * SIVF index on the GPU. It includes the CUDA kernel for parallel appends and
+ * the associated device functions.
  */
 
 #include <faiss/gpu/GpuIndexSIVF.h>
@@ -160,6 +159,36 @@ __global__ void sivf_append_kernel(
     }
 }
 
+/**
+ * @brief Launches the CUDA kernel to append a batch of vectors to the SIVF
+ * index.
+ *
+ * This host-side wrapper calculates the optimal grid and block dimensions and
+ * dispatches the `sivf_append_kernel` asynchronously on the specified stream.
+ * It manages the mapping of input vectors to their respective inverted lists
+ * (slabs) based on pre-calculated cluster assignments.
+ *
+ * @param[in,out] manager      Reference to the device-side `SlabManagerDevice`.
+ * Manages memory allocation for new slabs if a list is full.
+ * @param[in,out] list_heads   Device pointer to an array of list head indices.
+ * Updated if a new slab becomes the head of a list.
+ * @param[in]     slab_ids     Device pointer to slab identifiers (used for
+ * linking nodes).
+ * @param[in]     num_vecs     The number of vectors in the current batch to
+ * append.
+ * @param[in]     dim          The dimensionality of each vector.
+ * @param[in]     assignments  Device pointer to the cluster assignment indices
+ * for each vector (size: `num_vecs`).
+ * @param[in]     vecs         Device pointer to the flattened vector data
+ * (size: `num_vecs * dim`).
+ * @param[in]     ids          Device pointer to the unique global identifiers
+ * (UIDs) corresponding to the vectors (size: `num_vecs`).
+ * @param[in]     stream       The CUDA stream to use for asynchronous kernel
+ * execution.
+ *
+ * @note This function assumes that `vecs`, `ids`, and `assignments` are already
+ * resident in GPU memory.
+ */
 void runSIVFAppend(
         SlabManagerDevice& manager,
         int* list_heads,
@@ -170,8 +199,22 @@ void runSIVFAppend(
         const float* vecs,
         const idx_t* ids,
         cudaStream_t stream) {
+
+    // Define the thread block size.
+    // 256 is a heuristic choice to maximize occupancy on most NVIDIA
+    // architectures (balances register usage and shared memory per SM).
     int threads = 256;
+
+    // Calculate the grid dimension (number of blocks).
+    // Uses integer ceiling division `(N + T - 1) / T` to ensure there are
+    // enough threads to cover all `num_vecs`, dealing with non-aligned batch
+    // sizes.
     int blocks = (num_vecs + threads - 1) / threads;
+
+    // Launch the element-wise kernel.
+    // Each thread is responsible for appending exactly one vector to its
+    // assigned list. The kernel is launched asynchronously on the provided
+    // `stream` to overlap with other compute or memory operations.
     sivf_append_kernel<<<blocks, threads, 0, stream>>>(
             manager,
             list_heads,
