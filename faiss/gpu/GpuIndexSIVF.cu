@@ -300,7 +300,7 @@ void GpuIndexSIVF::addImpl_(idx_t n, const float* x, const idx_t* ids) {
     // pool.
     auto manager_view = slab_manager_->getDeviceView();
 
-    // B. Launch the Custom Kernel (Defined in SIVFAppend.cuh)
+    // B. Launch the Custom Kernel (Defined in gpu/impl/SIVFAppend.cuh)
     // This kernel will:
     //  - Read assignments[i] to know the target list.
     //  - Atomic CAS to update list_heads_[assignments[i]].
@@ -309,7 +309,7 @@ void GpuIndexSIVF::addImpl_(idx_t n, const float* x, const idx_t* ids) {
     //  - Write vector x[i] and id[i] into the slab.
     runSIVFAppend(
             manager_view,
-            list_heads_->data(), // [Modified] Use ->data()
+            list_heads_->data(),
             slab_id_buffer_->data(),
             (int)n,
             this->d,
@@ -327,7 +327,21 @@ void GpuIndexSIVF::addImpl_(idx_t n, const float* x, const idx_t* ids) {
     this->ntotal += n;
 }
 
-// addImpl_ (with underscore), parameter type idx_t
+/**
+ * @brief The core implementation for searching vectors in the SIVF index.
+ * * This overrides the standard GpuIndexIVF::searchImpl_.
+ * * Workflow:
+ * 1. Coarse Search: Use the quantizer to find the 'nprobe' nearest clusters.
+ * 2. Fine Search: Invoke custom kernel to scan the linked lists (slabs) of
+ * those clusters.
+ *
+ * @param n Number of query vectors.
+ * @param x Pointer to query vectors (Host or Device).
+ * @param k Number of nearest neighbors to return (top-k).
+ * @param distances Output buffer for distances (size n * k).
+ * @param labels Output buffer for IDs (size n * k).
+ * @param params Optional search parameters (e.g., to override nprobe).
+ */
 void GpuIndexSIVF::searchImpl_(
         idx_t n,
         const float* x,
@@ -335,11 +349,20 @@ void GpuIndexSIVF::searchImpl_(
         float* distances,
         idx_t* labels,
         const SearchParameters* params) const {
+
+    // =========================================================
+    // 0. Safety Checks
+    // =========================================================
     FAISS_THROW_IF_NOT_MSG(is_slab_initialized_, "SIVF not initialized");
     FAISS_THROW_IF_NOT_MSG(this->is_trained, "SIVF not trained");
 
-    // 2. Handle nprobe (support dynamic override via params)
+    // =========================================================
+    // 1. Parameter Handling (Dynamic Override)
+    // =========================================================
+    // Default to the index's configured nprobe.
     int nprobe = this->nprobe;
+    
+    // Check if the user passed runtime parameters to override nprobe.
     if (params) {
         const IVFSearchParameters* ivf_params =
                 dynamic_cast<const IVFSearchParameters*>(params);
@@ -348,12 +371,17 @@ void GpuIndexSIVF::searchImpl_(
         }
     }
 
-    // 3. Coarse Quantization (First level search)
-    // Use Faiss DeviceTensor for automatic memory management
+    // =========================================================
+    // 2. Coarse Quantization (Stage 1: The Filter)
+    // =========================================================
+    // We need to find which 'nprobe' clusters are most likely to contain the
+    // neighbors. This is done by searching the Quantizer (centroids).
+
     auto stream = resources_->getDefaultStream(getCurrentDevice());
 
-    // Note: Faiss GPU internals often use int indexing. Casting n is safe
-    // as batch size rarely exceeds 2 billion.
+    // Use Faiss DeviceTensor for RAII memory management on GPU.
+    // Dimensions: [n, nprobe]
+    // These buffers hold the results of the coarse search.
     DeviceTensor<float, 2, true> coarse_dis(
             resources_.get(),
             makeDevAlloc(AllocType::Other, stream),
@@ -363,7 +391,9 @@ void GpuIndexSIVF::searchImpl_(
             makeDevAlloc(AllocType::Other, stream),
             {(int)n, nprobe});
 
-    // Invoke Quantizer
+    // Invoke the Quantizer (GpuIndexFlat).
+    // For each query vector, find the top 'nprobe' nearest centroids.
+    // coarse_ids[i] will contain the Cluster IDs (0..nlist-1) to scan.
     quantizer->search(n, x, nprobe, coarse_dis.data(), coarse_ids.data());
 
     // ================== [DEBUG START] ==================
@@ -375,11 +405,27 @@ void GpuIndexSIVF::searchImpl_(
     // }
     // ================== [DEBUG END] ====================
 
-    // 4. Fine-grained Search (Invoke our Kernel)
-    // Cast away constness to retrieve DeviceView
+    // =========================================================
+    // 3. Fine-grained Search (Stage 2: Scan)
+    // =========================================================
+    // Now we know WHICH lists to look into (from coarse_ids).
+    // We invoke our custom kernel to traverse the Slab Linked Lists.
+
+    // Cast away constness.
+    // The search method is 'const', but getting the device view might
+    // technically touch some internal pointers (though it shouldn't modify
+    // data).
     SlabManager* mutable_mgr = const_cast<SlabManager*>(slab_manager_);
 
+    // Get the lightweight struct to pass to the kernel.
     SlabManagerDevice device_view = mutable_mgr->getDeviceView();
+
+    // Launch the custom kernel (defined in gpu/impl/SIVFSearch.cuh).
+    // This kernel will:
+    //  - Parallelize over queries (n) and probes (nprobe).
+    //  - Traverse the linked list starting at list_heads_[coarse_ids[i]].
+    //  - Compute distances for all vectors in all slabs in the chain.
+    //  - Maintain a Top-K heap for each query.
     runSIVFSearch(
             device_view,
             list_heads_->data(),
@@ -389,7 +435,7 @@ void GpuIndexSIVF::searchImpl_(
             k,
             nprobe,
             x,
-            coarse_ids.data(), // Only IDs needed, residual not computed yet
+            coarse_ids.data(),
             distances,
             labels,
             stream
