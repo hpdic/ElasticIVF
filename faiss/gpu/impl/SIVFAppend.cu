@@ -4,7 +4,7 @@
  * the GPU.
  * @author Dongfang Zhao (dzhao@uw.edu)
  * @date February 2026
- * 
+ *
  * @details This file implements the core logic for appending vectors to the
  * SIVF index on the GPU. It includes the CUDA kernel for parallel appends and
  * the associated device functions.
@@ -12,8 +12,8 @@
 
 #include <faiss/gpu/GpuIndexSIVF.h>
 #include <faiss/gpu/utils/DeviceUtils.h>
+#include <faiss/gpu/impl/SIVFAppend.cuh>
 #include <faiss/gpu/impl/SlabManager.cuh>
-#include <faiss/gpu/impl/SIVFAppend.cuh> 
 
 namespace faiss {
 namespace gpu {
@@ -36,20 +36,20 @@ namespace gpu {
  * @param user_id The logical ID assigned to this vector.
  */
 __device__ void write_to_slab(
-        SlabManagerDevice& manager,
-        idx_t* slab_id_buffer,
-        int slab_idx,
-        int slot_idx,
-        int dim,
-        const float* src_vec,
-        idx_t user_id) {
-
+    SlabManagerDevice& manager,
+    idx_t* slab_id_buffer,
+    int slab_idx,
+    int slot_idx,
+    int dim,
+    const float* src_vec,
+    idx_t user_id) {
+        
     // 1. Calculate physical offsets and copy vector data
     // The entire slab_data pool is a single flat 1D float array.
     // Base address for this slab: slab_idx * 32 (vectors per slab) * dim
     // Specific offset for this slot: slot_idx * dim
     float* dst_vec =
-            manager.slab_data + (size_t)slab_idx * 32 * dim + slot_idx * dim;
+        manager.slab_data + (size_t)slab_idx * 32 * dim + slot_idx * dim;
     for (int d = 0; d < dim; ++d)
         dst_vec[d] = src_vec[d];
 
@@ -80,8 +80,7 @@ __device__ void write_to_slab(
     // Mark the validity_bitmap to indicate this slot is now readable.
     // 1u << slot_idx creates a bitmask for the specific slot.
     atomicOr(
-            &(manager.slab_metadata[slab_idx].validity_bitmap),
-            (1u << slot_idx));
+        &(manager.slab_metadata[slab_idx].validity_bitmap), (1u << slot_idx));
 }
 
 /**
@@ -108,15 +107,15 @@ __device__ void write_to_slab(
  * corresponding to the incoming vectors.
  */
 __global__ void sivf_append_kernel(
-        SlabManagerDevice manager,
-        int* list_heads,
-        idx_t* slab_ids,
-        int num_vecs,
-        int dim,
-        const idx_t* assignments,
-        const float* vecs,
-        const idx_t* ids) {
-    
+    SlabManagerDevice manager,
+    int* list_heads,
+    idx_t* slab_ids,
+    int num_vecs,
+    int dim,
+    const idx_t* assignments,
+    const float* vecs,
+    const idx_t* ids) {
+        
     // Calculate global thread ID. One thread processes one vector.
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= num_vecs)
@@ -174,7 +173,7 @@ __global__ void sivf_append_kernel(
         // =======================================================
         // Path 2: Allocate and link a new slab (Head is full or empty)
         // =======================================================
-        
+
         // Atomically pop a fresh slab from the global memory pool
         int free_idx = atomicSub(manager.free_list_top, 1);
         if (free_idx <= 0) {
@@ -209,10 +208,10 @@ __global__ void sivf_append_kernel(
         if (atomicCAS(&list_heads[cluster_id], curr_head, new_slab) ==
             curr_head) {
 
-            // We successfully became the new head. 
+            // We successfully became the new head.
             // Write our data into slot 0 of this new slab.
             write_to_slab(
-                    manager, slab_ids, new_slab, 0, dim, src_vec, user_id);
+                manager, slab_ids, new_slab, 0, dim, src_vec, user_id);
             return; // Done
         }
 
@@ -255,16 +254,16 @@ __global__ void sivf_append_kernel(
  * resident in GPU memory.
  */
 void runSIVFAppend(
-        SlabManagerDevice& manager,
-        int* list_heads,
-        idx_t* slab_ids,
-        int num_vecs,
-        int dim,
-        const idx_t* assignments,
-        const float* vecs,
-        const idx_t* ids,
-        cudaStream_t stream) {
-
+    SlabManagerDevice& manager,
+    int* list_heads,
+    idx_t* slab_ids,
+    int num_vecs,
+    int dim,
+    const idx_t* assignments,
+    const float* vecs,
+    const idx_t* ids,
+    cudaStream_t stream) {
+        
     // Define the thread block size.
     // 256 is a heuristic choice to maximize occupancy on most NVIDIA
     // architectures (balances register usage and shared memory per SM).
@@ -281,14 +280,7 @@ void runSIVFAppend(
     // assigned list. The kernel is launched asynchronously on the provided
     // `stream` to overlap with other compute or memory operations.
     sivf_append_kernel<<<blocks, threads, 0, stream>>>(
-            manager,
-            list_heads,
-            slab_ids,
-            num_vecs,
-            dim,
-            assignments,
-            vecs,
-            ids);
+        manager, list_heads, slab_ids, num_vecs, dim, assignments, vecs, ids);
     CUDA_TEST_ERROR();
 }
 

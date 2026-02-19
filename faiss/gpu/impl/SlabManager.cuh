@@ -3,10 +3,10 @@
  * @brief Header definition for the SlabManager handling GPU memory allocation.
  * @author Dongfang Zhao <dzhao@uw.edu>
  * @date   2026-02-16
- * 
- * @details Header definition for the SlabManager, handling GPU memory allocation 
- * primitives. Includes both the Host-side manager class and the Device-side view struct
- * with inline __device__ allocation logic.
+ *
+ * @details Header definition for the SlabManager, handling GPU memory
+ * allocation primitives. Includes both the Host-side manager class and the
+ * Device-side view struct with inline __device__ allocation logic.
  */
 
 #pragma once
@@ -33,12 +33,13 @@ struct SlabManagerDevice {
 
     /// @brief Pointer to the main flat data buffer in GPU memory.
     /// Total size = slab_pool_size * dim.
-    /// Layout: Flattened 1D array. Access via: slab_data[slab_idx * dim + offset]
+    /// Layout: Flattened 1D array. Access via: slab_data[slab_idx * dim +
+    /// offset]
     float* slab_data;
 
     /// @brief Global address mapping table (Page Table).
-    /// Maps a logical vector_id to its physical location (slab_idx, slot_offset).
-    /// Access: address_table[vector_id]
+    /// Maps a logical vector_id to its physical location (slab_idx,
+    /// slot_offset). Access: address_table[vector_id]
     AddressTableEntry* address_table;
 
     /// @brief Stack of available (free) slab indices.
@@ -60,23 +61,26 @@ struct SlabManagerDevice {
 
     /**
      * @brief Allocates a new slab from the free list in a thread-safe manner.
-     * * This function atomically decrements the free_list_top counter to reserve a slot.
-     * If successful, it pops a slab index from the stack and initializes its metadata.
-     * * @note Thread Safety: Uses atomicSub/atomicAdd to ensure safe concurrent access 
-     * by thousands of GPU threads.
-     * * @return int The index of the allocated slab, or SIVF_NULL_SLAB (-1) if the pool is empty (underflow).
-     */    
+     * * This function atomically decrements the free_list_top counter to
+     * reserve a slot. If successful, it pops a slab index from the stack and
+     * initializes its metadata.
+     * * @note Thread Safety: Uses atomicSub/atomicAdd to ensure safe concurrent
+     * access by thousands of GPU threads.
+     * * @return int The index of the allocated slab, or SIVF_NULL_SLAB (-1) if
+     * the pool is empty (underflow).
+     */
     __device__ inline int allocate_slab() {
 
-        // Atomic decrement to reserve a slot. 
+        // Atomic decrement to reserve a slot.
         // Returns the value BEFORE decrementing (old_top).
         int old_top = atomicSub(free_list_top, 1);
 
         // Check for underflow (empty pool)
-        // Critical Section: If multiple threads decrement below 0, we must revert.
+        // Critical Section: If multiple threads decrement below 0, we must
+        // revert.
         if (old_top <= 0) {
-            atomicAdd(free_list_top, 1);    // Revert the counter
-            return SIVF_NULL_SLAB;          // Allocation failed
+            atomicAdd(free_list_top, 1); // Revert the counter
+            return SIVF_NULL_SLAB;       // Allocation failed
         }
 
         // Retrieve the slab index from the stack (LIFO)
@@ -94,21 +98,23 @@ struct SlabManagerDevice {
 
     /**
      * @brief Releases a slab index back to the free list (Stack Push).
-     * @details This function atomically increments the free_list_top counter to reserve 
-     * a slot in the free_list array, and then writes the slab_idx into that slot.
-     * @param slab_idx The index of the slab to be freed. 
+     * @details This function atomically increments the free_list_top counter to
+     * reserve a slot in the free_list array, and then writes the slab_idx into
+     * that slot.
+     * @param slab_idx The index of the slab to be freed.
      * Must be a valid index [0, slab_pool_size-1].
-     * @note Thread Safety: Uses atomicAdd to safely coordinate concurrent frees 
+     * @note Thread Safety: Uses atomicAdd to safely coordinate concurrent frees
      * from multiple GPU threads.
      */
     __device__ inline void free_slab(int slab_idx) {
 
         // Atomically increment the stack pointer to reserve a spot.
-        // Returns the value BEFORE incrementing (old_top), which is our write index.
+        // Returns the value BEFORE incrementing (old_top), which is our write
+        // index.
         int old_top = atomicAdd(free_list_top, 1);
 
         // Check for overflow (Safety Guard).
-        // Prevents writing out of bounds if the pool is somehow corrupted 
+        // Prevents writing out of bounds if the pool is somehow corrupted
         // or if we try to free more slabs than the pool can hold.
         if (old_top < slab_pool_size) {
             free_list[old_top] = slab_idx;
@@ -116,9 +122,10 @@ struct SlabManagerDevice {
     }
 
     /**
-     * @brief Retrieves the physical location (Slab ID + Slot Offset) for a logical vector ID.
-     * @param vector_id The global index of the vector. 
-     * @return AddressTableEntry The physical address. 
+     * @brief Retrieves the physical location (Slab ID + Slot Offset) for a
+     * logical vector ID.
+     * @param vector_id The global index of the vector.
+     * @return AddressTableEntry The physical address.
      * @warning No bounds checking. Caller must ensure vector_id < max_vectors.
      */
     __device__ inline AddressTableEntry get_address(long vector_id) const {
@@ -127,15 +134,16 @@ struct SlabManagerDevice {
 
     /**
      * @brief Updates the page table mapping for a specific vector.
-     * @details Maps a logical `vector_id` to a physical `slab_idx` and `slot_offset`.
+     * @details Maps a logical `vector_id` to a physical `slab_idx` and
+     * `slot_offset`.
      * @param vector_id The global index to update.
      * @param slab_idx The physical slab index where data is stored.
      * @param slot_offset The specific slot within that slab.
      */
     __device__ inline void update_address(
-            long vector_id,
-            int slab_idx,
-            int slot_offset) {
+        long vector_id,
+        int slab_idx,
+        int slot_offset) {
         AddressTableEntry entry;
         entry.set(slab_idx, slot_offset);
         address_table[vector_id] = entry;
@@ -146,23 +154,24 @@ struct SlabManagerDevice {
 // Host Manager
 // =========================================================
 class SlabManager {
-public:
+   public:
     SlabManager(
-            GpuResources* res,
-            int device,
-            size_t max_vectors,
-            size_t slab_pool_size,
-            int dim);
+        GpuResources* res,
+        int device,
+        size_t max_vectors,
+        size_t slab_pool_size,
+        int dim);
     ~SlabManager();
 
     SlabManagerDevice getDeviceView();
 
-public:
+   public:
+   
     // These two members are only used on the Host side
     int device_;
     size_t max_vectors_;
 
-    // The following seven members are exactly mirrored in the 
+    // The following seven members are exactly mirrored in the
     // SlabManagerDevice struct for direct GPU access.
     size_t slab_pool_size_;
     int dim_;

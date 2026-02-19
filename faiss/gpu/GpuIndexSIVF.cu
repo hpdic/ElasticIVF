@@ -3,7 +3,7 @@
  * @brief Implementation of the GpuIndexSIVF class.
  * @author Dongfang Zhao <(dzhao@uw.edu)>
  * @date February 2026
- * 
+ *
  * @details This file implements the GpuIndexSIVF class, a slab-based inverted
  * file index for GPU. It includes:
  * - Constructor and destructor for lifecycle management.
@@ -18,14 +18,14 @@
 #include <faiss/Clustering.h> // For manual K-Means fallback
 #include <faiss/IndexFlat.h>  // For CPU temporary Index
 #include <faiss/gpu/GpuIndexFlat.h>
-#include <faiss/gpu/GpuIndexSIVF.h>         // HPDIC MOD
+#include <faiss/gpu/GpuIndexSIVF.h> // HPDIC MOD
 #include <faiss/gpu/GpuResources.h>
-#include <faiss/gpu/utils/DeviceUtils.h> 
+#include <faiss/gpu/utils/DeviceUtils.h>
 #include <faiss/impl/FaissAssert.h>
-#include <faiss/gpu/impl/SIVFAppend.cuh>    // HPDIC MOD
-#include <faiss/gpu/impl/SIVFSearch.cuh>    // HPDIC MOD
-#include <faiss/gpu/impl/SlabManager.cuh>   // HPDIC MOD
-#include <faiss/gpu/utils/DeviceTensor.cuh> 
+#include <faiss/gpu/impl/SIVFAppend.cuh>  // HPDIC MOD
+#include <faiss/gpu/impl/SIVFSearch.cuh>  // HPDIC MOD
+#include <faiss/gpu/impl/SlabManager.cuh> // HPDIC MOD
+#include <faiss/gpu/utils/DeviceTensor.cuh>
 
 namespace faiss {
 namespace gpu {
@@ -35,17 +35,17 @@ namespace gpu {
 // ===========================================================
 
 GpuIndexSIVF::GpuIndexSIVF(
-        GpuResourcesProvider* provider,
-        int dims,
-        int nlist,
-        faiss::MetricType metric,
-        GpuIndexIVFConfig config)
-        : GpuIndexIVF(provider, dims, metric, 0.0f, nlist, config),
-          slab_manager_(nullptr),
-          is_slab_initialized_(false),
-          list_heads_(nullptr),
-          slab_id_buffer_(nullptr) {
-    
+    GpuResourcesProvider* provider,
+    int dims,
+    int nlist,
+    faiss::MetricType metric,
+    GpuIndexIVFConfig config)
+    : GpuIndexIVF(provider, dims, metric, 0.0f, nlist, config),
+      slab_manager_(nullptr),
+      is_slab_initialized_(false),
+      list_heads_(nullptr),
+      slab_id_buffer_(nullptr) {
+
     // Explicitly mark as untrained to ensure train() executes.
     // From Index.h
     this->is_trained = false;
@@ -55,7 +55,7 @@ GpuIndexSIVF::GpuIndexSIVF(
     // assigning vectors to inverted lists.
     if (!this->quantizer) {
         this->quantizer =
-                new GpuIndexFlat(provider, dims, metric, config.flatConfig);
+            new GpuIndexFlat(provider, dims, metric, config.flatConfig);
         this->own_fields = true;
     }
 }
@@ -77,8 +77,8 @@ GpuIndexSIVF::~GpuIndexSIVF() {
 
 /**
  * @brief Initializes the Slab Memory Manager and associated GPU buffers.
- * This is the "bootstrapping" phase where we pre-allocate a large chunk of GPU memory
- * to serve as the pool for dynamic vector insertion.
+ * This is the "bootstrapping" phase where we pre-allocate a large chunk of GPU
+ * memory to serve as the pool for dynamic vector insertion.
  *
  * @param max_vectors The estimated initial number of vectors to support.
  * @param pool_size The estimated initial number of slabs (chunks).
@@ -131,26 +131,19 @@ void GpuIndexSIVF::initSlabManager(size_t max_vectors, size_t pool_size) {
     // This constructor invokes cudaMalloc for the main 'slab_data' (float
     // buffer) and 'free_list' (int stack).
     slab_manager_ = new SlabManager(
-            resources_.get(),
-            device,
-            safe_max_vectors,
-            safe_pool_size,
-            this->d);
+        resources_.get(), device, safe_max_vectors, safe_pool_size, this->d);
 
     // B. Create the ID Buffer
     // Stores the global ID (idx_t) for every vector in the pool.
     // Size matches 'safe_max_vectors' to ensure 1:1 mapping with slab_data.
     slab_id_buffer_ = new DeviceVector<idx_t>(
-            resources_.get(), makeDevAlloc(AllocType::Other, stream));
+        resources_.get(), makeDevAlloc(AllocType::Other, stream));
     slab_id_buffer_->resize(safe_max_vectors, stream);
 
     // Reset IDs to -1
     // This marks all slots as "empty" or "invalid" initially.
     CUDA_VERIFY(cudaMemsetAsync(
-            slab_id_buffer_->data(),
-            -1,
-            safe_max_vectors * sizeof(idx_t),
-            stream));
+        slab_id_buffer_->data(), -1, safe_max_vectors * sizeof(idx_t), stream));
 
     // =========================================================
     // 4. Inverted List Initialization
@@ -174,7 +167,7 @@ void GpuIndexSIVF::initSlabManager(size_t max_vectors, size_t pool_size) {
     // Reset Heads to -1
     // -1 indicates that the cluster is currently empty (no slabs assigned).
     CUDA_VERIFY(cudaMemsetAsync(
-            list_heads_->data(), -1, this->nlist * sizeof(int), stream));
+        list_heads_->data(), -1, this->nlist * sizeof(int), stream));
 
     // Mark initialization as complete
     is_slab_initialized_ = true;
@@ -185,18 +178,17 @@ void GpuIndexSIVF::initSlabManager(size_t max_vectors, size_t pool_size) {
 // proper class and expose a cleaner interface. This is a temporary workaround
 // to get the functionality working without a major refactor.
 void run_sivf_deletion(
-        SlabManager* slab_manager,
-        GpuResources* res,
-        cudaStream_t stream,
-        const std::vector<idx_t>& ids,
-        int* h_count_out);
+    SlabManager* slab_manager,
+    GpuResources* res,
+    cudaStream_t stream,
+    const std::vector<idx_t>& ids,
+    int* h_count_out);
 
 size_t GpuIndexSIVF::remove_ids(const faiss::IDSelector& sel) {
-    
     FAISS_THROW_IF_NOT_MSG(is_slab_initialized_, "SIVF not initialized");
 
     const faiss::IDSelectorBatch* sel_batch =
-            dynamic_cast<const faiss::IDSelectorBatch*>(&sel);
+        dynamic_cast<const faiss::IDSelectorBatch*>(&sel);
 
     std::vector<idx_t> ids_to_remove;
 
@@ -209,7 +201,7 @@ size_t GpuIndexSIVF::remove_ids(const faiss::IDSelector& sel) {
     } else {
         // Fallback or exception for non-batch selectors
         FAISS_THROW_MSG(
-                "SIVF remove_ids currently ONLY supports IDSelectorBatch");
+            "SIVF remove_ids currently ONLY supports IDSelectorBatch");
     }
 
     int num_removed = 0;
@@ -217,11 +209,7 @@ size_t GpuIndexSIVF::remove_ids(const faiss::IDSelector& sel) {
 
     // Invoke the logic defined in SIVFDeletion.cu
     run_sivf_deletion(
-            slab_manager_,
-            resources_.get(),
-            stream,
-            ids_to_remove,
-            &num_removed);
+        slab_manager_, resources_.get(), stream, ids_to_remove, &num_removed);
 
     cudaStreamSynchronize(stream);
 
@@ -253,8 +241,8 @@ void GpuIndexSIVF::addImpl_(idx_t n, const float* x, const idx_t* ids) {
 
     // Ensure the memory pool is allocated.
     FAISS_THROW_IF_NOT_MSG(
-            is_slab_initialized_,
-            "SIVF not initialized. Call initSlabManager() first.");
+        is_slab_initialized_,
+        "SIVF not initialized. Call initSlabManager() first.");
 
     // Ensure the quantizer (centroids) is ready.
     FAISS_THROW_IF_NOT_MSG(this->is_trained, "SIVF not trained");
@@ -272,16 +260,14 @@ void GpuIndexSIVF::addImpl_(idx_t n, const float* x, const idx_t* ids) {
 
     // A. Allocate temporary buffers for quantization results
 
-    // 'distances' is needed by the API but not used for insertion logic.    
+    // 'distances' is needed by the API but not used for insertion logic.
     DeviceVector<float> distances(
-            res,
-            AllocInfo(AllocType::Other, device, MemorySpace::Device, stream));
+        res, AllocInfo(AllocType::Other, device, MemorySpace::Device, stream));
     distances.resize(n, stream);
 
     // 'assignments' will store the cluster ID (0 to nlist-1) for each vector.
     DeviceVector<idx_t> assignments(
-            res,
-            AllocInfo(AllocType::Other, device, MemorySpace::Device, stream));
+        res, AllocInfo(AllocType::Other, device, MemorySpace::Device, stream));
     assignments.resize(n, stream);
 
     // B. Perform the Search
@@ -309,15 +295,15 @@ void GpuIndexSIVF::addImpl_(idx_t n, const float* x, const idx_t* ids) {
     //  manager_view.allocate_slab).
     //  - Write vector x[i] and id[i] into the slab.
     runSIVFAppend(
-            manager_view,
-            list_heads_->data(),
-            slab_id_buffer_->data(),
-            (int)n,
-            this->d,
-            assignments.data(),
-            x,
-            ids,
-            stream);
+        manager_view,
+        list_heads_->data(),
+        slab_id_buffer_->data(),
+        (int)n,
+        this->d,
+        assignments.data(),
+        x,
+        ids,
+        stream);
 
     // =========================================================
     // 3. Update Global State
@@ -344,12 +330,12 @@ void GpuIndexSIVF::addImpl_(idx_t n, const float* x, const idx_t* ids) {
  * @param params Optional search parameters (e.g., to override nprobe).
  */
 void GpuIndexSIVF::searchImpl_(
-        idx_t n,
-        const float* x,
-        int k,
-        float* distances,
-        idx_t* labels,
-        const SearchParameters* params) const {
+    idx_t n,
+    const float* x,
+    int k,
+    float* distances,
+    idx_t* labels,
+    const SearchParameters* params) const {
 
     // =========================================================
     // 0. Safety Checks
@@ -360,13 +346,14 @@ void GpuIndexSIVF::searchImpl_(
     // =========================================================
     // 1. Parameter Handling (Dynamic Override)
     // =========================================================
+
     // Default to the index's configured nprobe.
     int nprobe = this->nprobe;
-    
+
     // Check if the user passed runtime parameters to override nprobe.
     if (params) {
         const IVFSearchParameters* ivf_params =
-                dynamic_cast<const IVFSearchParameters*>(params);
+            dynamic_cast<const IVFSearchParameters*>(params);
         if (ivf_params) {
             nprobe = ivf_params->nprobe;
         }
@@ -375,6 +362,7 @@ void GpuIndexSIVF::searchImpl_(
     // =========================================================
     // 2. Coarse Quantization (Stage 1: The Filter)
     // =========================================================
+
     // We need to find which 'nprobe' clusters are most likely to contain the
     // neighbors. This is done by searching the Quantizer (centroids).
 
@@ -384,13 +372,13 @@ void GpuIndexSIVF::searchImpl_(
     // Dimensions: [n, nprobe]
     // These buffers hold the results of the coarse search.
     DeviceTensor<float, 2, true> coarse_dis(
-            resources_.get(),
-            makeDevAlloc(AllocType::Other, stream),
-            {(int)n, nprobe});
+        resources_.get(),
+        makeDevAlloc(AllocType::Other, stream),
+        {(int)n, nprobe});
     DeviceTensor<idx_t, 2, true> coarse_ids(
-            resources_.get(),
-            makeDevAlloc(AllocType::Other, stream),
-            {(int)n, nprobe});
+        resources_.get(),
+        makeDevAlloc(AllocType::Other, stream),
+        {(int)n, nprobe});
 
     // Invoke the Quantizer (GpuIndexFlat).
     // For each query vector, find the top 'nprobe' nearest centroids.
@@ -400,9 +388,10 @@ void GpuIndexSIVF::searchImpl_(
     // ================== [DEBUG START] ==================
     // 1. Check if Quantizer is empty
     // if (quantizer->ntotal == 0) {
-    //     printf("[ERROR] Quantizer is EMPTY! (ntotal=0). Did training fail?\n");
+    //     printf("[ERROR] Quantizer is EMPTY! (ntotal=0). Did training
+    //     fail?\n");
     // } else {
-        // printf("[DEBUG] Quantizer ntotal = %ld\n", quantizer->ntotal);
+    // printf("[DEBUG] Quantizer ntotal = %ld\n", quantizer->ntotal);
     // }
     // ================== [DEBUG END] ====================
 
@@ -428,19 +417,18 @@ void GpuIndexSIVF::searchImpl_(
     //  - Compute distances for all vectors in all slabs in the chain.
     //  - Maintain a Top-K heap for each query.
     runSIVFSearch(
-            device_view,
-            list_heads_->data(),
-            slab_id_buffer_->data(),
-            (int)n, // Cast idx_t -> int
-            this->d,
-            k,
-            nprobe,
-            x,
-            coarse_ids.data(),
-            distances,
-            labels,
-            stream
-    );
+        device_view,
+        list_heads_->data(),
+        slab_id_buffer_->data(),
+        (int)n, // Cast idx_t -> int
+        this->d,
+        k,
+        nprobe,
+        x,
+        coarse_ids.data(),
+        distances,
+        labels,
+        stream);
 }
 
 /**
@@ -460,7 +448,7 @@ void GpuIndexSIVF::reset() {
         int device = getCurrentDevice();
         auto stream = resources_->getDefaultStream(device);
         cudaMemsetAsync(
-                list_heads_->data(), -1, this->nlist * sizeof(int), stream);
+            list_heads_->data(), -1, this->nlist * sizeof(int), stream);
     }
 
     // TODO: SlabManager should also be reset (reset free_list_top).
@@ -485,7 +473,7 @@ void GpuIndexSIVF::updateQuantizer() {
  * * Standard Faiss training involves clustering the input data 'x' into 'nlist'
  * clusters. The centroids of these clusters become the "keys" in the Quantizer
  * (GpuIndexFlat).
- * 
+ *
  * * This implementation includes a robust fallback:
  * 1. Tries the standard GpuIndexIVF training.
  * 2. If that fails (quantizer remains empty), it manually executes a
@@ -509,7 +497,8 @@ void GpuIndexSIVF::train(idx_t n, const float* x) {
     // the centroids. This can happen in custom GPU indices if memory states
     // aren't perfectly synced.
     if (this->quantizer->ntotal == 0) {
-        // printf("[SIVF::train] WARNING: Base train failed. Executing GPU K-Means fallback...\n");
+        // printf("[SIVF::train] WARNING: Base train failed. Executing GPU
+        // K-Means fallback...\n");
 
         // === Optimized Fallback: Manual GPU Accelerated Clustering ===
 
@@ -517,7 +506,7 @@ void GpuIndexSIVF::train(idx_t n, const float* x) {
         // We need 'nlist' centroids (one for each inverted list).
         faiss::Clustering clus(this->d, this->nlist);
         clus.verbose = false; // Suppress internal logging for cleaner output
-        clus.niter = 20; // 20 iterations. High enough for convergence
+        clus.niter = 20;      // 20 iterations. High enough for convergence
 
         // B. GPU-Accelerated Assignment
         // K-Means has two steps: 1. Assign points to nearest centroid. 2.

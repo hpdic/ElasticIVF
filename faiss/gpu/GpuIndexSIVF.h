@@ -4,7 +4,7 @@
  * supporting dynamic updates (insertion/deletion) via Slab memory management.
  * @author Dongfang Zhao (dzhao@uw.edu)
  * @date February 2026
- * 
+ *
  * @details This class extends GpuIndexIVF to support dynamic updates using a
  * Slab-based memory management system. It provides efficient insertion and
  * deletion of vectors while maintaining high search performance on the GPU. The
@@ -46,7 +46,7 @@ class GpuIndexSIVF : public GpuIndexIVF {
 
     void train(idx_t n, const float* x) override;
 
-	// From IndexIVF.h
+    // From IndexIVF.h
     size_t remove_ids(const faiss::IDSelector& sel) override;
 
     // Mandatory virtual implementations for state management
@@ -54,6 +54,7 @@ class GpuIndexSIVF : public GpuIndexIVF {
     void updateQuantizer() override;
 
    protected:
+   
     // =======================================================
     // Protected Overrides
     // =======================================================

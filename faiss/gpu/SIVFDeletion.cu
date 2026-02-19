@@ -10,10 +10,10 @@
  * metadata and Address Table.
  */
 
-#include <faiss/gpu/utils/DeviceUtils.h>
-#include <faiss/gpu/utils/Tensor.cuh> // for template definitions
-#include <faiss/gpu/impl/SlabManager.cuh>
 #include <faiss/gpu/GpuIndexSIVF.h>
+#include <faiss/gpu/utils/DeviceUtils.h>
+#include <faiss/gpu/impl/SlabManager.cuh>
+#include <faiss/gpu/utils/Tensor.cuh> // for template definitions
 
 namespace faiss {
 namespace gpu {
@@ -33,10 +33,10 @@ constexpr uint64_t INVALID_COORD = 0xFFFFFFFFFFFFFFFFULL;
  * deletions.
  */
 __global__ void sivf_delete_kernel(
-        SlabManagerDevice manager,
-        const idx_t* ids_to_remove,
-        int num_ids,
-        int* deleted_count) {
+    SlabManagerDevice manager,
+    const idx_t* ids_to_remove,
+    int num_ids,
+    int* deleted_count) {
 
     // 1. Thread Mapping
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -96,14 +96,14 @@ __global__ void sivf_delete_kernel(
         // us to reuse slabs for future insertions, which is critical for
         // long-running applications with dynamic workloads.
         if (old_count == 1) {
-            
+
             // A naive tombstone would NOT attempt to reclaim the slab, which
             // would lead to memory bloat over time. Instead, we push the slab
             // index back onto the free list stack for reuse.
             int old_top = atomicAdd(manager.free_list_top, 1);
             if (old_top < manager.slab_pool_size) {
 
-                // Push the slab index back onto the free list stack (LIFO). 
+                // Push the slab index back onto the free list stack (LIFO).
                 manager.free_list[old_top] = slab_idx;
             }
 
@@ -129,12 +129,12 @@ __global__ void sivf_delete_kernel(
  * be stored.
  */
 void run_sivf_deletion(
-        SlabManager* slab_manager,
-        GpuResources* res,
-        cudaStream_t stream,
-        const std::vector<idx_t>& ids,
-        int* h_count_out) {
-
+    SlabManager* slab_manager,
+    GpuResources* res,
+    cudaStream_t stream,
+    const std::vector<idx_t>& ids,
+    int* h_count_out) {
+        
     // 1. Early Exit Check
     // If the input list is empty, return 0 immediately to save overhead.
     if (ids.empty()) {
@@ -177,12 +177,12 @@ void run_sivf_deletion(
 
     // Dispatch the deletion kernel asynchronously on the specified stream.
     sivf_delete_kernel<<<blocks, threads, 0, stream>>>(
-            slab_manager->getDeviceView(),
-            d_ids.data(),
-            ids.size(),
-            d_count.data());
+        slab_manager->getDeviceView(),
+        d_ids.data(),
+        ids.size(),
+        d_count.data());
 
-    // Catch any immediate kernel launch errors (e.g., invalid configuration).        
+    // Catch any immediate kernel launch errors (e.g., invalid configuration).
     CUDA_TEST_ERROR();
 
     // 6. Device to Host Data Transfer
@@ -190,11 +190,11 @@ void run_sivf_deletion(
     // We use raw cudaMemcpyAsync because DeviceVector lacks a specialized
     // method for copying a single element directly to a host pointer.
     CUDA_VERIFY(cudaMemcpyAsync(
-            h_count_out,
-            d_count.data(),
-            sizeof(int),
-            cudaMemcpyDeviceToHost,
-            stream));
+        h_count_out,
+        d_count.data(),
+        sizeof(int),
+        cudaMemcpyDeviceToHost,
+        stream));
 }
 
 } // namespace gpu

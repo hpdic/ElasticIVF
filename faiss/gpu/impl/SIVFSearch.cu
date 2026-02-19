@@ -13,9 +13,9 @@
 
 #include <faiss/gpu/GpuIndexSIVF.h>
 #include <faiss/gpu/utils/DeviceUtils.h>
+#include <faiss/gpu/impl/SIVFSearch.cuh>
 #include <faiss/gpu/impl/SlabManager.cuh>
 #include <faiss/gpu/utils/Limits.cuh>
-#include <faiss/gpu/impl/SIVFSearch.cuh>
 
 namespace faiss {
 namespace gpu {
@@ -54,12 +54,12 @@ constexpr int MAX_K = 32;
  * traditional heap implementation.
  */
 __device__ inline void add_to_heap(
-        float* dists,
-        idx_t* labels,
-        int k,
-        float dist,
-        idx_t label) {
-
+    float* dists,
+    idx_t* labels,
+    int k,
+    float dist,
+    idx_t label) {
+        
     // Step 1:
     // dists[k - 1] is the longest distance currently in our top-k list.
     // If the new dist is larger than this, it has no chance of entering the
@@ -113,27 +113,27 @@ __device__ inline void add_to_heap(
  * multiplied by k.
  */
 __global__ void sivf_search_kernel(
-        SlabManagerDevice manager,
-        int* list_heads,
-        idx_t* slab_ids,
-        int num_queries,
-        int dim,
-        int k,
-        int nprobe,
-        const float* queries,
-        const idx_t* coarse_ids,
-        float* out_distances,
-        idx_t* out_labels) {
-
+    SlabManagerDevice manager,
+    int* list_heads,
+    idx_t* slab_ids,
+    int num_queries,
+    int dim,
+    int k,
+    int nprobe,
+    const float* queries,
+    const idx_t* coarse_ids,
+    float* out_distances,
+    idx_t* out_labels) {
     int query_idx = blockIdx.x;
     int tid = threadIdx.x;
-    
-    if (query_idx >= num_queries) return;
+
+    if (query_idx >= num_queries)
+        return;
 
     // ===================================================
     // 1. Load Query into Shared Memory
     // ===================================================
-    
+
     // Utilize all 32 threads to cooperatively load the query vector.
     // This avoids redundant global memory reads during distance computation.
     __shared__ float shared_query[256];
@@ -161,26 +161,28 @@ __global__ void sivf_search_kernel(
 
     for (int p = 0; p < nprobe; ++p) {
         idx_t cluster_id = coarse_ids[query_idx * nprobe + p];
-        
-        if (cluster_id == -1) continue;
+
+        if (cluster_id == -1)
+            continue;
 
         // Retrieve head slab index
         volatile int* heads_ptr = list_heads;
         int cur_slab = heads_ptr[cluster_id];
 
         int loop_safety = 0;
-        
+
         // Traverse the linked slabs
         while (cur_slab != -1 && loop_safety < 10000) {
             loop_safety++;
 
             // Use standard struct copy logic.
-            // Avoid unsafe casting (e.g., int*) which may violate alignment 
+            // Avoid unsafe casting (e.g., int*) which may violate alignment
             // or strict aliasing rules.
             SlabMetadata md = manager.slab_metadata[cur_slab];
 
             // Safety break: Detect and break infinite self-loops
-            if (md.next_slab_idx == cur_slab) break;
+            if (md.next_slab_idx == cur_slab)
+                break;
 
             // Process vectors in the current slab
             // Each thread in the warp handles one slot (0-31)
@@ -189,7 +191,7 @@ __global__ void sivf_search_kernel(
                 if ((md.validity_bitmap >> tid) & 1) {
                     float dist = 0.0f;
                     float* vec_data = manager.slab_data +
-                            (size_t)cur_slab * 32 * dim + tid * dim;
+                        (size_t)cur_slab * 32 * dim + tid * dim;
 
                     // Compute L2 Distance
                     for (int d = 0; d < dim; ++d) {
@@ -200,7 +202,7 @@ __global__ void sivf_search_kernel(
                     // Retrieve global vector ID
                     size_t physical_id_idx = (size_t)cur_slab * 32 + tid;
                     idx_t real_id = slab_ids[physical_id_idx];
-                    
+
                     // Update local heap
                     add_to_heap(my_dists, my_labels, k, dist, real_id);
                 }
@@ -216,7 +218,7 @@ __global__ void sivf_search_kernel(
 
     // Ensure all threads have finished traversing their assigned slots.
     __syncthreads();
-    
+
     // Allocate shared memory workspace for the reduction phase.
     __shared__ float final_dists[MAX_K * 32];
     __shared__ idx_t final_labels[MAX_K * 32];
@@ -234,7 +236,6 @@ __global__ void sivf_search_kernel(
 
     // Thread 0 assumes responsibility for the final serial merge.
     if (tid == 0) {
-
         // Iterate through the results submitted by threads 1 through 31.
         // TODO: Warp shuffle-based reduction could be implemented here for
         // better performance, but a simple serial merge is sufficient for
@@ -243,11 +244,11 @@ __global__ void sivf_search_kernel(
             for (int i = 0; i < k; ++i) {
                 if (final_labels[t * k + i] != -1) {
                     add_to_heap(
-                            my_dists,
-                            my_labels,
-                            k,
-                            final_dists[t * k + i],
-                            final_labels[t * k + i]);
+                        my_dists,
+                        my_labels,
+                        k,
+                        final_dists[t * k + i],
+                        final_labels[t * k + i]);
                 }
             }
         }
@@ -257,7 +258,7 @@ __global__ void sivf_search_kernel(
         // ==================================================
         // Tree reduction using register shuffle instructions.
         // Loop over offset: 16, 8, 4, 2, 1
-        /** 
+        /**
         for (int offset = 16; offset > 0; offset /= 2) {
             // Iterate through the local heap to fetch each element
             for (int i = 0; i < k; ++i) {
@@ -308,18 +309,18 @@ __global__ void sivf_search_kernel(
  * @param stream The CUDA stream on which to enqueue the kernel execution.
  */
 void runSIVFSearch(
-        SlabManagerDevice& manager,
-        int* list_heads,
-        idx_t* slab_ids,
-        int num_queries,
-        int dim,
-        int k,
-        int nprobe,
-        const float* queries,
-        const idx_t* coarse_ids,
-        float* out_distances,
-        idx_t* out_labels,
-        cudaStream_t stream) {
+    SlabManagerDevice& manager,
+    int* list_heads,
+    idx_t* slab_ids,
+    int num_queries,
+    int dim,
+    int k,
+    int nprobe,
+    const float* queries,
+    const idx_t* coarse_ids,
+    float* out_distances,
+    idx_t* out_labels,
+    cudaStream_t stream) {
 
     // Launch configuration strategy:
     // Grid Size (Blocks): num_queries. Each block independently processes
