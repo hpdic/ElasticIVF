@@ -4,6 +4,7 @@
  * the GPU.
  * @author Dongfang Zhao (dzhao@uw.edu)
  * @date February 2026
+ * 
  * @details This file implements the core logic for appending vectors to the
  * SIVF index on the GPU. It includes the CUDA kernel for parallel appends and
  * the associated device functions.

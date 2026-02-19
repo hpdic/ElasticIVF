@@ -3,6 +3,7 @@
  * @brief Definition of data structures for SIVF (Streaming IVF) architecture.
  * @author Dongfang Zhao <dzhao@uw.edu>
  * @date February 2026
+ * 
  * @details This file defines the core data structures used in the SIVF index
  * architecture, including SlabMetadata for managing slab-level information and
  * AddressTableEntry for GPU-resident address translation. These structures are

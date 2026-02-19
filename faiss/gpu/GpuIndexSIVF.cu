@@ -3,6 +3,7 @@
  * @brief Implementation of the GpuIndexSIVF class.
  * @author Dongfang Zhao <(dzhao@uw.edu)>
  * @date February 2026
+ * 
  * @details This file implements the GpuIndexSIVF class, a slab-based inverted
  * file index for GPU. It includes:
  * - Constructor and destructor for lifecycle management.

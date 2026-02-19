@@ -3,6 +3,7 @@
  * @brief Declaration of the SIVF Search Kernel for querying vectors.
  * @author Dongfang Zhao (dzhao@uw.edu)
  * @date February 2026
+ * 
  * @details This file declares the interface for the SIVF search operation,
  * which performs approximate nearest neighbor search on the GPU using the
  * Slab-based IVF index structure. The search kernel is designed to efficiently

@@ -3,6 +3,7 @@
  * @brief Header definition for the SlabManager handling GPU memory allocation.
  * @author Dongfang Zhao <dzhao@uw.edu>
  * @date   2026-02-16
+ * 
  * @details Header definition for the SlabManager, handling GPU memory allocation 
  * primitives. Includes both the Host-side manager class and the Device-side view struct
  * with inline __device__ allocation logic.

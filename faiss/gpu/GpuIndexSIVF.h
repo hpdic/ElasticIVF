@@ -4,6 +4,7 @@
  * supporting dynamic updates (insertion/deletion) via Slab memory management.
  * @author Dongfang Zhao (dzhao@uw.edu)
  * @date February 2026
+ * 
  * @details This class extends GpuIndexIVF to support dynamic updates using a
  * Slab-based memory management system. It provides efficient insertion and
  * deletion of vectors while maintaining high search performance on the GPU. The

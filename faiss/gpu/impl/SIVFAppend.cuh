@@ -3,6 +3,7 @@
  * @brief GPU kernel for appending vectors to the SIVF index structure.
  * @author Dongfang Zhao (dzhao@uw.edu)
  * @date February 2026
+ * 
  * @details This file contains the declaration of the SIVF Append Kernel, which
  * is responsible for inserting new vectors into the SIVF index structure on the
  * GPU. The kernel takes care of allocating slabs, updating metadata, and

@@ -3,6 +3,7 @@
  * @brief Implementation of the SlabManager handling GPU memory allocation.
  * @author Dongfang Zhao <dzhao@uw.edu>
  * @date 2026-02-16
+ * 
  * @details This file handles the allocation, initialization, and lifecycle management
  * of GPU memory resources required for the SIVF index structure, including
  * slab metadata, vector data storage, and the address translation table.

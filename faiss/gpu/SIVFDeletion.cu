@@ -1,5 +1,5 @@
 /**
- * @file faiss/gpu/impl/SIVFDeletion.cu
+ * @file faiss/gpu/SIVFDeletion.cu
  * @brief Implementation of the GPU-resident deletion logic for SIVF.
  * @author Dongfang Zhao (dzhao@uw.edu)
  * @date February 2026
