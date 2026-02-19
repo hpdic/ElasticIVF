@@ -1,11 +1,13 @@
 /**
- * * File: faiss/gpu/impl/SIVFSearch.cuh
- * 
- * * Description: Declaration of the SIVF Search Kernel for querying vectors.
- * 
- * * Author: Dongfang Zhao (dzhao@uw.edu)
- * 
- * * Date: February 2026
+ * @file faiss/gpu/impl/SIVFSearch.cuh
+ * @brief Declaration of the SIVF Search Kernel for querying vectors.
+ * @author Dongfang Zhao (dzhao@uw.edu)
+ * @date February 2026
+ * @details This file declares the interface for the SIVF search operation,
+ * which performs approximate nearest neighbor search on the GPU using the
+ * Slab-based IVF index structure. The search kernel is designed to efficiently
+ * probe multiple slabs in parallel, leveraging the metadata and address mapping
+ * provided by the SlabManagerDevice.
  */
 
 #pragma once
