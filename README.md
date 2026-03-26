@@ -4,8 +4,7 @@ Check out [hpdic/readme.md](hpdic/readme.md) for more details. This MOD introduc
 GPU-accelerated Inverted File (IVF) index is one of the industry standards for large-scale vector analytics but relies on static VRAM layouts that hinder real-time mutability. Our benchmark and analysis reveal that existing designs of GPU IVF necessitate expensive CPU-GPU data transfers for index updates, causing system latency to spike from milliseconds to seconds in streaming scenarios. We present SIVF, a GPU-native index that enables high-velocity, in-place mutation via a series of new data structures and algorithms, such as conflict-free slab allocation and coalesced search on non-contiguous memory. SIVF has been implemented and integrated into the open-source vector search library, Faiss. Evaluation against baselines with diverse vector datasets demonstrates that SIVF reduces deletion latency by orders of magnitude compared to the baseline. Furthermore, distributed experiments on a 12-GPU cluster reveal that SIVF exhibits near perfect linear scalability, achieving an aggregate ingestion throughput of 4.07 million vectors/s and a deletion throughput of 108.5 million vectors/s.
 
 ## Documentation
-- [Technical Report, Latest](hpdic/paper/TR2026/sivf.pdf)
-- [Preprint, January 2026](https://arxiv.org/pdf/2601.11808)
+- [Preprint](https://arxiv.org/pdf/2601.11808)
 
 # Faiss
 
